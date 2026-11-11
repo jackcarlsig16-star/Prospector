@@ -1,4 +1,5 @@
 import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays } from './goalsShared.js';
+import { applyTodo } from './todoWrite.js';
 import { laDateString } from './laDate.js';
 
 // call-notes-targets-v1 REV5 - a 'waiting' row is something a counterpart
@@ -18,12 +19,13 @@ export async function nudgeWaiting(supabase, { businessId, userId, id, now = Dat
   const today = laDateString(new Date(now));
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) return { status: 409, body: { error: FINAL_ERROR } };
-  const { data: todo, error: insErr } = await supabase.from('sales_week_goals').insert({
-    business_id: businessId, week_start: week, kind: 'todo', status: 'open', text: nudgeText(row.waiting_on || 'them', row.text),
-    owner_user_id: userId, due_date: today, link_type: row.link_type, link_id: row.link_id, category: NUDGE_CATEGORY, sort_order: 0, created_by: userId,
-  }).select().single();
-  if (insErr) return { status: 500, body: { error: insErr.message } };
-  return { status: 201, body: { todo } };
+  try {
+    const r = await applyTodo(supabase, { businessId, actor: userId, origin: 'nudge', now: new Date(now), create: {
+      week_start: week, kind: 'todo', status: 'open', text: nudgeText(row.waiting_on || 'them', row.text),
+      owner_user_id: userId, due_date: today, link_type: row.link_type, link_id: row.link_id, category: NUDGE_CATEGORY, sort_order: 0, created_by: userId,
+    } });
+    return { status: 201, body: { todo: r.todo, event: r.event } };
+  } catch (e) { return { status: e.status || 500, body: { error: e.message } }; }
 }
 
 // POST /goals/waiting/:id/nudge -> { todo }

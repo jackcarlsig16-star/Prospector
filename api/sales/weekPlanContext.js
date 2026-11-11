@@ -1,6 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { addDays, laStartOfDayMs } from './goalsShared.js';
 import { laDateString } from './laDate.js';
+import { isSnoozed } from '../../src/constants/todoSnooze.js';
 import { replyAt, replyWindow } from './replyTime.js';
 import { scoreProspect } from './heatScore.js';
 import { nextBestAction } from './nextBestAction.js';
@@ -34,7 +35,7 @@ export async function loadPlanData(supabase, businessId, ownerId, weekStart) {
   const lastWeekIso = new Date(laStartOfDayMs(lastWeek)).toISOString();
   const q = (table, cols) => supabase.from(table).select(cols).eq('business_id', businessId);
   const [goals, partnerData, partnerExtra, mailboxes, replied, recentDelivered, recentReplies, dailyCounts, targets, accounts, opportunities, prospectTargets] = await Promise.all([
-    selectAllPages(() => q('sales_week_goals', 'id, kind, text, status, owner_user_id, week_start, due_date, link_type, link_id, carried_from_id, prospect_contact_id, flag_note, why_not_done, plan_id, created_at, steps:sales_week_goal_steps(done)')
+    selectAllPages(() => q('sales_week_goals', 'id, kind, text, status, owner_user_id, week_start, due_date, snooze_until, link_type, link_id, carried_from_id, prospect_contact_id, flag_note, why_not_done, plan_id, created_at, steps:sales_week_goal_steps(done)')
       .gte('week_start', addDays(weekStart, -7 * TODO_WEEKS_BACK)).lte('week_start', weekStart).order('week_start').order('id')),
     loadPartnerData(supabase, businessId),
     selectAllPages(() => q('sales_goals', 'id, last_touch_at, next_step, snoozed_until').eq('goal_type', 'partnership').is('archived_at', null).order('id')),
@@ -82,7 +83,8 @@ export function assemblePlanContext(data, { ownerId, weekStart, nowMs = Date.now
   const unfinished = g => !(g.kind === 'todo' && g.steps?.length && g.steps.every(s => s.done));
   const commitments = current.filter(g => g.kind === 'commitment' && g.week_start === weekStart && g.status === 'open' && (g.owner_user_id === ownerId || !g.owner_user_id))
     .map(g => ({ id: g.id, text: g.text, team: !g.owner_user_id, planned: !!g.plan_id }));
-  const allTodos = current.filter(g => g.kind === 'todo' && g.status === 'open' && unfinished(g));
+  // todo-events-v1 T6: a snoozed to-do is not offered to the plan until its day (the one rule)
+  const allTodos = current.filter(g => g.kind === 'todo' && g.status === 'open' && unfinished(g) && !isSnoozed(g, today));
   const todos = allTodos.filter(g => !g.prospect_contact_id && mine(g) && (!g.due_date || g.due_date <= weekEnd))
     .sort((a, b) => (a.due_date || '9999').localeCompare(b.due_date || '9999') || a.created_at.localeCompare(b.created_at))
     .map(g => ({

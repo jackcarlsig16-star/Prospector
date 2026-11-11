@@ -10,6 +10,8 @@ import { cleanText as clean } from './scrubText.js';
 import { toIntake, enrichIntake, matchOwner, MAX_ITEMS } from './intakeMatch.js';
 import { acceptIntake, parseIntake } from './intakeAccept.js';
 import { scrubExtract, signExtract, extractIfSigned, recentAccepts } from './intakeDeal.js';
+import { linkFor, linkRecords } from './todoLink.js';
+import { findPerson } from './scoutIntents.js';
 import { INSIGHT_RULES, INSIGHT_JSON, toInsights, enrichInsights, linkPeople, parseInsights } from './intakeInsights.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
@@ -245,6 +247,23 @@ export async function createFromCallNotesRoute(req, res) {
     const ctx = await context(supabase, businessId, laDateString());
     let intake, insights;
     try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
+    // todo-events-v1 T7 (K9): a to-do left without a link in the review is linked to the ONE record its text names;
+    // when it names several, nothing is guessed - the reply lists the choices (needs_link) and the screen asks.
+    // A to-do that names a person kept in the review carries that person's People key (K4).
+    const records = linkRecords(ctx), asks = [];
+    const keyOf = new Map();
+    for (const [i, r] of rows.entries()) {
+      if (!r.payload.link_type) {
+        const hit = linkFor(r.payload.text, records);
+        if (hit?.link) Object.assign(r.payload, { link_type: hit.link.link_type, link_id: hit.link.link_id });
+        else if (hit?.choices) asks.push({ i, text: clean(r.payload.text, 160), choices: hit.choices });
+      }
+      const who = intake.people.find(p => p.name.includes(' ') && r.payload.text.toLowerCase().includes(p.name.toLowerCase()));
+      if (who) {
+        if (!keyOf.has(who.name)) keyOf.set(who.name, (await findPerson(supabase, businessId, who.name, laDateString()))?.key || null);
+        if (keyOf.get(who.name)) r.payload.person_key = keyOf.get(who.name);
+      }
+    }
     const picked = rows.length + Object.values(intake).reduce((n, l) => n + l.length, 0) + Object.values(insights).reduce((n, l) => n + l.length, 0);
     if (!picked) return res.status(400).json({ error: 'nothing is ticked - tick at least one row' });
     const week = weekOf(laDateString());
@@ -266,7 +285,8 @@ export async function createFromCallNotesRoute(req, res) {
       if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
       throw e;
     }
-    res.status(201).json({ note, ...result });
+    const needs_link = asks.filter(a => result.goals?.[a.i]).map(a => ({ todo_id: result.goals[a.i].id, text: a.text, choices: a.choices }));
+    res.status(201).json({ note, ...result, needs_link });
   } catch (e) {
     console.error('[call-notes/create]', e.message);
     res.status(500).json({ error: e.message });

@@ -57,7 +57,7 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
     const onCapture = e => {
       const d = e.detail || {};
       if (d.businessId !== businessId) return;
-      setPrefill({ at: Date.now(), text: d.text || '', due_date: d.due_date || '', link: d.link?.id ? { type: d.link.type === 'employer' ? 'opportunity' : d.link.type, id: d.link.id } : null });
+      setPrefill({ at: Date.now(), text: d.text || '', due_date: d.due_date || '', link: d.link?.id ? { type: d.link.type === 'employer' ? 'opportunity' : d.link.type, id: d.link.id } : null, person_key: d.person_key || null });
       setMode('task'); setStatus(''); setError(''); setOpen(true);
     };
     window.addEventListener(SCOUT_CAPTURE, onCapture);
@@ -99,7 +99,8 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   const addTask = async body => {
     setError('');
     try {
-      await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: week });
+      // todo-events-v1 T2 / T7: a to-do saved from the form Scout opened is Scout's (origin), and keeps the person it was about
+      await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: week, ...(prefill ? { origin: 'scout', ...(prefill.person_key ? { person_key: prefill.person_key } : {}) } : {}) });
       setStatus(body.owner_user_id === meId ? `Added: ${body.text}` : `Added for ${lookup(body.owner_user_id).first}: ${body.text}`);
       return true;
     } catch (e) { setError(e.message); return false; }

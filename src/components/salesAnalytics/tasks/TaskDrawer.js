@@ -7,6 +7,7 @@ import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS, OPEN_GOALS_TARGET
 import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goalsUi';
 import { buildTaskGroups, badgeCount } from './taskGroups';
+import { splitSnoozed } from '../../../constants/todoSnooze';
 import { useLinkOptions } from './linkTargets';
 import QuickAdd from './QuickAdd';
 import CallNotesPanel from './CallNotesPanel';
@@ -26,7 +27,6 @@ import { ToggleChip } from '../../../ui/Chip';
 const OPEN_KEY = 'prospector_task_drawer_open';
 const UNDO_MS = 5000;
 const WIDTH = 380;
-const OWN_DELETE_MS = 2 * 60e3; // FIX-5, same window as the server's OWN_DELETE_WINDOW_MS
 
 const readOpen = () => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } };
 const writeOpen = v => { try { localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch { /* private mode */ } };
@@ -44,6 +44,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [todos, setTodos] = useState([]);
   const [flags, setFlags] = useState([]);
   const [filter, setFilter] = useState('me');
+  const [showSnoozed, setShowSnoozed] = useState(false); // todo-events-v1 T6
   const [linkFilter, setLinkFilter] = useState(null); // { type, id } from a Goals "open tasks" link
   const [expanded, setExpanded] = useState(() => new Set());
   const [showDone, setShowDone] = useState(false);
@@ -109,12 +110,16 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const canAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
   const today = laDateString();
   const inLink = t => !linkFilter || (t.link_type === linkFilter.type && t.link_id === linkFilter.id);
-  const groups = meId ? buildTaskGroups({ todos: todos.filter(inLink), flags: flags.filter(inLink), filter, meId, today }) : [];
-  const badge = meId ? badgeCount({ todos, flags, meId }) : 0;
+  // todo-events-v1 T6: a snoozed to-do is off the lists and the badge until its day (the one rule); the chip shows them.
+  const { shown: liveTodos, snoozed: snoozedTodos } = splitSnoozed(todos, today);
+  const groups = meId ? buildTaskGroups({ todos: (showSnoozed ? snoozedTodos : liveTodos).filter(inLink), flags: showSnoozed ? [] : flags.filter(inLink), filter, meId, today }) : [];
+  const badge = meId ? badgeCount({ todos: liveTodos, flags, meId }) : 0;
   const flagIds = new Set(flags.map(f => f.id));
 
   const run = async fn => { setError(''); try { await fn(); return true; } catch (e) { setError(e.message); return false; } };
-  const removeMode = t => (!flagIds.has(t.id) && (canAdmin || (t.created_by === meId && Date.now() - Date.parse(t.created_at) <= OWN_DELETE_MS)) ? 'delete' : 'drop');
+  // todo-events-v1: Undo is the server's - the event the write returned (T4); a to-do is deleted by an admin only (T9).
+  const undoWrite = g => goalsApi.undoTodoEvent(businessId, g.event_id);
+  const removeMode = t => (!flagIds.has(t.id) && canAdmin ? 'delete' : 'drop');
   const add = body => run(async () => {
     await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: week });
     setToast({ text: body.owner_user_id === meId ? `Added: ${body.text}` : `Added for ${lookup(body.owner_user_id).first}: ${body.text}` });
@@ -127,8 +132,8 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
       announceFlagsChanged();
       return setToast({ text: `${who} marked contacted · flag closed` });
     }
-    await goalsApi.updateWeekGoal(businessId, t.id, { status: done ? 'done' : 'open' });
-    setToast({ text: done ? `Done: ${t.text}` : `Reopened: ${t.text}`, undo: () => goalsApi.updateWeekGoal(businessId, t.id, { status: done ? 'open' : 'done' }) });
+    const g = await goalsApi.updateWeekGoal(businessId, t.id, { status: done ? 'done' : 'open' }, t);
+    setToast({ text: done ? `Done: ${t.text}` : `Reopened: ${t.text}`, undo: () => undoWrite(g) });
   });
   const toggleStep = (t, s) => run(async () => {
     await goalsApi.updateStep(businessId, s.id, { done: !s.done });
@@ -136,10 +141,10 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   });
   const reassign = (t, userId) => run(async () => {
     if (flagIds.has(t.id)) { await reassignFlag(businessId, t.id, userId); announceFlagsChanged(); }
-    else await goalsApi.updateWeekGoal(businessId, t.id, { owner_user_id: userId || null });
+    else await goalsApi.updateWeekGoal(businessId, t.id, { owner_user_id: userId || null }, t);
     setToast({ text: `${t.text} → ${lookup(userId || null).first}` });
   });
-  const update = (t, patch) => run(() => goalsApi.updateWeekGoal(businessId, t.id, patch));
+  const update = (t, patch) => run(() => goalsApi.updateWeekGoal(businessId, t.id, patch, t));
   const addStep = (t, text) => run(async () => {
     await goalsApi.createStep(businessId, t.id, { text, sort_order: t.steps.length });
     if (flagIds.has(t.id)) announceFlagsChanged();
@@ -156,8 +161,8 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
       announceFlagsChanged();
       return setToast({ text: `Flag dropped: ${t.text}` });
     }
-    await goalsApi.updateWeekGoal(businessId, t.id, { status: 'dropped' });
-    setToast({ text: `Dropped: ${t.text}`, undo: () => goalsApi.updateWeekGoal(businessId, t.id, { status: t.status }) });
+    const g = await goalsApi.updateWeekGoal(businessId, t.id, { status: 'dropped' }, t);
+    setToast({ text: `Dropped: ${t.text}`, undo: () => undoWrite(g) });
   });
   const openInGoals = () => {
     const url = new URL(window.location.href);
@@ -249,6 +254,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                 <ToggleChip pressed={view === 'targets'} onClick={() => setView(v => (v === 'targets' ? 'tasks' : 'targets'))}>◎ Targets{openTargetCount ? ` (${openTargetCount})` : ''}</ToggleChip>
                 <ToggleChip pressed={view === 'suggested'} onClick={() => setView(v => (v === 'suggested' ? 'tasks' : 'suggested'))}>✦ Suggested{suggestedCount ? ` (${suggestedCount})` : ''}</ToggleChip>
                 <ToggleChip pressed={view === 'signals'} onClick={() => setView(v => (v === 'signals' ? 'tasks' : 'signals'))}>⚡ Signals{signals.length ? ` (${signals.length})` : ''}</ToggleChip>
+                {snoozedTodos.length > 0 && <ToggleChip pressed={showSnoozed && view === 'tasks'} data-snoozed-chip onClick={() => { setShowSnoozed(v => !v); setView('tasks'); }}>Snoozed ({snoozedTodos.length})</ToggleChip>}
                 {waiting.length > 0 && <ToggleChip pressed={view === 'waiting'} onClick={() => setView(v => (v === 'waiting' ? 'tasks' : 'waiting'))}>⏳ Waiting on ({waiting.length})</ToggleChip>}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>

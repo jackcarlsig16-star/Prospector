@@ -16,7 +16,9 @@ export function pickNewestFinal(reports) {
 // Pipeline moves this week: partner stage changes from partner events and
 // employer stage moves (forward, back, lost) from the movement read, newest
 // first. Newly added opportunities are not moves, so they stay out.
-export function pipelineMoves({ events = [], partnersById = new Map(), movement = null }, n = 8) {
+// todoEvents (todo-events-v1 T8 / R8): the week's to-do changes ride in the same list, one line each (an undo and
+// the change it took back are left out).
+export function pipelineMoves({ events = [], partnersById = new Map(), movement = null, todoEvents = [] }, n = 8) {
   const rows = [];
   for (const e of events) {
     if (!['status', 'touch', 'deprioritize'].includes(e.event) || !e.to_status || e.to_status === e.from_status) continue;
@@ -24,6 +26,7 @@ export function pipelineMoves({ events = [], partnersById = new Map(), movement 
     if (!p) continue;
     rows.push({ key: `p-${e.id}`, name: p.name, kind: 'Partner', to: stageName(e.to_status), at: e.at });
   }
+  for (const e of todoEvents) if (e.kind !== 'undo' && !e.undone_at && e.todo) rows.push({ key: `t-${e.id}`, name: e.todo.text, kind: 'To-do', to: e.words, at: e.at });
   const bucket = (key, to) => (movement?.[key] || []).forEach(o => rows.push({ key: `o-${key}-${o.id}`, name: o.organization, kind: 'Employer', to: to || STAGE_LABELS[o.stage] || o.stage, at: o.updated_at || null }));
   bucket('moved_forward'); bucket('moved_back'); bucket('lost', 'Lost');
   return rows.sort((a, b) => (a.at && b.at ? (a.at < b.at ? 1 : a.at > b.at ? -1 : 0) : a.at ? -1 : b.at ? 1 : 0)).slice(0, n);

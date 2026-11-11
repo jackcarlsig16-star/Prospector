@@ -1,4 +1,5 @@
 import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, laMonday, acceptOwner } from './goalsShared.js';
+import { applyTodo, rollbackCreates, undoCreate } from './todoWrite.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
@@ -192,17 +193,18 @@ export async function acceptSuggestion(supabase, { businessId, userId, id, now =
       if (isDone && spec.link_type === 'partner') {
         ({ event: touch } = await partnerDoneTouch(supabase, { businessId, goalId: spec.link_id, userId, now: new Date(now), today, note: spec.text, meta: { from_suggestion_id: s.id } }));
       }
-      const ins = await supabase.from('sales_week_goals').insert({
-        business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: TIDY_CATEGORY, sort_order: 0,
-        owner_user_id: who.owner, created_by: userId, ...spec, ...(isDone ? { completed_at: new Date(now).toISOString() } : {}),
-      }).select().single();
-      if (ins.error) { if (touch) await revertTouch(supabase, touch); throw err(500, ins.error.message); }
-      todo = ins.data;
+      try {
+        ({ todo } = await applyTodo(supabase, { businessId, actor: userId, origin: 'tidy', now: new Date(now), create: {
+          week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: TIDY_CATEGORY, sort_order: 0,
+          owner_user_id: who.owner, created_by: userId, ...spec, ...(isDone ? { completed_at: new Date(now).toISOString() } : {}),
+        } }));
+      } catch (e) { if (touch) await revertTouch(supabase, touch); throw err(500, e.message); }
     }
     const rows = must(await supabase.from('sales_suggestions').update({ status: 'accepted', decided_at: new Date(now).toISOString(), decided_by: userId })
       .eq('id', s.id).eq('status', 'proposed').select());
     if (!rows.length) {
-      if (todo) await supabase.from('sales_week_goals').delete().eq('id', todo.id);
+      // R3: the Accept lost a race - its own to-do comes off in the same request (deleted, one 'undo' event)
+      if (todo) await rollbackCreates(supabase, { businessId, todos: [todo], actor: userId, origin: 'tidy' });
       if (touch) await revertTouch(supabase, touch);
       return reply(409, { error: 'changed since - reload' });
     }
@@ -254,7 +256,8 @@ export async function undoSuggestion(supabase, { businessId, userId, id, body, n
     if (s.status === 'accepted') {
       const touch = await doneTouchEvent(supabase, businessId, body?.touch_event_id, e => e.meta?.from_suggestion_id === s.id);
       if (touch) { const refused = await undoDoneTouch(supabase, { businessId, touch, userId, now: new Date(now) }); if (refused) return refused; }
-      if (todoId) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', todoId).eq('category', TIDY_CATEGORY).in('status', ['open', 'done']).eq('created_by', userId));
+      // R3: a person's Undo drops the to-do the Accept made (origin kept), it is never deleted
+      if (todoId) await undoCreate(supabase, { businessId, todoId, actor: userId, now: new Date(now), where: t => t.category === TIDY_CATEGORY && t.created_by === userId });
     }
     const rows = must(await supabase.from('sales_suggestions').update({ status: 'proposed', dismissed_until: null, decided_at: null, decided_by: null })
       .eq('id', s.id).eq('status', s.status).select());

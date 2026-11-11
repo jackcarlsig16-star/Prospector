@@ -5,7 +5,7 @@ import PeopleTable from './PeopleTable';
 import { goalsApi } from '../goals/goalsApi';
 import { updateProspect } from '../huddleApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn() }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 const mockPhone = { on: false };
@@ -43,6 +43,9 @@ const table = async () => { render(<PeopleTable businessId="b1" canEdit me={ME} 
 const names = t => [...t.querySelectorAll('tr[data-row] [data-person-name]')].map(el => el.textContent);
 const groupHeads = t => [...t.querySelectorAll('tr.ui-table__group')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim());
 const expandCold = t => fireEvent.click(within(t).getByRole('button', { name: /^Cold/ }));
+
+// todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
+beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
 
 test('the table: 10 word headers in the mockup order with widths summing to 1,082 px; Hot / Warm / Cold groups in heat order with Cold collapsed; the one pill (word + number, Δ7 when it moved 10+); the buyer tag on the name; Identified = a date; Source = glyph + word; no footnote and no "Huddle" anywhere', async () => {
   const t = await table();
@@ -192,7 +195,7 @@ test('quick menu: Draft email copies the REACH bundle (never sends); Add to-do l
   fireEvent.change(within(detail).getByLabelText('To-do'), { target: { value: 'Send the deck' } });
   fireEvent.change(within(detail).getByLabelText('To-do due date'), { target: { value: '2026-11-10' } });
   fireEvent.click(within(detail).getByRole('button', { name: 'Save to-do' }));
-  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledWith('b1', { week_start: '2026-11-09', kind: 'todo', text: 'Send the deck', owner_user_id: 'u1', due_date: '2026-11-10', link_type: 'opportunity', link_id: 'o1' }));
+  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledWith('b1', { week_start: '2026-11-09', kind: 'todo', text: 'Send the deck', owner_user_id: 'u1', due_date: '2026-11-10', link_type: 'opportunity', link_id: 'o1', person_key: expect.any(String) }));
   await waitFor(() => expect(goalsApi.peopleActivity).toHaveBeenCalledTimes(2), { timeout: 2000 }); // onChanged re-reads
   fireEvent.click(menu.getByRole('button', { name: 'Not a fit' }));
   await waitFor(() => expect(updateProspect).toHaveBeenCalledWith('b1', 'CrystalPringle', { status: 'dead' }));

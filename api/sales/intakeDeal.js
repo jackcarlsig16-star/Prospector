@@ -142,7 +142,7 @@ export async function writeDeal(supabase, deal, { businessId, userId, note, week
   if (!deal.waiting_on.length) return;
   const rows = must(await supabase.from('sales_week_goals').insert(deal.waiting_on.map((w, i) => ({
     business_id: businessId, week_start: week, kind: 'waiting', status: 'open', text: w.text, waiting_on: w.who, owner_user_id: null,
-    due_date: w.due_date, link_type: 'partner', link_id: w.p.id, category, source_note_id: note.id, sort_order: i, created_by: userId,
+    due_date: w.due_date, link_type: 'partner', link_id: w.p.id, category, source_note_id: note.id, sort_order: i, created_by: userId, origin: 'call_notes',
   }))).select());
   undo.push(() => supabase.from('sales_week_goals').delete().in('id', rows.map(r => r.id)));
   out.waiting = rows;

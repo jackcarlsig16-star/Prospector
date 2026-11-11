@@ -62,6 +62,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [score, setScore] = useState(undefined); // GET goals/scores/:type/:id - undefined = loading, null = no score yet
   const [files, setFiles] = useState(null); // an employer's files, for the Files drawer's count and preview
   const [flow, setFlow] = useState([]);
+  // todo-events-v1 T8: this record's to-do events, as lines in the same Activity list (by a person, so never 'automatic')
+  const [todoLines, setTodoLines] = useState([]);
   const [network, setNetwork] = useState(null);
   const [menu, setMenu] = useState(null); // 'owner'
   const [busy, setBusy] = useState('');
@@ -96,6 +98,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     goalsApi.fitOf(businessId, row.type, row.id).then(d => alive && setFit(d)).catch(() => alive && setFit(null));
     goalsApi.scoreOf(businessId, row.type, row.id).then(d => alive && setScore(d)).catch(() => alive && setScore(null));
     goalsApi.flowEvents(businessId, row.type, row.id).then(d => alive && setFlow(d)).catch(() => alive && setFlow([]));
+    goalsApi.todoEvents(businessId, { link_type: row.type === 'employer' ? 'opportunity' : row.type, link_id: row.id })
+      .then(ev => alive && setTodoLines(ev.filter(e => e.todo).map(e => ({ id: `todo-${e.id}`, at: e.at, kind: e.kind, by_user: e.by_user || 'system', undone_at: e.undone_at, text: `To-do ${e.words}: ${e.todo.text}` }))))
+      .catch(() => alive && setTodoLines([]));
     if (live) goalsApi.referredBy(businessId, row.id).then(d => alive && setNetwork(d.network || null)).catch(() => alive && setNetwork(null));
     if (row.type === 'employer') goalsApi.clientFiles(businessId, row.id).then(f => alive && setFiles(f)).catch(() => alive && setFiles([]));
     return () => { alive = false; };
@@ -226,7 +231,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           {row.type === 'partner' && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
             onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
           {!isRecord && detail.research && <IntelCard {...cardProps} need={researchNeed} />}
-          <CompanyDrawers businessId={businessId} row={row} detail={detail} canEdit={canEdit} lookup={lookup} flow={flow} files={files} version={version} onForm={setForm} onChanged={changed} onToast={onToast}
+          <CompanyDrawers businessId={businessId} row={row} detail={detail} canEdit={canEdit} lookup={lookup} flow={[...flow, ...todoLines]} files={files} version={version} onForm={setForm} onChanged={changed} onToast={onToast}
             onOpenPeople={onOpenPeople} onMakeClient={() => setClientSheet({})} initialSection={initialSection} />
           {sourced && <SourceHistoryCard data={source} links={links} />}
           <ExtraCards row={row} detail={detail} />
@@ -238,7 +243,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
             <SignalsCard {...cardProps} onOpenPeople={onOpenPeople} />
             <TodosCard {...cardProps} />
             <WaitingCard {...cardProps} />
-            <NotesCard {...cardProps} lookup={lookup} flow={flow} />
+            <NotesCard {...cardProps} lookup={lookup} flow={[...flow, ...todoLines]} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {detail.research && <IntelCard {...cardProps} need={researchNeed} />}

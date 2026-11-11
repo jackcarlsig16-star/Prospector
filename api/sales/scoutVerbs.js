@@ -26,7 +26,7 @@ export const salesWrites = {
   flowUndo: lazy('./flowEvents.js', 'undoFlow'),
   prospect: viaRoute('./huddleRoutes.js', 'updateProspectRoute'),
   todoOn: lazy('./companyPanel.js', 'todoOn'),
-  weekGoal: viaRoute('./goalsRoutes.js', 'updateWeekGoalRoute'),
+  todoUndoCreate: lazy('./todoWrite.js', 'undoCreate'),
   rejectTarget: lazy('./targetsRoutes.js', 'rejectTarget'),
   deprioritize: lazy('./fitActions.js', 'deprioritize'),
 };
@@ -131,7 +131,7 @@ const contacted = {
     }
     try {
       if (x.partner) undo.partner_event = (await salesWrites.partnerSignal(sb, { businessId: ctx.businessId, goalId: x.partner.id, signal: { type: 'touch', touch_type: 'email', date: ctx.today, move_to: 'none', expect: x.partner.stage, contacts: x.name ? [x.name] : [] }, byUser: ctx.auth.user.id, meta: { origin: 'scout' } })).event.id;
-      else if (x.employer) undo.todo = (await salesWrites.todoOn(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: 'employer', id: x.employer, text: `Contacted ${x.name}`, today: ctx.today, done: true, now: new Date(ctx.now) })).id;
+      else if (x.employer) undo.todo = (await salesWrites.todoOn(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: 'employer', id: x.employer, text: `Contacted ${x.name}`, today: ctx.today, done: true, now: new Date(ctx.now), origin: 'scout' })).id;
     } catch (e) {
       if (x.contact_id) await prospectPatch(ctx, x.contact_id, { status: x.before, expect: { status: 'contacted' } });
       throw e;
@@ -140,7 +140,7 @@ const contacted = {
   },
   async undo(sb, ctx, x, h) {
     if (h.partner_event) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.partner.id, eventId: h.partner_event, byUser: ctx.auth.user.id });
-    if (h.todo) ok(await salesWrites.weekGoal({ params: { businessId: ctx.businessId, id: h.todo }, body: { status: 'dropped' }, auth: ctx.auth }));
+    if (h.todo) await salesWrites.todoUndoCreate(sb, { businessId: ctx.businessId, todoId: h.todo, actor: ctx.auth.user.id });
     if (x.contact_id) ok(await prospectPatch(ctx, x.contact_id, { status: h.status, expect: { status: 'contacted' } }));
   },
 };
@@ -169,13 +169,13 @@ const notFit = {
   },
   async act(sb, ctx, x) {
     if (x.contact_id) { const r = await prospectPatch(ctx, x.contact_id, { status: 'dead', expect: { status: x.before } }); if (r.status === 409) return { skipped: 'changed meanwhile' }; ok(r); return { undo: { status: x.before } }; }
-    if (x.target) return { undo: { reopen: ok(await salesWrites.rejectTarget(sb, { businessId: ctx.businessId, targetId: x.target, body: {} })).dropped || [] } };
+    if (x.target) return { undo: { reopen: ok(await salesWrites.rejectTarget(sb, { businessId: ctx.businessId, targetId: x.target, body: {}, userId: ctx.auth.user.id })).dropped || [] } };
     const r = await salesWrites.deprioritize(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: x.fit.type, id: x.fit.id, body: { reason: x.fit.reason, ...(x.fit.note ? { note: x.fit.note } : {}) } });
     return { undo: { flow_event: ok(r).event.id } };
   },
   async undo(sb, ctx, x, h) {
     if (x.contact_id) ok(await prospectPatch(ctx, x.contact_id, { status: h.status, expect: { status: 'dead' } }));
-    else if (x.target) ok(await salesWrites.rejectTarget(sb, { businessId: ctx.businessId, targetId: x.target, body: { undo: true, reopen: h.reopen } }));
+    else if (x.target) ok(await salesWrites.rejectTarget(sb, { businessId: ctx.businessId, targetId: x.target, body: { undo: true, reopen: h.reopen }, userId: ctx.auth.user.id }));
     else ok(await salesWrites.flowUndo(sb, { businessId: ctx.businessId, eventId: h.flow_event, byUser: ctx.auth.user.id }));
   },
 };
@@ -261,7 +261,7 @@ const addTask = {
     text = cleanText(text.replace(/\s+/g, ' ').trim(), 200);
     if (!text || /^(?:for |on )?(?:this|that|it|them|those|these|him|her)$/i.test(text)) text = list[0] ? `Follow up with ${list[0].title}` : '';
     if (!text) return { cant: { reason: 'Tell me what the task is, like "add a task to call MetLife Thursday".', nearest: 'add_task' } };
-    return { open: { quick_capture: { text: text[0].toUpperCase() + text.slice(1), due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null } }, line: 'Opened quick capture — save it there' };
+    return { open: { quick_capture: { text: text[0].toUpperCase() + text.slice(1), due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null, person_key: list[0]?.entity === 'people' ? list[0].id : null } }, line: 'Opened quick capture — save it there' };
   },
 };
 

@@ -492,7 +492,7 @@ export async function applyPlan(supabase, businessId, { actions }, { now = new D
         }
         if (a.todo) {
           must(await supabase.from('sales_week_goals').insert({ business_id: businessId, week_start: week, kind: 'todo', status: 'open', text: a.todo.text,
-            due_date: a.todo.due_date, owner_user_id: a.todo.owner_user_id, link_type: 'partner', link_id: a.goal_id }).select('id'));
+            due_date: a.todo.due_date, owner_user_id: a.todo.owner_user_id, link_type: 'partner', link_id: a.goal_id, origin: 'import' }).select('id'));
           done.todos++;
         }
         await writeSource('partner', a.goal_id, a.source);

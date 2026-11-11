@@ -46,8 +46,8 @@ export default function GoalsSection({ businessId, weekStart, members, lookup, c
   useEffect(() => {
     let live = true;
     const end = addDays(weekStart, 6);
-    Promise.all([goalsApi.partnerEvents(businessId, { from: weekStart, to: end }).catch(() => []), fetchMovement(businessId, weekStart, end).catch(() => null)])
-      .then(([events, movement]) => { if (live) setMoves(pipelineMoves({ events, partnersById: new Map(partners.map(p => [p.id, p])), movement })); });
+    Promise.all([goalsApi.partnerEvents(businessId, { from: weekStart, to: end }).catch(() => []), fetchMovement(businessId, weekStart, end).catch(() => null), goalsApi.todoEvents(businessId, { from: weekStart, to: addDays(weekStart, 7) }).catch(() => [])])
+      .then(([events, movement, todoEvents]) => { if (live) setMoves(pipelineMoves({ events, partnersById: new Map(partners.map(p => [p.id, p])), movement, todoEvents })); });
     return () => { live = false; };
   }, [businessId, weekStart, partners]);
 
@@ -71,7 +71,7 @@ export default function GoalsSection({ businessId, weekStart, members, lookup, c
         <section aria-labelledby="h-moves" style={card}>
           <span style={labelStyle}>Pipeline moves this week</span>
           <h3 id="h-moves" style={h3Style}>{moves ? `${moves.length} move${moves.length === 1 ? '' : 's'}` : 'Loading…'}</h3>
-          {moves && !moves.length && <span style={{ ...subStyle, fontSize: 13 }}>No stage moves yet this week.</span>}
+          {moves && !moves.length && <span style={{ ...subStyle, fontSize: 13 }}>No stage moves or to-do changes yet this week.</span>}
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {(moves || []).map(m => (
               <li key={m.key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, minWidth: 0 }}>

@@ -34,13 +34,15 @@ export function meetingEventsByDay(events) {
 
 // Per LA day (and per day x sender) from `from` on. deliveredAt maps an
 // open's message id to its delivery time, for the bot-open check.
-export function weekStripCounts({ from, delivered, opens, replies, events, deliveredAt }) {
+// todoEvents (todo-events-v1 T8 / R8): one count per LA day of the to-do changes people made (an undo and the
+// change it took back are both left out).
+export function weekStripCounts({ from, delivered, opens, replies, events, deliveredAt, todoEvents = [] }) {
   const days = new Map(), senders = new Map();
   const bump = (day, sender, field, n = 1) => {
     if (day < from) return;
-    if (!days.has(day)) days.set(day, { day, ...Object.fromEntries(TRACKED.map(f => [f, 0])), meetings: 0 });
+    if (!days.has(day)) days.set(day, { day, ...Object.fromEntries(TRACKED.map(f => [f, 0])), meetings: 0, todo_events: 0 });
     days.get(day)[field] += n;
-    if (!sender || field === 'meetings') return;
+    if (!sender || field === 'meetings' || field === 'todo_events') return;
     const key = `${day}|${sender}`;
     if (!senders.has(key)) senders.set(key, { day, sender, ...Object.fromEntries(TRACKED.map(f => [f, 0])) });
     senders.get(key)[field] += n;
@@ -57,6 +59,7 @@ export function weekStripCounts({ from, delivered, opens, replies, events, deliv
     if (!AUTO_REPLY_CLASSES.includes(r.reply_class)) bump(day, r.sender, 'tracked_real_replies');
   }
   for (const [day, n] of meetingEventsByDay(events)) bump(day, null, 'meetings', n);
+  for (const e of todoEvents) if (e.kind !== 'undo' && !e.undone_at) bump(laDay(e.at), null, 'todo_events');
   return {
     days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
     senders: [...senders.values()].sort((a, b) => a.day.localeCompare(b.day) || a.sender.localeCompare(b.sender)),
@@ -70,7 +73,7 @@ export async function weekStripRoute(req, res) {
   const fromIso = new Date(laStartOfDayMs(from)).toISOString();
   const supabase = getSupabase();
   try {
-    const [delivered, opens, replies, events, manual] = await Promise.all([
+    const [delivered, opens, replies, events, todoEvents, manual] = await Promise.all([
       selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,sender,delivered_at')
         .eq('business_id', businessId).gte('delivered_at', fromIso).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,sender,occurred_at,user_agent,tracking_service')
@@ -79,6 +82,7 @@ export async function weekStripRoute(req, res) {
         .eq('business_id', businessId).eq('replied', true), fromIso).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_partner_events').select('id,event,from_status,to_status,meta,at')
         .eq('business_id', businessId).order('at').order('id')),
+      selectAllPages(() => supabase.from('sales_todo_events').select('id,kind,at,undone_at').eq('business_id', businessId).gte('at', fromIso).order('id')),
       supabase.from('sales_metric_targets').select('period_start,actual').eq('business_id', businessId)
         .eq('period', 'week').eq('metric_key', 'meetings_set').gte('period_start', from).not('actual', 'is', null).order('period_start'),
     ]);
@@ -90,7 +94,7 @@ export async function weekStripRoute(req, res) {
       .eq('business_id', businessId).in('apollo_message_id', openIds).order('apollo_message_id')) : [];
     const deliveredAt = new Map(openMsgs.map(m => [m.apollo_message_id, m.delivered_at]));
 
-    const { days, senders } = weekStripCounts({ from, delivered, opens, replies, events, deliveredAt });
+    const { days, senders } = weekStripCounts({ from, delivered, opens, replies, events, deliveredAt, todoEvents });
     res.status(200).json({
       days, senders,
       manual_meetings: manual.data.map(r => ({ week_start: r.period_start, actual: Number(r.actual) })),

@@ -33,10 +33,12 @@ test('week strip counts: per LA day and per sender, auto-replies and bot opens s
     ],
     events: [{ id: 'e1', event: 'status', from_status: 'replied', to_status: 'meeting_set', at: '2026-10-06T19:00:00Z' }],
     deliveredAt: new Map([['m1', '2026-10-05T18:00:00Z']]),
+    // todo-events-v1 T8: a to-do change counts on its LA day; an undo and the change it took back do not
+    todoEvents: [{ id: 't1', kind: 'done', at: '2026-10-06T19:00:00Z', undone_at: null }, { id: 't2', kind: 'due', at: '2026-10-06T20:00:00Z', undone_at: '2026-10-06T20:00:05Z' }, { id: 't3', kind: 'undo', at: '2026-10-06T20:00:05Z', undone_at: null }, { id: 't4', kind: 'create', at: '2026-10-04T20:00:00Z', undone_at: null }],
   });
   assert.deepEqual(out.days, [
-    { day: '2026-10-05', tracked_delivered: 2, tracked_opens: 1, tracked_bot_opens: 1, tracked_replies: 0, tracked_real_replies: 0, meetings: 0 },
-    { day: '2026-10-06', tracked_delivered: 0, tracked_opens: 0, tracked_bot_opens: 0, tracked_replies: 2, tracked_real_replies: 1, meetings: 1 },
+    { day: '2026-10-05', tracked_delivered: 2, tracked_opens: 1, tracked_bot_opens: 1, tracked_replies: 0, tracked_real_replies: 0, meetings: 0, todo_events: 0 },
+    { day: '2026-10-06', tracked_delivered: 0, tracked_opens: 0, tracked_bot_opens: 0, tracked_replies: 2, tracked_real_replies: 1, meetings: 1, todo_events: 1 },
   ]);
   assert.deepEqual(out.senders.map(s => [s.day, s.sender, s.tracked_delivered, s.tracked_real_replies]), [
     ['2026-10-05', 'cyrus@x.ai', 1, 0], ['2026-10-05', 'jack@x.ai', 1, 0], ['2026-10-06', 'jack@x.ai', 0, 1],

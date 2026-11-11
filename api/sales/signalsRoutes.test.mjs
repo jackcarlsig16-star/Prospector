@@ -145,7 +145,10 @@ test('accept, employer match: a notes line + one to-do linked to the employer, n
   assert.equal(todo.text, 'Reach out: Brightmill Foods — CHRO · Sam T. (cc Brad)');
   const u = await undo(sb, byCompany(sb, 'Brightmill Foods'));
   assert.equal(u.status, 200, u.body.error);
-  assert.deepEqual([sb.db.sales_week_goals.length, sb.db.sales_opportunities[0].notes, byCompany(sb, 'Brightmill Foods').status], [0, 'Met at expo', 'new']);
+  // todo-events-v1 R3: a person's Undo drops the to-do (origin kept), it is not deleted
+  assert.deepEqual(sb.db.sales_week_goals.map(g => [g.status, g.origin]), [['dropped', 'signal']]);
+  assert.deepEqual(sb.db.sales_todo_events.map(e => e.kind), ['create', 'undo']);
+  assert.deepEqual([sb.db.sales_week_goals.filter(g => g.status !== 'dropped').length, sb.db.sales_opportunities[0].notes, byCompany(sb, 'Brightmill Foods').status], [0, 'Met at expo', 'new']);
 });
 
 test('accept, target match: reuses the target (no second one) + 1 to-do', async () => {
@@ -278,7 +281,7 @@ test('Undo a partner Done: the touch comes off first (undo event, stamps restore
   assert.equal(sb.db.sales_partner_events[1].meta.undid, r.body.touch_event_id);
   const g = sb.db.sales_goals[0];
   assert.deepEqual([g.pipeline_status, g.last_touch_at, g.first_email_at], ['replied', null, null]);
-  assert.deepEqual([sb.db.sales_week_goals.length, byCompany(sb, 'Kestrel Pay').status, byCompany(sb, 'Kestrel Pay').todo_id], [0, 'new', null]);
+  assert.deepEqual([sb.db.sales_week_goals.filter(g => g.status !== 'dropped').length, sb.db.sales_week_goals[0].status, sb.db.sales_week_goals[0].completed_at, byCompany(sb, 'Kestrel Pay').status, byCompany(sb, 'Kestrel Pay').todo_id], [0, 'dropped', null, 'new', null]);
   // Without the id the undo still finds its touch by the signal id in meta.
   const r2 = await done(sb, byCompany(sb, 'Kestrel Pay'));
   assert.equal(r2.status, 200, r2.body.error);
@@ -299,14 +302,15 @@ test('Undo a partner Done after a later change on the partner: 409 from undoPart
   assert.equal((await undo(sb, s, { touch_event_id: 'nope' })).status, 400);
 });
 
-test('Undo an Accept (no Done) still deletes its open to-do and note; Undo a no-match Done removes the done to-do and the target', async () => {
+test('Undo an Accept (no Done) drops its open to-do and deletes its note; Undo a no-match Done drops the done to-do, unlinks it and removes the target', async () => {
   const sb = fresh(); await imp(sb);
   assert.equal((await accept(sb, byCompany(sb, 'Kestrel Pay'))).status, 200);
   assert.equal((await undo(sb, byCompany(sb, 'Kestrel Pay'))).status, 200);
-  assert.deepEqual([sb.db.sales_partner_events.length, sb.db.sales_week_goals.length, byCompany(sb, 'Kestrel Pay').status], [0, 0, 'new']);
+  assert.deepEqual([sb.db.sales_partner_events.length, sb.db.sales_week_goals.filter(g => g.status !== 'dropped').length, byCompany(sb, 'Kestrel Pay').status], [0, 0, 'new']);
   assert.equal((await done(sb, byCompany(sb, 'Nimbus Freight'))).status, 200);
   assert.equal((await undo(sb, byCompany(sb, 'Nimbus Freight'))).status, 200);
-  assert.deepEqual([sb.db.sales_week_goals.length, sb.db.sales_targets.length, byCompany(sb, 'Nimbus Freight').status], [0, 1, 'new']);
+  assert.deepEqual([sb.db.sales_week_goals.filter(g => g.status !== 'dropped').length, sb.db.sales_targets.length, byCompany(sb, 'Nimbus Freight').status], [0, 1, 'new']);
+  assert.deepEqual(sb.db.sales_week_goals.map(g => [g.status, g.origin]), [['dropped', 'signal'], ['dropped', 'signal']]);
 });
 
 test('Done in a finalized week is the same 409 as Accept', async () => {

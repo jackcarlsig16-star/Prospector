@@ -38,12 +38,15 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
+    // todo-events-v1 T5: the row changed since the screen read it - every open list reloads, the caller says so
+    if (res.status === 409 && data.code === 'changed') { window.dispatchEvent(new Event(TODOS_CHANGED)); throw Object.assign(new Error(data.error), { status: 409, changed: true, goal: data.goal || null }); }
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
   if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$|^\/clients(\/undo)?$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
+const withEvent = d => (d.goal ? { ...d.goal, event_id: d.event?.id || null } : d.goal);
 const q = params => new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
 
 export const goalsApi = {
@@ -52,8 +55,10 @@ export const goalsApi = {
   homeCards: (id, { owner } = {}) => call(id, `/dashboard?${q({ owner })}`),
 
   weekGoals: (id, from, to, kind) => call(id, `/week?${q({ from, to, kind })}`).then(d => d.goals),
-  createWeekGoal: (id, body) => call(id, '/week', { method: 'POST', body }).then(d => d.goal),
-  updateWeekGoal: (id, goalId, body) => call(id, `/week/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),
+  // todo-events-v1: a to-do's create / change returns the event it wrote - event_id rides on the goal for Undo
+  // (undoTodoEvent). row = what the screen showed: its updated_at goes as expect, a changed row is a 409.
+  createWeekGoal: (id, body) => call(id, '/week', { method: 'POST', body }).then(withEvent),
+  updateWeekGoal: (id, goalId, body, row = null) => call(id, `/week/${goalId}`, { method: 'PATCH', body: row?.updated_at ? { ...body, expect: { updated_at: row.updated_at } } : body }).then(withEvent),
   deleteWeekGoal: (id, goalId) => call(id, `/week/${goalId}`, { method: 'DELETE' }),
   proposePlan: (id, body) => call(id, '/week/plan/propose', { method: 'POST', body }),
   savePlan: (id, body) => call(id, '/week/plan/save', { method: 'POST', body }),
@@ -94,7 +99,7 @@ export const goalsApi = {
   // sales-ia-v2 A1 - a just-accepted / dismissed signal back to new (its to-do, target or note come off too).
   undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),
   // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
-  actions: id => call(id, '/actions'),
+  actions: (id, { snoozed = false } = {}) => call(id, `/actions${snoozed ? '?snoozed=1' : ''}`),
   // actions-home-attention-v1 D4 - sync status + counts; fresh = re-read the held partner moves (cached 15 min otherwise).
   attention: (id, { fresh = false } = {}) => call(id, `/attention${fresh ? '?fresh=1' : ''}`),
   // seif-campaign-v1 - outreach campaigns (Pipeline > Campaigns). No response carries a contact's address.
@@ -229,7 +234,7 @@ export const goalsApi = {
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),
-  nudgeWaiting: (id, rowId) => call(id, `/waiting/${rowId}/nudge`, { method: 'POST', body: {} }).then(d => d.todo),
+  nudgeWaiting: (id, rowId) => call(id, `/waiting/${rowId}/nudge`, { method: 'POST', body: {} }).then(d => ({ ...d.todo, event_id: d.event?.id || null })),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),
   updateStep: (id, stepId, body) => call(id, `/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),
@@ -256,6 +261,10 @@ export const goalsApi = {
   partnerSignal: (id, goalId, signal) => call(id, `/partners/${goalId}/signal`, { method: 'POST', body: signal }),
   partnerUndo: (id, goalId, eventId) => call(id, `/partners/${goalId}/undo`, { method: 'POST', body: { event_id: eventId } }),
   partnerEvents: (id, params) => call(id, `/partners/events?${q(params)}`).then(d => d.events),
+  // todo-events-v1: the to-do event lines (a week, one to-do, or a record's to-dos), Undo of one event or a batch.
+  todoEvents: (id, params) => call(id, `/week/events?${q(params)}`).then(d => d.events),
+  undoTodoEvent: (id, eventId) => call(id, `/week/events/${eventId}/undo`, { method: 'POST' }),
+  undoTodoBatch: (id, batchId) => call(id, `/week/events/batch/${batchId}/undo`, { method: 'POST' }),
   // sales-partners-workflow-v1 - order = the group's ids top to bottom after the move.
   partnerRank: (id, goalId, order) => call(id, `/partners/${goalId}/rank`, { method: 'POST', body: { order } }).then(d => d.ranks),
   // partner-360-v1 - partner_contacts rows; the drop-down merges them with logged touches + the sheet (src/constants/partnerPeople.js).

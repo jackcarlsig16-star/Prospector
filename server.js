@@ -802,6 +802,10 @@ app.post('/api/sales/:businessId/goals/week/plan/propose', aiLimit, salesModuleR
 app.post('/api/sales/:businessId/goals/week/plan/save', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'saveWeekPlanRoute', 'goals/week/plan/save POST'));
 app.get('/api/sales/:businessId/goals/week/plan', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'getWeekPlanRoute', 'goals/week/plan'));
 app.get('/api/sales/:businessId/goals/week/plans', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'listWeekPlansRoute', 'goals/week/plans'));
+// todo-events-v1 T4 / T8 - the to-do event log: Undo of one event or of a whole batch, and the lines (before goals/week/:id).
+app.post('/api/sales/:businessId/goals/week/events/batch/:batchId/undo', salesModuleRoute('./api/sales/todoWrite.js', 'undoTodoBatchRoute', 'goals/week/events/batch/:batchId/undo POST'));
+app.post('/api/sales/:businessId/goals/week/events/:id/undo', salesModuleRoute('./api/sales/todoWrite.js', 'undoTodoEventRoute', 'goals/week/events/:id/undo POST'));
+app.get('/api/sales/:businessId/goals/week/events', salesModuleRoute('./api/sales/todoEvents.js', 'listTodoEventsRoute', 'goals/week/events'));
 app.patch('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateWeekGoalRoute', 'goals/week/:id PATCH'));
 app.delete('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteWeekGoalRoute', 'goals/week/:id DELETE'));
 app.get('/api/sales/:businessId/goals/notes', salesModuleRoute('./api/sales/goalsRoutes.js', 'listWeekNotesRoute', 'goals/notes'));

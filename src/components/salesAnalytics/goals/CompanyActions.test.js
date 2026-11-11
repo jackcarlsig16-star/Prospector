@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import CompanyActions from './CompanyActions';
 import { goalsApi } from './goalsApi';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { addCompanyNote: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), addCompanyContact: jest.fn(), copyBundle: jest.fn(), runCompanyResearch: jest.fn(), checkCompanyApollo: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), updateTarget: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), addToPipeline: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), updatePartner: jest.fn(), updateWeekGoal: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), addCompanyNote: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), addCompanyContact: jest.fn(), copyBundle: jest.fn(), runCompanyResearch: jest.fn(), checkCompanyApollo: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), updateTarget: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), addToPipeline: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), updatePartner: jest.fn(), updateWeekGoal: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn() }));
 
@@ -23,6 +23,9 @@ function Harness({ row, form: initial = null, bandShown = false, fit = null, onT
 }
 const groups = () => screen.getAllByRole('group').filter(g => g.hasAttribute('data-action-group'));
 afterEach(() => jest.clearAllMocks());
+
+// todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
+beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
 
 test('homelover-flow-v1 F8: four labelled groups in flow order - Reach · Decide · Capture · Learn; Mark contacted only while behind Contacted; Check Apollo once (Learn); kbd hints out of the names', () => {
   const { unmount } = render(<Harness row={PARTNER} />);
@@ -115,7 +118,7 @@ test('Reach (D4): Book meeting and Mark contacted are the same writes as the ban
 
 test('company-progress-bar-v1 D3: an employer at Target moves to Contacted - the toast says so and Undo puts Target back', async () => {
   const { updateOpportunity } = require('../pipelineApi');
-  goalsApi.markContacted.mockResolvedValue({ todo: { id: 'wg2' }, stage: { before: 'target', after: 'contacted' } });
+  goalsApi.markContacted.mockResolvedValue({ todo: { id: 'wg2', event_id: 'ev-wg2' }, stage: { before: 'target', after: 'contacted' } });
   const onToast = jest.fn();
   render(<Harness row={{ type: 'employer', id: 'o1', name: 'Zz Acme', stage: 'target' }} onToast={onToast} />);
   fireEvent.click(screen.getByRole('button', { name: 'Mark contacted' }));
@@ -123,7 +126,8 @@ test('company-progress-bar-v1 D3: an employer at Target moves to Contacted - the
   expect(onToast.mock.calls[0][0].text).toBe('Zz Acme marked contacted · moved to Contacted');
   await onToast.mock.calls[0][0].undo();
   expect(updateOpportunity).toHaveBeenCalledWith('b1', 'o1', { stage: 'target', allow_backward: true });
-  expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'wg2', { status: 'dropped' });
+  // todo-events-v1: the done to-do comes off through its create event (dropped on the server, never deleted)
+  expect(goalsApi.undoTodoEvent).toHaveBeenCalledWith('b1', 'ev-wg2');
 });
 
 test('axe: the grouped Actions row has 0 violations', async () => {

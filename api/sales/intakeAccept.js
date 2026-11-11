@@ -1,4 +1,6 @@
 import { addDays, isDate } from './goalsShared.js';
+import { randomUUID } from 'crypto';
+import { createTodos, rollbackCreates } from './todoWrite.js';
 import { writeInsights } from './intakeInsights.js';
 import { laDateString } from './laDate.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
@@ -307,11 +309,12 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
     }));
     const all = [...taskRows, ...research];
     if (all.length) {
-      const goals = must(await supabase.from('sales_week_goals').insert(all.map((r, i) => ({
-        business_id: businessId, week_start: week, kind: 'todo', status: 'open', ...r.payload,
+      const { todos: goals } = await createTodos(supabase, { businessId, actor: userId, origin: 'call_notes', batchId: randomUUID(), now, rows: all.map((r, i) => ({
+        week_start: week, kind: 'todo', status: 'open', ...r.payload,
         category, source_note_id: note.id, sort_order: i, created_by: userId,
-      }))).select());
-      undo.push(() => supabase.from('sales_week_goals').delete().in('id', goals.map(g => g.id)));
+      })) });
+      // R3: a failed Accept takes back what it wrote in this request (deleted, one 'undo' event each)
+      undo.push(() => rollbackCreates(supabase, { businessId, todos: goals, actor: userId, origin: 'call_notes' }));
       goals.sort((a, b) => a.sort_order - b.sort_order);
       const steps = all.flatMap((r, i) => r.steps.map((s, n) => ({ business_id: businessId, goal_id: goals[i].id, text: s, sort_order: n })));
       if (steps.length) must(await supabase.from('sales_week_goal_steps').insert(steps));

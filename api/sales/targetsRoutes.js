@@ -1,4 +1,5 @@
 import { ownerOrCaller, employerOwner } from './companyFields.js';
+import { applyTodo, applyTodos, relinkAll, loadTodo, isTodo } from './todoWrite.js';
 import { getSupabase, findRow, weekIsFinal } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText, hasPii } from './scrubText.js';
@@ -167,9 +168,10 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
       meta: { from_target_id: target.id, ...(target.source_note_id ? { from_note_id: target.source_note_id } : {}) },
     });
     undo.push(() => supabase.from('sales_partner_events').delete().eq('id', event.id));
-    const relinked = must(await supabase.from('sales_week_goals').update({ link_type: 'partner', link_id: goal.id, updated_at: now })
-      .eq('business_id', businessId).eq('link_type', 'target').eq('link_id', target.id).select('id'));
-    if (relinked.length) undo.push(() => supabase.from('sales_week_goals').update({ link_type: 'target', link_id: target.id }).in('id', relinked.map(r => r.id)));
+    // R2: the target's to-dos follow it to the partner as one batch of 'link' events
+    const moved_links = await relinkAll(supabase, { businessId, from: { link_type: 'target', link_id: target.id }, to: { link_type: 'partner', link_id: goal.id }, actor: userId, origin: 'panel' });
+    const relinked = moved_links.ids;
+    if (relinked.length) undo.push(moved_links.undo);
     const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'partner', id: goal.id, undo });
     const updated = await acceptTarget(supabase, target, { promoted_goal_id: goal.id }, now);
     return { created: { type: 'partner', id: goal.id, name: goal.name }, goal, target: updated, relinked: relinked.length, ...moved };
@@ -271,7 +273,7 @@ export async function contactTarget(supabase, { businessId, userId, target, now 
 const UNDO_WINDOW_MS = 2 * 60 * 1000;
 const RESTORABLE = ['proposed', 'researching'];
 const idList = v => (Array.isArray(v) && v.length <= 500 && v.every(x => typeof x === 'string' || Number.isInteger(x)) ? v : null);
-export async function undoContactTarget(supabase, { businessId, targetId, body, now = new Date() }) {
+export async function undoContactTarget(supabase, { businessId, targetId, body, userId = null, now = new Date() }) {
   const b = body || {};
   if (!UUID.test(b.opportunity_id || '')) return reply(400, { error: 'opportunity_id is required' });
   if (!RESTORABLE.includes(b.target_status)) return reply(400, { error: `target_status must be one of ${RESTORABLE.join('|')}` });
@@ -293,7 +295,10 @@ export async function undoContactTarget(supabase, { businessId, targetId, body, 
       must(await supabase.from('sales_people').update({ company_type: p.company_type, target_id: p.company_type === 'target' ? targetId : null, opportunity_id: null, updated_at: stamp })
         .eq('business_id', businessId).eq('id', p.id).eq('opportunity_id', opp.id).select('id'));
     }
-    if (b.todo_id != null) must(await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: stamp }).eq('business_id', businessId).eq('id', b.todo_id).eq('link_type', 'opportunity').eq('link_id', opp.id).select('id'));
+    if (b.todo_id != null) {
+      const todo = await loadTodo(supabase, businessId, b.todo_id);
+      if (todo && isTodo(todo) && todo.link_type === 'opportunity' && todo.link_id === opp.id) await applyTodo(supabase, { businessId, row: todo, patch: { status: 'dropped' }, actor: userId, origin: 'panel', now });
+    }
     must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'employer').eq('record_id', opp.id));
     must(await supabase.from('sales_opportunities').delete().eq('business_id', businessId).eq('id', opp.id).select('id'));
     const back = must(await supabase.from('sales_targets').update({ status: b.target_status, decided_at: b.target_decided_at ?? null, updated_at: stamp })
@@ -305,14 +310,14 @@ export async function undoContactTarget(supabase, { businessId, targetId, body, 
   }
 }
 export async function undoContactTargetRoute(req, res) {
-  send(res, await undoContactTarget(getSupabase(), { businessId: req.params.businessId, targetId: req.params.id, body: req.body }));
+  send(res, await undoContactTarget(getSupabase(), { businessId: req.params.businessId, targetId: req.params.id, body: req.body, userId: req.auth.user.id }));
 }
 
 // POST /goals/prospect-targets/:id/reject -> { target, dropped: [to-do ids] }
 // Its open to-dos are dropped (never deleted, never done: done would be a
 // finished task). { undo: true, reopen: [ids] } puts it back to researching
 // and reopens those to-dos, within the client's undo window.
-export async function rejectTarget(supabase, { businessId, targetId, body }) {
+export async function rejectTarget(supabase, { businessId, targetId, body, userId = null }) {
   const now = new Date().toISOString();
   const { undo, reopen } = body || {};
   try {
@@ -324,32 +329,36 @@ export async function rejectTarget(supabase, { businessId, targetId, body }) {
       const rows = must(await supabase.from('sales_targets').update({ status: 'researching', decided_at: null, updated_at: now })
         .eq('id', target.id).eq('status', 'rejected').select(TARGET_COLS));
       if (!rows.length) return reply(409, { error: `${target.name} changed since - reload` });
-      const reopened = reopen?.length ? must(await supabase.from('sales_week_goals').update({ status: 'open', updated_at: now })
-        .eq('business_id', businessId).eq('link_type', 'target').eq('link_id', target.id).eq('status', 'dropped').in('id', reopen).select('id')) : [];
+      // R2: the undo reopens them as one batch ('undone')
+      const back = reopen?.length ? must(await supabase.from('sales_week_goals').select('*')
+        .eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'target').eq('link_id', target.id).eq('status', 'dropped').in('id', reopen)) : [];
+      const reopened = back.length ? (await applyTodos(supabase, { businessId, todos: back, patch: { status: 'open' }, actor: userId, origin: 'panel' })).todos : [];
       return reply(200, { target: rows[0], reopened: reopened.map(r => r.id) });
     }
     if (target.status === 'accepted') return reply(409, { error: `${target.name} was promoted - archive the partner or opportunity instead` });
     if (target.status === 'rejected') return reply(409, { error: `${target.name} is already not a fit` });
-    const open = must(await supabase.from('sales_week_goals').select('id, week_start')
+    const open = must(await supabase.from('sales_week_goals').select('*')
       .eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'target').eq('link_id', target.id).eq('status', 'open'));
     // A finalized week is frozen: its to-dos stay as they are.
     const finalWeeks = new Set();
     for (const w of new Set(open.map(t => t.week_start))) if (await weekIsFinal(supabase, businessId, w)) finalWeeks.add(w);
-    const ids = open.filter(t => !finalWeeks.has(t.week_start)).map(t => t.id);
-    const dropped = ids.length ? must(await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: now }).in('id', ids).select('id')) : [];
+    // R2: its open to-dos are dropped as one batch (kind 'drop', origin 'panel')
+    const live = open.filter(t => !finalWeeks.has(t.week_start) && isTodo(t));
+    const batch = live.length ? await applyTodos(supabase, { businessId, todos: live, patch: { status: 'dropped' }, actor: userId, origin: 'panel' }) : null;
+    const dropped = batch ? batch.todos : [];
     const rows = must(await supabase.from('sales_targets').update({ status: 'rejected', decided_at: now, updated_at: now })
       .eq('id', target.id).eq('status', target.status).select(TARGET_COLS));
     if (!rows.length) {
-      if (dropped.length) await supabase.from('sales_week_goals').update({ status: 'open' }).in('id', dropped.map(r => r.id));
+      if (dropped.length) await applyTodos(supabase, { businessId, todos: dropped, patch: { status: 'open' }, actor: userId, origin: 'panel', batchId: batch.batchId });
       return reply(409, { error: `${target.name} changed since - reload` });
     }
-    return reply(200, { target: rows[0], dropped: dropped.map(r => r.id) });
+    return reply(200, { target: rows[0], dropped: dropped.map(r => r.id), ...(batch ? { batch_id: batch.batchId } : {}) });
   } catch (e) {
     return reply(e.status || 500, { error: e.message });
   }
 }
 export async function rejectTargetRoute(req, res) {
-  send(res, await rejectTarget(getSupabase(), { businessId: req.params.businessId, targetId: req.params.id, body: req.body }));
+  send(res, await rejectTarget(getSupabase(), { businessId: req.params.businessId, targetId: req.params.id, body: req.body, userId: req.auth.user.id }));
 }
 
 // ── Copy for Claude ──────────────────────────────────────────────────────────

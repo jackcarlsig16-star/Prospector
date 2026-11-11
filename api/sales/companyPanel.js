@@ -1,4 +1,5 @@
 import { CLIENT_STATUS_LABEL } from '../../src/constants/clients.js';
+import { applyTodo } from './todoWrite.js';
 import { CLIENT_COLS } from './clientCols.js';
 import { getSupabase, addDays, laMonday, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
@@ -368,13 +369,15 @@ async function targetRow(supabase, businessId, id) {
   if (!row) throw err(404, 'target not found');
   return row;
 }
-export async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now }) {
+export async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now, origin = 'panel', personKey = null }) {
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
-  return must(await supabase.from('sales_week_goals').insert({
-    business_id: businessId, week_start: week, kind: 'todo', status: done ? 'done' : 'open', text, due_date: today, link_type: LINK_TYPE[type], link_id: id,
-    owner_user_id: userId, created_by: userId, sort_order: 0, contacts: [], ...(done ? { completed_at: now.toISOString() } : {}),
-  }).select().single());
+  const r = await applyTodo(supabase, { businessId, actor: userId, origin, now: now || new Date(), create: {
+    week_start: week, kind: 'todo', status: done ? 'done' : 'open', text, due_date: today, link_type: LINK_TYPE[type], link_id: id,
+    owner_user_id: userId, created_by: userId, sort_order: 0, contacts: [], ...(personKey ? { person_key: personKey } : {}), ...(done ? { completed_at: now.toISOString() } : {}),
+  } });
+  // the event rides on the row (not a column): the caller hands its id to the screen for Undo
+  return Object.assign(r.todo, { event_id: r.event.id });
 }
 const personName = v => { if (v == null || v === '') return { value: null }; if (typeof v !== 'string') return { error: 'person must be text' }; const s = v.trim().replace(/\s+/g, ' ').slice(0, 120); return hasPii(s) ? { error: "person can't hold an email address or phone number" } : { value: s || null }; };
 async function prospectOrNull(supabase, businessId, contactId) {

@@ -16,7 +16,8 @@ export async function bookMeeting({ businessId, row, person = null, onChanged, o
   onToast({ text: `Next step: ${r.next_step} · to-do due today`, undo: async () => {
     if (row.type === 'partner') await goalsApi.updatePartner(businessId, row.id, { next_step: r.before?.next_step ?? null });
     else if (row.type === 'employer') await updateOpportunity(businessId, row.id, { next_action: r.before?.next_action ?? null, next_action_date: r.before?.next_action_date ?? null });
-    await goalsApi.updateWeekGoal(businessId, r.todo.id, { status: 'dropped' });
+    // todo-events-v1: the to-do comes off through the event it was created with (dropped, never deleted)
+    await goalsApi.undoTodoEvent(businessId, r.todo.event_id);
     onChanged();
   } });
 }
@@ -40,7 +41,7 @@ export async function markContacted({ businessId, row, person = null, touchType 
   onToast({ text: `${person ? person.name : row.name} ${touchType === 'call' ? 'call logged' : 'marked contacted'}${moved ? ` · moved to ${stageLabel(row.type, r.stage.after)}` : ''}`, undo: async () => {
     if (r.event) await goalsApi.partnerUndo(businessId, row.id, r.event.id);
     if (moved && row.type === 'employer') await updateOpportunity(businessId, row.id, { stage: r.stage.before, allow_backward: true });
-    if (r.todo) await goalsApi.updateWeekGoal(businessId, r.todo.id, { status: 'dropped' });
+    if (r.todo) await goalsApi.undoTodoEvent(businessId, r.todo.event_id);
     if (r.person) await updateProspect(businessId, r.person.contact_id, { status: r.person.before.status });
     onChanged();
   } });

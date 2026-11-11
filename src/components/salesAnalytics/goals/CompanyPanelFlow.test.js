@@ -2,7 +2,7 @@ import { render, screen, waitFor, within, fireEvent } from '@testing-library/rea
 import CompanyPanel from './CompanyPanel';
 import { goalsApi } from './goalsApi';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { companyDetail: jest.fn(), source: jest.fn(), channelLinks: jest.fn(), fitOf: jest.fn(), flowEvents: jest.fn(), referredBy: jest.fn(), scoreOf: jest.fn(), sourcesNetwork: jest.fn(), bringBack: jest.fn(), undoFlow: jest.fn(), editCompanyFields: jest.fn(), partnerSignal: jest.fn(), clientFiles: jest.fn() }, OPEN_PIPELINE_RECORD: 'x', NeedsMigrationError: class extends Error {} }));
+jest.mock('./goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), companyDetail: jest.fn(), source: jest.fn(), channelLinks: jest.fn(), fitOf: jest.fn(), flowEvents: jest.fn(), referredBy: jest.fn(), scoreOf: jest.fn(), sourcesNetwork: jest.fn(), bringBack: jest.fn(), undoFlow: jest.fn(), editCompanyFields: jest.fn(), partnerSignal: jest.fn(), clientFiles: jest.fn() }, OPEN_PIPELINE_RECORD: 'x', NeedsMigrationError: class extends Error {} }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn(), unlinkProspect: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => true);
@@ -39,6 +39,9 @@ const LABELS = { Stage: /^Stage$/, 'Next step': /^Next step$/, Owner: /^Owner$/,
 const counts = head => Object.fromEntries(Object.entries(LABELS).map(([k, re]) => [k, within(head).queryAllByText(re).length]));
 const headOf = dlg => dlg.querySelector('[data-window-head]');
 const blocks = head => [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-journey]') ? 'journey' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
+
+// todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
+beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
 
 test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · journey; every label once; no Fit, Due or stage chip in the title; no empty card; no select; nothing glows; the body opens with the solid Fit radar beside Intel', async () => {
   goalsApi.companyDetail.mockResolvedValue(detail({ steps: { next: null, ready: true, last_touch_at: '2026-10-29T18:00:00Z', steps: [] }, interest: INTEREST }));

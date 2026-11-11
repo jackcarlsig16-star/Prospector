@@ -183,7 +183,9 @@ test('Done on a partner follow-up: the to-do born done + ONE email touch (no sta
   const u = await undoOn(sb, s, { todo_id: t.id, touch_event_id: r.body.touch_event_id });
   assert.equal(u.status, 200, u.body.error);
   assert.deepEqual(sb.db.sales_partner_events.filter(e => e.goal_id === G.gallagher).map(e => e.event), ['touch', 'undo']);
-  assert.deepEqual([g.last_touch_at, sb.db.sales_week_goals.some(x => x.id === t.id), sb.db.sales_suggestions.find(x => x.id === s.id).status], [iso(10), false, 'proposed']);
+  assert.deepEqual([g.last_touch_at, sb.db.sales_week_goals.some(x => x.id === t.id && x.status !== 'dropped'), sb.db.sales_suggestions.find(x => x.id === s.id).status], [iso(10), false, 'proposed']);
+  // todo-events-v1 R3: dropped with its origin kept, not deleted
+  assert.deepEqual([sb.db.sales_week_goals.find(x => x.id === t.id).status, sb.db.sales_week_goals.find(x => x.id === t.id).origin], ['dropped', 'tidy']);
 });
 
 test('Done on a target suggestion: a done to-do and no touch; a pair and done: "yes" are 400; a later change on the partner makes Undo a 409', async () => {

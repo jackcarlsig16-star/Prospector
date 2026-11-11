@@ -47,9 +47,9 @@ export default function PersonDetail({ businessId, row, canEdit, meId, onToast, 
   const touch = (touchType, what) => act(what, () => markContacted({ businessId, row: rec, person: prospect, touchType, onChanged, onToast }));
   const addTodo = () => act('todo', async () => {
     const due = todo.due || null;
-    const goal = await goalsApi.createWeekGoal(businessId, { week_start: mondayOf(due || today()), kind: 'todo', text: todo.text.trim(), owner_user_id: meId || null, due_date: due, link_type: LINK_TYPE[rec.type], link_id: rec.id });
+    const goal = await goalsApi.createWeekGoal(businessId, { week_start: mondayOf(due || today()), kind: 'todo', text: todo.text.trim(), owner_user_id: meId || null, due_date: due, link_type: LINK_TYPE[rec.type], link_id: rec.id, ...(row.key ? { person_key: row.key } : {}) });
     setTodo(null); onChanged();
-    onToast({ text: `To-do added for ${row.name}`, undo: async () => { await goalsApi.deleteWeekGoal(businessId, goal.id); onChanged(); } });
+    onToast({ text: `To-do added for ${row.name}`, undo: async () => { await goalsApi.undoTodoEvent(businessId, goal.event_id); onChanged(); } });
   });
   const notAFit = () => act('dead', async () => {
     const before = row.status || 'new';

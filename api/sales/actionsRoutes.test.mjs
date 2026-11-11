@@ -150,7 +150,7 @@ test('listActions reads every source once and resolves companies from the refere
   // FIX actions-all-weeks-v1: to-dos from every week_start, grouped by due date; the ticked one is out; the cap did not bite.
   const grp = Object.fromEntries(items.filter(i => i.kind === 'todo').map(i => [i.id, i.due_group]));
   assert.deepEqual(grp, { 'todo-today': 'today', 'todo-old-week': 'today', 'todo-old-nodate': 'nodate' }, 'overdue sits in Today, undated in No date');
-  assert.deepEqual(todos, { total: 3, shown: 3 });
+  assert.deepEqual(todos, { total: 3, shown: 3, snoozed: 0 });
   assert.equal(groups.nodate, 1);
   assert.deepEqual(items.slice(0, 2).map(i => i.key), ['todo-todo-old-week', 'waiting-wait-late'], 'the overdue rows from older weeks lead, by due date (Oct 2 before Oct 10)');
   assert.equal(items.find(i => i.key === 'todo-todo-today').company.name, 'Lakeshore Mutual');
@@ -179,7 +179,7 @@ test('signal Undo: a dismissed signal is new again; an accepted one loses its to
   const u2 = await undoSignal(s, { businessId: B, id: fresh.id, now: new Date(now.getTime() + 5000) });
   assert.equal(u2.status, 200, JSON.stringify(u2.body));
   assert.equal(s.db.sales_targets.length, 0, 'the target Accept made is gone');
-  assert.equal(s.db.sales_week_goals.find(g => g.id === a1.body.todo.id), undefined, 'its to-do is gone');
+  assert.equal(s.db.sales_week_goals.find(g => g.id === a1.body.todo.id).status, 'dropped', 'its to-do is dropped (todo-events-v1 R3), not deleted');
   const back = s.db.sales_signals.find(x => x.id === fresh.id);
   assert.deepEqual([back.status, back.target_id, back.todo_id, back.match], ['new', null, null, null]);
   // accept on a partner -> the note event with meta.from_signal_id comes off
@@ -202,7 +202,7 @@ test('signal Undo: a dismissed signal is new again; an accepted one loses its to
   assert.equal((await undoSignal(s, { businessId: B, id: randomUUID(), now })).status, 404);
 });
 
-test('suggestion Undo: dismissed / snoozed / accepted back to proposed; the Tidy to-do Accept made is deleted when its id is sent', async () => {
+test('suggestion Undo: dismissed / snoozed / accepted back to proposed; the Tidy to-do Accept made is dropped when its id is sent', async () => {
   const s = seed();
   const now = Date.parse(`${TODAY}T18:00:00Z`);
   const sug = s.db.sales_suggestions[0];
@@ -223,7 +223,7 @@ test('suggestion Undo: dismissed / snoozed / accepted back to proposed; the Tidy
   assert.equal(a2.status, 200);
   const u3 = await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: { todo_id: a2.body.todo.id }, now: now + 5000 });
   assert.equal(u3.status, 200, JSON.stringify(u3.body));
-  assert.equal(s.db.sales_week_goals.find(g => g.id === a2.body.todo.id), undefined);
+  assert.equal(s.db.sales_week_goals.find(g => g.id === a2.body.todo.id).status, 'dropped');
   assert.equal(s.db.sales_suggestions[0].status, 'proposed');
   assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: {}, now })).status, 409, 'still proposed');
   assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: { todo_id: 'nope' }, now })).status, 400);
@@ -261,7 +261,7 @@ test('accept with owner_user_id: signal + suggestion to-dos owned by the pick; U
   assert.deepEqual([a.body.todo.owner_user_id, a.body.todo.created_by, a.body.signal.decided_by], [CY, JACK, JACK]);
   assert.equal(s.db.sales_targets.find(t => t.id === a.body.signal.target_id).owner_user_id, CY, 'company-workflow-v1 W3: the new target is theirs too');
   assert.equal((await undoSignal(s, { businessId: B, id: fresh.id, now: new Date(now.getTime() + 5000) })).status, 200);
-  assert.equal(s.db.sales_week_goals.find(g => g.id === a.body.todo.id), undefined, "Undo takes Cyrus's to-do off");
+  assert.equal(s.db.sales_week_goals.find(g => g.id === a.body.todo.id).status, 'dropped', "Undo takes Cyrus's to-do off");
   assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: VIC })).status, 400);
   assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: randomUUID() })).status, 400);
   assert.equal(s.db.sales_signals.find(x => x.id === fresh.id).status, 'new', 'a refused pick writes nothing');
@@ -274,7 +274,7 @@ test('accept with owner_user_id: signal + suggestion to-dos owned by the pick; U
   assert.equal(b.status, 200, JSON.stringify(b.body));
   assert.deepEqual([b.body.todo.owner_user_id, b.body.todo.created_by], [CY, JACK]);
   assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: { todo_id: b.body.todo.id }, now: t + 5000 })).status, 200);
-  assert.equal(s.db.sales_week_goals.find(g => g.id === b.body.todo.id), undefined);
+  assert.equal(s.db.sales_week_goals.find(g => g.id === b.body.todo.id).status, 'dropped');
   assert.equal((await acceptSuggestion(s, { businessId: B, userId: JACK, id: sug.id, now: t, ownerUserId: VIC })).status, 400);
 
   s.db.sales_week_report.push({ business_id: B, week_start: WEEK, status: 'final' });

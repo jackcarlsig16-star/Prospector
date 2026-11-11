@@ -9,7 +9,7 @@ import { OPEN_TASKS } from './goalsApi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
-  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
+  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), undoTodoEvent: jest.fn(() => Promise.resolve({})), todoEvents: jest.fn(() => Promise.resolve([])), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
   addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
@@ -52,7 +52,7 @@ beforeEach(() => {
   goalsApi.members.mockResolvedValue(MEMBERS);
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, record: { type, id, name: id, stage: 's', next_step: type === 'partner' || type === 'employer' ? [...ROWS, APOLLO, VISITOR].find(r => r.id === id)?.next_step ?? null : undefined } }));
   goalsApi.addCompanyNote.mockResolvedValue({});
-  goalsApi.createWeekGoal.mockResolvedValue({ id: 'wg1', owner_user_id: 'u2' });
+  goalsApi.createWeekGoal.mockResolvedValue({ id: 'wg1', owner_user_id: 'u2', event_id: 'ev-wg1' });
   goalsApi.deleteWeekGoal.mockResolvedValue({});
   goalsApi.addToPipeline.mockResolvedValue({ created: { type: 'target', id: 't9', name: 'Acme Visit' } });
   goalsApi.runCompanyResearch.mockResolvedValue({ run: { status: 'running' } });
@@ -82,6 +82,9 @@ const PRIO_ROWS = [
   row('Hot Co', 'employer', 'green', { priority: 1 }), row('Warm Co', 'partner', 'yellow', { priority: 2 }), row('Warm Two', 'employer', 'blue', { priority: 2 }),
   row('Watch Co', 'employer', 'gray', { priority: 3 }), row('Noise Co', 'partner', 'faded', { priority: 4 }), row('Blank Co', 'employer', 'light'),
 ];
+// todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
+beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
+
 test('groups and counts come from the rows: P1-P4 in order, then No priority; words from PRIORITY_WORD in the pill hue; the row bar stays the stage band', async () => {
   goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS);
   setup();
@@ -415,7 +418,7 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledWith('b1', { week_start: '2026-10-19', kind: 'todo', text: 'Call Pat about the pilot', owner_user_id: 'u2', due_date: '2026-10-23', link_type: 'partner', link_id: 'Gallagher' }));
   const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('To-do added for Cyrus'));
   fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(goalsApi.deleteWeekGoal).toHaveBeenCalledWith('b1', 'wg1'));
+  await waitFor(() => expect(goalsApi.undoTodoEvent).toHaveBeenCalledWith('b1', 'ev-wg1'));
 });
 
 test('visitor row: Research first asks to add the company as a target, adds it, then researches the new target; a No writes nothing', async () => {

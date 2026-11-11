@@ -65,7 +65,7 @@ export default function QuickMenu({ businessId, row, members, meId, canEdit, com
   const addTask = () => run('todo', async () => {
     const t = today();
     const goal = await goalsApi.createWeekGoal(businessId, { week_start: mondayOf(t), kind: 'todo', text: `${nextStep || 'Follow up'}: ${row.name}`, owner_user_id: meId || null, due_date: t, link_type: LINK_TYPE[row.type], link_id: row.id });
-    onToast({ text: `To-do added for ${row.name}`, undo: async () => { await goalsApi.deleteWeekGoal(businessId, goal.id); onChanged && onChanged(); } });
+    onToast({ text: `To-do added for ${row.name}`, undo: async () => { await goalsApi.undoTodoEvent(businessId, goal.event_id); onChanged && onChanged(); } });
   });
   const research = () => run('research', async () => { await goalsApi.runCompanyResearch(businessId, row.type, row.id); }, `Researching ${row.name} - one Claude call, about a minute`);
   const draft = () => run('draft', async () => {

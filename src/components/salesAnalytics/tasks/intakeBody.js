@@ -60,5 +60,7 @@ export function acceptSummary(n, out) {
     count(out.decisions || 0, 'decision'), count((out.waiting || []).length, 'waiting-on'), count(out.terms || 0, 'terms line'),
     count((out.next_meeting || []).length, 'next meeting'),
     refused.length ? `${refused.map(m => m.partner).join(', ')}: stage not moved (${refused[0].error})` : null,
+    // todo-events-v1 T7: nothing is guessed when a to-do names several companies
+    out.needs_link?.length ? `${count(out.needs_link.length, 'to-do')} name${out.needs_link.length === 1 ? 's' : ''} more than one company (${out.needs_link[0].choices.map(c => c.name).join(' · ')}${out.needs_link.length > 1 ? ' …' : ''}) - pick the link on the row` : null,
   ].filter(Boolean).join(' · ') || 'Saved';
 }

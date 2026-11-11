@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { kickResearch } from './partnerResearch.js';
 import { relinkParked } from './visitorPeopleMove.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
@@ -12,6 +13,7 @@ import { laDateString } from './laDate.js';
 import { peopleCounts } from './partnerPeople.js';
 import { CHANNEL_IDS } from '../../src/constants/salesChannels.js';
 import { validateSource, sourceColumns, logSource } from './leadSource.js';
+import { applyTodo, applyTodos, createTodos, deleteTodo, isTodo, TodoError } from './todoWrite.js';
 
 // sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
 // Stage 4). Weekly report, scorecard, KPI and companies live in
@@ -65,7 +67,14 @@ export const WEEK_FIELDS = {
   metric_key: { kind: 'nullableEnum', values: SCORECARD_METRICS }, target_value: { kind: 'number' },
   due_date: { kind: 'date' },
   link_type: { kind: 'nullableEnum', values: LINK_TYPES }, link_id: { kind: 'text' }, waiting_on: { kind: 'text' },
+  snooze_until: { kind: 'date' }, person_key: { kind: 'text' },
 };
+// todo-events-v1: a to-do (kind 'todo', not a flag) is written by applyTodo alone - one event per change, expect
+// refused with 409 and the current row. Commitments, waiting rows and flags keep the direct writes below (R1).
+const CLIENT_ORIGINS = ['manual', 'scout', 'panel'];
+const PERSON_KEY_MAX = 200;
+const todoFail = (res, e) => res.status(e.status || 500).json({ error: e.message, ...(e.code ? { code: e.code } : {}), ...(e.todo ? { goal: e.todo } : {}) });
+const todoOnly = p => (('snooze_until' in p || 'person_key' in p) ? 'snooze_until and person_key belong to a to-do' : (p.person_key != null && (p.person_key.length > PERSON_KEY_MAX || p.person_key.includes('@'))) ? 'person_key must be a People row key' : null);
 const STEP_FIELDS = { text: { kind: 'required' }, done: { kind: 'bool' }, sort_order: { kind: 'int' } };
 const CADENCE_FIELDS = {
   week_start: { kind: 'monday' }, name: { kind: 'required' }, owner_user_id: { kind: 'member' }, sort_order: { kind: 'int' },
@@ -311,8 +320,13 @@ export async function listLinkedTasksRoute(req, res) {
 
 export async function createWeekGoalRoute(req, res) {
   const supabase = getSupabase();
-  const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
+  const { origin = 'manual', ...body } = req.body || {};
+  if (!CLIENT_ORIGINS.includes(origin)) return res.status(400).json({ error: `origin must be one of ${CLIENT_ORIGINS.join('|')}` });
+  const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, body);
   if (v.error) return fail(res, v);
+  const asTodo = (v.payload.kind || 'todo') === 'todo';
+  if (v.payload.person_key != null && (v.payload.person_key.length > PERSON_KEY_MAX || v.payload.person_key.includes('@'))) return res.status(400).json({ error: 'person_key must be a People row key' });
+  if (!asTodo && todoOnly(v.payload)) return res.status(400).json({ error: todoOnly(v.payload) });
   if (!v.payload.week_start) return res.status(400).json({ error: 'week_start is required' });
   if (!v.payload.text) return res.status(400).json({ error: 'text is required' });
   if (v.payload.waiting_on?.length > WAITING_ON_MAX) return res.status(400).json({ error: `waiting_on must be up to ${WAITING_ON_MAX} characters` });
@@ -321,8 +335,14 @@ export async function createWeekGoalRoute(req, res) {
   try {
     if (await weekIsFinal(supabase, req.params.businessId, v.payload.week_start)) return res.status(409).json({ error: FINAL_ERROR });
   } catch (e) { return res.status(500).json({ error: e.message }); }
-  const { data, error } = await supabase.from('sales_week_goals')
-    .insert({ business_id: req.params.businessId, ...v.payload, ...weekTimestamps(v.payload), created_by: req.auth.user.id }).select().single();
+  const row = { ...v.payload, ...weekTimestamps(v.payload), created_by: req.auth.user.id };
+  if (asTodo) {
+    try {
+      const r = await applyTodo(supabase, { businessId: req.params.businessId, create: row, actor: req.auth.user.id, origin });
+      return res.status(201).json({ goal: r.todo, event: r.event });
+    } catch (e) { return todoFail(res, e); }
+  }
+  const { data, error } = await supabase.from('sales_week_goals').insert({ business_id: req.params.businessId, ...row }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ goal: data });
 }
@@ -332,9 +352,13 @@ export async function updateWeekGoalRoute(req, res) {
   const { data: existing, error: findErr } = await findRow(supabase, 'sales_week_goals', req.params.businessId, req.params.id);
   if (findErr) return res.status(500).json({ error: findErr.message });
   if (!existing) return res.status(404).json({ error: 'goal not found' });
-  const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
+  const { expect = null, ...body } = req.body || {};
+  if (expect != null && (typeof expect !== 'object' || Array.isArray(expect))) return res.status(400).json({ error: 'expect must be an object' });
+  const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, body);
   if (v.error) return fail(res, v);
   if (v.payload.waiting_on?.length > WAITING_ON_MAX) return res.status(400).json({ error: `waiting_on must be up to ${WAITING_ON_MAX} characters` });
+  if (!isTodo(existing) && todoOnly(v.payload)) return res.status(400).json({ error: todoOnly(v.payload) });
+  if (v.payload.person_key != null && (v.payload.person_key.length > PERSON_KEY_MAX || v.payload.person_key.includes('@'))) return res.status(400).json({ error: 'person_key must be a People row key' });
   const linkErr = await checkLink(supabase, req.params.businessId, v.payload, existing);
   if (linkErr) return fail(res, linkErr);
   try {
@@ -343,6 +367,16 @@ export async function updateWeekGoalRoute(req, res) {
       if (await weekIsFinal(supabase, req.params.businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
     }
   } catch (e) { return res.status(500).json({ error: e.message }); }
+  if (isTodo(existing) && (v.payload.kind ?? 'todo') === 'todo') {
+    try {
+      const r = await applyTodo(supabase, { businessId: req.params.businessId, row: existing, patch: v.payload, expect, actor: req.auth.user.id, origin: 'manual' });
+      return res.json({ goal: r.todo, event: r.event });
+    } catch (e) { return todoFail(res, e); }
+  }
+  // a commitment, a waiting row or a flag (R1): expect is honoured here too, with no event
+  if (expect && Object.keys(expect).some(k => (k === 'updated_at' ? Date.parse(expect[k]) !== Date.parse(existing.updated_at) : (expect[k] ?? null) !== (existing[k] ?? null)))) {
+    return res.status(409).json({ error: 'This changed since you opened it - reloaded', code: 'changed', goal: existing });
+  }
   const { data, error } = await supabase.from('sales_week_goals')
     .update({ ...v.payload, ...weekTimestamps(v.payload, existing), updated_at: new Date().toISOString() })
     .eq('id', existing.id).select().single();
@@ -355,21 +389,32 @@ export async function deleteWeekGoalRoute(req, res) {
   const { data: existing, error: findErr } = await findRow(supabase, 'sales_week_goals', req.params.businessId, req.params.id);
   if (findErr) return res.status(500).json({ error: findErr.message });
   if (!existing) return res.status(404).json({ error: 'goal not found' });
-  const ownDelete = (existing.created_by || existing.flagged_by) === req.auth.user.id && Date.now() - Date.parse(existing.created_at) <= OWN_DELETE_WINDOW_MS;
+  // T9: a to-do is deleted by an admin only (Undo covers the creator's first two minutes) and is dropped first, so
+  // the delete leaves a 'drop' event. Commitments, waiting rows and flags keep the creator-within-2-minutes rule.
+  const todo = isTodo(existing);
+  const ownDelete = !todo && (existing.created_by || existing.flagged_by) === req.auth.user.id && Date.now() - Date.parse(existing.created_at) <= OWN_DELETE_WINDOW_MS;
   if (!ownDelete && !hasRole(req, req.params.businessId, 'admin')) {
-    return res.status(403).json({ error: 'Only whoever added it can delete it, within 2 minutes - drop it instead' });
+    return res.status(403).json({ error: todo ? 'Only an admin can delete a to-do - use Undo, or drop it instead' : 'Only whoever added it can delete it, within 2 minutes - drop it instead' });
   }
   try {
     if (await weekIsFinal(supabase, req.params.businessId, existing.week_start)) return res.status(409).json({ error: FINAL_ERROR });
   } catch (e) { return res.status(500).json({ error: e.message }); }
-  if (existing.kind === 'commitment') {
-    const { error: unlinkErr } = await supabase.from('sales_week_goals').update({ link_type: null, link_id: null, updated_at: new Date().toISOString() })
-      .eq('business_id', req.params.businessId).eq('link_type', 'commitment').eq('link_id', existing.id);
-    if (unlinkErr) return res.status(500).json({ error: unlinkErr.message });
-  }
-  const { error } = await supabase.from('sales_week_goals').delete().eq('id', existing.id);
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ deleted: existing.id });
+  try {
+    if (todo) {
+      const r = await deleteTodo(supabase, { businessId: req.params.businessId, row: existing, actor: req.auth.user.id });
+      return res.json({ deleted: existing.id, event: r.event });
+    }
+    let unlinked = null;
+    if (existing.kind === 'commitment') {
+      // R1 / R2: the to-dos that pointed at it are unlinked as one batch of 'link' events
+      const linked = await selectAllPages(() => supabase.from('sales_week_goals').select('*').eq('business_id', req.params.businessId)
+        .eq('kind', 'todo').eq('link_type', 'commitment').eq('link_id', existing.id).order('id'));
+      if (linked.length) unlinked = await applyTodos(supabase, { businessId: req.params.businessId, todos: linked, patch: { link_type: null, link_id: null }, kind: 'link', actor: req.auth.user.id, origin: 'manual' });
+    }
+    const { error } = await supabase.from('sales_week_goals').delete().eq('id', existing.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ deleted: existing.id, ...(unlinked?.events.length ? { unlinked: unlinked.events.length, batch_id: unlinked.batchId } : {}) });
+  } catch (e) { return e instanceof TodoError ? todoFail(res, e) : res.status(500).json({ error: e.message }); }
 }
 
 // Unfinished = a commitment still open, or a to-do not done/dropped whose
@@ -409,15 +454,24 @@ export async function carryOverWeekGoalsRoute(req, res) {
     const copyOf = new Map(already.map(r => [r.carried_from_id, r.id]));
     const unfinished = previous.filter(isUnfinished);
     const carried = [];
-    for (const g of unfinished.filter(g => !done.has(g.id))) {
-      const { data, error } = await supabase.from('sales_week_goals').insert({
-        business_id: businessId, week_start: weekStart, text: g.text, owner_user_id: g.owner_user_id,
+    const batchId = randomUUID();
+    // commitments first: a carried to-do linked to last week's commitment is born pointing at that commitment's copy
+    const order = [...unfinished.filter(g => g.kind !== 'todo'), ...unfinished.filter(g => g.kind === 'todo')];
+    for (const g of order.filter(g => !done.has(g.id))) {
+      const row = {
+        week_start: weekStart, text: g.text, owner_user_id: g.owner_user_id,
         measurable_target: g.measurable_target, month_goal_id: g.month_goal_id, land_goal_id: g.land_goal_id,
         kind: g.kind, category: g.category, contacts: g.contacts, link_target: g.link_target,
         metric_key: g.metric_key, target_value: g.target_value, carried_from_id: g.id, sort_order: g.sort_order,
         prospect_contact_id: g.prospect_contact_id, flag_note: g.flag_note, flagged_by: g.flagged_by,
-        due_date: g.due_date, link_type: g.link_type, link_id: g.link_id, source_note_id: g.source_note_id, created_by: g.created_by,
-      }).select().single();
+        due_date: g.due_date, link_type: g.link_type, link_id: g.link_type === 'commitment' && copyOf.has(g.link_id) ? copyOf.get(g.link_id) : g.link_id,
+        source_note_id: g.source_note_id, created_by: g.created_by,
+      };
+      let data, error;
+      if (isTodo(g)) {
+        try { data = (await createTodos(supabase, { businessId, rows: [{ ...row, snooze_until: g.snooze_until ?? null, person_key: g.person_key ?? null }], actor: req.auth.user.id, origin: 'carry_over', batchId })).todos[0]; }
+        catch (e) { error = { code: e.code, message: e.message }; }
+      } else ({ data, error } = await supabase.from('sales_week_goals').insert({ business_id: businessId, ...row }).select().single());
       if (error?.code === '23505') continue;
       if (error) throw new Error(error.message);
       if (g.steps.length) {
@@ -428,11 +482,6 @@ export async function carryOverWeekGoalsRoute(req, res) {
       }
       carried.push(data);
       copyOf.set(g.id, data.id);
-    }
-    for (const t of carried.filter(c => c.link_type === 'commitment' && copyOf.has(c.link_id))) {
-      const { error } = await supabase.from('sales_week_goals').update({ link_id: copyOf.get(t.link_id) }).eq('id', t.id);
-      if (error) throw new Error(error.message);
-      t.link_id = copyOf.get(t.link_id);
     }
     res.json({ carried, skipped: unfinished.length - carried.length });
   } catch (e) { res.status(500).json({ error: e.message }); }

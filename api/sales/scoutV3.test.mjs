@@ -134,7 +134,7 @@ const fakeWrites = () => {
     partnerUndo: async (sb, a) => { log.push(['partnerUndo', a.eventId]); return {}; },
     prospect: async a => { log.push(['prospect', a.params.contactId, a.body]); return { status: 200, body: {} }; },
     todoOn: async (sb, a) => { log.push(['todoOn', a.type, a.id, a.text, a.done]); return { id: 'todo-1' }; },
-    weekGoal: async a => { log.push(['weekGoal', a.params.id, a.body]); return { status: 200, body: {} }; },
+    todoUndoCreate: async (_sb, a) => { log.push(['todoUndoCreate', a.todoId]); return {}; },
     rejectTarget: async (sb, a) => { log.push(['rejectTarget', a.targetId, a.body]); return { status: 200, body: { dropped: ['t1'] } }; },
     deprioritize: async (sb, a) => { log.push(['deprioritize', a.type, a.id, a.body]); return { status: 200, body: { event: { id: 'flow-fit' } } }; },
   });
@@ -195,7 +195,7 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
   assert.equal(r.p.body.rows[0].note, "Cloudflare's stage unchanged - advance it from its window");
   assert.deepEqual(log, [['prospect', 'c1', { status: 'contacted', expect: { status: 'new' } }], ['todoOn', 'employer', u('3'), 'Contacted Dana Mayer', true]]);
   await undo(sb, registry, { auth: ana, body: { plan_id: r.p.body.plan_id } });
-  assert.deepEqual(log.slice(2), [['weekGoal', 'todo-1', { status: 'dropped' }], ['prospect', 'c1', { status: 'new', expect: { status: 'contacted' } }]]);
+  assert.deepEqual(log.slice(2), [['todoUndoCreate', 'todo-1'], ['prospect', 'c1', { status: 'new', expect: { status: 'contacted' } }]]);
   assert.match((await go('mark Lee Stone contacted', [lee])).p.body.cant.reason, /no company record/);
   assert.match((await go('mark Cloudflare contacted', [row('employers', u('3'), 'Cloudflare')])).p.body.cant.reason, /stage moves from its window/);
   log.length = 0;
@@ -243,10 +243,10 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
   assert.deepEqual(d3.p.body.cant.nearest, { id: 'bundle', label: 'Copy draft bundle' });
   assert.deepEqual((await go('copy draft bundle for Lee Stone', [lee])).p.body.open, { copy: 'bundle', type: 'target', records: [{ entity: 'people', id: lee.id }], person: 'Lee Stone' });
   const t = await go('add a task to call Cloudflare Thursday', []);
-  assert.deepEqual(t.p.body.open, { quick_capture: { text: 'Call Cloudflare', due_date: '2026-11-12', past: false, link: { type: 'employer', id: u('3'), name: 'Cloudflare' } } });
+  assert.deepEqual(t.p.body.open, { quick_capture: { text: 'Call Cloudflare', due_date: '2026-11-12', past: false, link: { type: 'employer', id: u('3'), name: 'Cloudflare' }, person_key: null } });
   assert.equal(t.p.body.line, 'Opened quick capture — save it there');
   const t2 = await go('add a task for this', [lee]);
-  assert.deepEqual(t2.p.body.open.quick_capture, { text: 'Follow up with Lee Stone', due_date: null, past: false, link: null });
+  assert.deepEqual(t2.p.body.open.quick_capture, { text: 'Follow up with Lee Stone', due_date: null, past: false, link: null, person_key: 'prospect:c2' });
   const c = await go('copy this for Claude', [dana]);
   assert.deepEqual(c.p.body.open, { pack: { records: [{ entity: 'people', id: 'prospect:c1' }] } });
   assert.equal(log.length, 0, 'opens write nothing');

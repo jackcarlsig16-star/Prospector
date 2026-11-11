@@ -62,6 +62,8 @@ export function buildActions({ todos = [], flags = [], waiting = [], suggestions
       due_date: due, overdue, late_days: overdue ? lateDays(due, today) : 0,
       owner_user_id: fields.owner_user_id === undefined ? row.owner_user_id || null : fields.owner_user_id,
       priority: fields.fixed_priority ? fields.priority : c?.priority || fields.priority, status: fields.status || 'open', created_at: row.created_at, meta: fields.meta || {},
+      // todo-events-v1: what the screen sends back as expect, and the snooze day (T5 / T6)
+      updated_at: row.updated_at || null, snooze_until: row.snooze_until || null,
       company_p: fields.company_p !== undefined ? fields.company_p : c?.priority ?? null,
       band: itemUrgency(kind, { overdue, due_date: due, today, ...fields.urgency }),
     });
@@ -129,12 +131,13 @@ export function rankActions(items) {
 }
 
 // GET /goals/actions -> { items, tidy: { count, items }, groups: { today, week, later, nodate }, todos: { total, shown }, today, week_start }
-export async function listActions(supabase, businessId, now = new Date()) {
+// snoozed: true = the to-dos hidden until their day instead of the open ones (the "Snoozed (n)" chip, todo-events-v1 T6).
+export async function listActions(supabase, businessId, now = new Date(), { snoozed = false } = {}) {
   const today = laDateString(now);
   const week = laMonday(today);
   const all = (table, cols, narrow) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const [openTodos, commitments, flagRows, waiting, suggestions, memberRows, campaign] = await Promise.all([
-    openTodosFor(supabase, businessId),
+    openTodosFor(supabase, businessId, null, { snoozed: snoozed ? 'only' : 'hide', today }),
     all('sales_week_goals', '*', q => q.eq('week_start', week).eq('kind', 'commitment')),
     all('sales_week_goals', '*', q => q.not('prospect_contact_id', 'is', null).neq('status', 'dropped').neq('status', 'done')),
     all('sales_week_goals', '*', q => q.eq('kind', 'waiting').eq('status', 'open')),
@@ -178,9 +181,9 @@ export async function listActions(supabase, businessId, now = new Date()) {
     notes: new Map(noteRows.map(n => [n.id, n.call_date])), companies, members: memberName, today,
   });
   const groups = Object.fromEntries(['today', 'week', 'later', 'nodate'].map(g => [g, items.filter(i => i.due_group === g).length]));
-  return { items: [...items], tidy: { count: items.tidy.length, items: items.tidy }, groups, todos: { total: openTodos.total, shown: openTodos.rows.length }, today, week_start: week };
+  return { items: [...items], tidy: { count: items.tidy.length, items: items.tidy }, groups, todos: { total: openTodos.total, shown: openTodos.rows.length, snoozed: openTodos.snoozed }, snoozed_view: snoozed, today, week_start: week };
 }
 export async function listActionsRoute(req, res) {
-  try { res.json(await listActions(getSupabase(), req.params.businessId)); }
+  try { res.json(await listActions(getSupabase(), req.params.businessId, new Date(), { snoozed: req.query?.snoozed === '1' })); }
   catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 }

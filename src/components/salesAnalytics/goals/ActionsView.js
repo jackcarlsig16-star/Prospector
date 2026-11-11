@@ -16,6 +16,8 @@ import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/
 import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, readFolded, writeFolded, actionSource, companyLine, datesLine, campaignLine, todoCountsText } from './actionsModel';
 import { contactSlots, PromoteDialog } from './campaigns/ContactActions';
 import { Slots, OwnerSelect, SLOT_W } from './ActionSlots';
+import TodoLastChange from './TodoLastChange';
+import { addDays } from './goalsUi';
 import { clipboardText, LINK_LABEL } from './campaigns/campaignModel';
 
 // sales-ia-v2 A1 - Actions: one list (GET goals/actions) on the kit table.
@@ -52,12 +54,15 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const [scoutTodo, setScoutTodo] = useState(() => readOpenKey('todo'));
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState(null); // { text, undo?, busy?, error? }
+  const [snoozedView, setSnoozedView] = useState(false); // todo-events-v1 T6: the to-dos hidden until their day
   const [company, setCompany] = useState(null); // { company, link } for the company window
   const toastTimer = useRef(null);
   const toastExpire = useRef(null); // the deferred write (Mark contacted); runs early on unmount
   const phone = useMediaQuery('(max-width: 760px)');
 
-  const load = useCallback(() => goalsApi.actions(businessId).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
+  // todo-events-v1 T5: "this changed since you opened it" stays on screen through the reload it causes, until the next action
+  const changedNote = useRef(false);
+  const load = useCallback(() => goalsApi.actions(businessId, { snoozed: snoozedView }).then(d => { setData(d); if (!changedNote.current) setError(''); }).catch(e => setError(e.message)), [businessId, snoozedView]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
     window.addEventListener(TODOS_CHANGED, load);
@@ -95,18 +100,23 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const remove = it => setData(d => (d ? { ...d, items: d.items.filter(x => x.key !== it.key), tidy: d.tidy ? { ...d.tidy, items: d.tidy.items.filter(x => x.key !== it.key), count: d.tidy.items.filter(x => x.key !== it.key).length } : d.tidy } : d));
   // The row leaves at once; the write runs; Undo reverses it (then reloads).
   const finish = async (it, write, label, undoWrite) => {
-    remove(it);
+    remove(it); changedNote.current = false;
     try {
       const r = await write();
       showToast(typeof label === 'function' ? label(r) : label, undoWrite ? () => undoWrite(r) : null);
-    } catch (e) { setError(e.message); load(); }
+    } catch (e) { changedNote.current = !!e.changed; setError(e.message); load(); }
   };
   // A change that keeps the row (snooze, reassign, nudge): the write, then Undo.
   const change = async (write, label, undoWrite) => {
+    changedNote.current = false;
     try { const r = await write(); showToast(typeof label === 'function' ? label(r) : label, () => undoWrite(r)); }
-    catch (e) { setError(e.message); }
+    catch (e) { changedNote.current = !!e.changed; setError(e.message); if (e.changed) load(); }
   };
-  const patch = (id, body) => goalsApi.updateWeekGoal(businessId, id, body);
+  // todo-events-v1 T5: every PATCH says what the row showed (expect) - a row changed meanwhile is a 409 and reloads.
+  // Undo of a to-do's change is the server's (the event it wrote); a waiting row or a commitment has no event and
+  // keeps the reverse PATCH.
+  const patch = (it, body) => goalsApi.updateWeekGoal(businessId, it.id, body, it);
+  const undoOf = (it, back) => r => (r?.event_id ? goalsApi.undoTodoEvent(businessId, r.event_id) : goalsApi.updateWeekGoal(businessId, it.id, back));
   const today = data?.today;
   // seif-campaign-v1 B4/B5: every campaign write but Promote has the server's Undo (the caller's own latest change).
   const CAMPAIGN_DONE = { sent: 'sent', skip: 'skipped', stop: 'stopped', replied: 'reply logged', pause: 'taken off the schedule', resume: 'back on the schedule' };
@@ -123,13 +133,16 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   };
   const accept = (it, ownerId) => (it.kind === 'signal' ? goalsApi.acceptSignal(businessId, it.id, { ownerUserId: ownerId }) : goalsApi.acceptSuggestion(businessId, it.id, { ownerUserId: ownerId }));
   const undoAccept = (it, r) => (it.kind === 'signal' ? goalsApi.undoSignal(businessId, it.id, r?.touch_event_id) : goalsApi.undoSuggestion(businessId, it.id, r?.todo?.id, r?.touch_event_id));
-  const setDue = (it, d) => change(() => patch(it.id, { due_date: d }), d ? `Due ${dueText({ due_date: d }, today)}: ${it.text}` : `No due date: ${it.text}`, () => patch(it.id, { due_date: it.due_date }));
+  const setDue = (it, d) => change(() => patch(it, { due_date: d }), d ? `Due ${dueText({ due_date: d }, today)}: ${it.text}` : `No due date: ${it.text}`, undoOf(it, { due_date: it.due_date }));
   const due = it => ({ due: { value: it.due_date, onPick: d => setDue(it, d) } });
   const markContacted = it => {
     remove(it);
     showToast(`${it.meta.contact || 'Prospect'} marked contacted · flag closes in 10 s`, () => load(), ({ unloading = false } = {}) => completeFlag(businessId, it.id, { keepalive: true }).then(() => { if (!unloading) { announceFlagsChanged(); load(); } }).catch(e => { if (!unloading) { setError(e.message); load(); } }));
   };
-  const done = it => ({ label: 'Done', title: 'Done (Undo for 10 s)', run: () => finish(it, () => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' })) });
+  const done = it => ({ label: 'Done', title: 'Done (Undo for 10 s)', run: () => finish(it, () => patch(it, { status: 'done' }), `Done: ${it.text}`, undoOf(it, { status: 'open' })) });
+  const snoozeDay = today ? addDays(today, 7) : null;
+  const snooze = it => ({ id: 'snooze', label: 'Snooze 1 week', run: () => finish(it, () => patch(it, { snooze_until: snoozeDay }), `Snoozed until ${dueText({ due_date: snoozeDay }, today)}: ${it.text}`, undoOf(it, { snooze_until: null })) });
+  const unsnooze = it => ({ label: 'Unsnooze', title: 'Back on the list now', run: () => finish(it, () => patch(it, { snooze_until: null }), `Unsnoozed: ${it.text}`, undoOf(it, { snooze_until: it.snooze_until })) });
   // A3 - per kind: the primary, the second slot (Done or the due date) and everything else in More.
   const slotsFor = {
     signal: it => ({
@@ -146,11 +159,11 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
       ],
     }),
     waiting: it => ({
-      primary: { label: 'Got it', title: 'Got it: they delivered', run: () => finish(it, () => patch(it.id, { status: 'done' }), `Got it: ${it.text}`, () => patch(it.id, { status: 'open' })) },
+      primary: { label: 'Got it', title: 'Got it: they delivered', run: () => finish(it, () => patch(it, { status: 'done' }), `Got it: ${it.text}`, undoOf(it, { status: 'open' })) },
       second: due(it),
-      more: [{ id: 'nudge', label: 'Nudge (a to-do for you, due today)', run: () => change(() => goalsApi.nudgeWaiting(businessId, it.id), r => `Nudge to-do added, due today: ${r.text}`, r => goalsApi.deleteWeekGoal(businessId, r.id)) }],
+      more: [{ id: 'nudge', label: 'Nudge (a to-do for you, due today)', run: () => change(() => goalsApi.nudgeWaiting(businessId, it.id), r => `Nudge to-do added, due today: ${r.text}`, r => goalsApi.undoTodoEvent(businessId, r.event_id)) }],
     }),
-    todo: it => ({ primary: done(it), second: due(it), more: [] }),
+    todo: it => (snoozedView ? { primary: unsnooze(it), second: null, more: [] } : { primary: done(it), second: due(it), more: [snooze(it)] }),
     flag: it => ({ primary: { label: 'Contacted', title: 'Mark contacted: closes the flag when the Undo window ends', run: () => markContacted(it) }, second: null, more: [] }),
     campaign: it => contactSlots({
       contact: { id: it.id, name: it.meta.name, company: it.meta.company_name, segment: it.meta.segment, status: it.meta.action === 'reply' ? 'replied' : 'active', current_step: it.meta.step_no, track_id: true },
@@ -159,8 +172,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
       onPromote: () => setPromoting(it),
     }),
     focus: it => (it.status === 'done'
-      ? { primary: { label: 'Reopen', run: () => change(() => patch(it.id, { status: 'open' }), `Reopened: ${it.text}`, () => patch(it.id, { status: 'done' })) }, second: null, more: [] }
-      : { primary: { label: 'Done', title: 'Done (Undo for 10 s)', run: () => change(() => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' })) }, second: null, more: [] }),
+      ? { primary: { label: 'Reopen', run: () => change(() => patch(it, { status: 'open' }), `Reopened: ${it.text}`, undoOf(it, { status: 'done' })) }, second: null, more: [] }
+      : { primary: { label: 'Done', title: 'Done (Undo for 10 s)', run: () => change(() => patch(it, { status: 'done' }), `Done: ${it.text}`, undoOf(it, { status: 'open' })) }, second: null, more: [] }),
   };
 
   // A4 - the owner, changed in place. To-do: PATCH (Unassigned = nobody); signal / to-do-making Tidy: Accept on that
@@ -168,7 +181,7 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const actors = members.filter(m => m.role !== 'viewer');
   const pickOwner = (it, u) => {
     const who = u ? lookup(u).first : 'nobody';
-    if (it.kind === 'todo') return change(() => patch(it.id, { owner_user_id: u }), `${it.text}: owner ${who}`, () => patch(it.id, { owner_user_id: it.owner_user_id }));
+    if (it.kind === 'todo') return change(() => patch(it, { owner_user_id: u }), `${it.text}: owner ${who}`, undoOf(it, { owner_user_id: it.owner_user_id }));
     if (it.kind === 'flag') return change(() => reassignFlag(businessId, it.id, u), `Flag handed to ${who}`, () => reassignFlag(businessId, it.id, it.owner_user_id));
     return finish(it, () => accept(it, u), r => `Accepted for ${who}${r.todo ? ` · to-do added: ${r.todo.text}` : ''}`, r => undoAccept(it, r));
   };
@@ -178,7 +191,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   ];
   const ownerEditable = it => canEdit && (it.kind === 'todo' || it.kind === 'flag' || it.kind === 'signal' || (it.kind === 'tidy' && it.meta.makes_todo));
 
-  const items = useMemo(() => data?.items || [], [data]);
+  // the snoozed view lists the snoozed to-dos alone
+  const items = useMemo(() => (data?.snoozed_view ? (data.items || []).filter(it => it.kind === 'todo') : data?.items || []), [data]);
   const tidyItems = useMemo(() => data?.tidy?.items || [], [data]);
   const view = useMemo(() => actionsView(items, filters, { owner, viewer: !canEdit, tidy: tidyItems }), [items, filters, owner, canEdit, tidyItems]);
   useEffect(() => onScoutOpen(p => { const k = openKeyOf('todo', p.open); if (k) { setFilters(EMPTY_FILTERS); setScoutTodo(k); } }), []);
@@ -244,7 +258,7 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
     setEditing(null);
     const t = text.trim(), before = rawText(it);
     if (!t || t === before) return;
-    await change(() => patch(it.id, { text: t }), `Saved: ${t}`, () => patch(it.id, { text: before }));
+    await change(() => patch(it, { text: t }), `Saved: ${t}`, () => goalsApi.updateWeekGoal(businessId, it.id, { text: before }));
     load();
   };
   const textEditor = it => (editing?.key === it.key
@@ -263,6 +277,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
       ['Company', it.company && <span className="ui-detail-list__actions"><span>{companyLine(it.company)}</span>
         {it.company.type && <button type="button" className="ui-link" onClick={() => openCompany(it)}>Open company →</button>}</span>],
       ['Dates', datesLine(it, it.owner_user_id ? lookup(it.owner_user_id).first : null)],
+      ['Snoozed until', it.snooze_until && dueText({ due_date: it.snooze_until }, today)],
+      ['Last change', it.kind === 'todo' && <TodoLastChange businessId={businessId} todoId={it.id} nameOf={u => lookup(u).first} />],
       ['Owner', canEdit && ownerEditable(it) && phone ? ownerCell(it) : null],
     ]} />
   );
@@ -285,6 +301,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
       <FilterSelect label="Kind" value={filters.kind} options={[{ value: '', label: 'All kinds' }, ...KIND_OPTIONS.filter(([id]) => canEdit || ['todo', 'focus', 'flag'].includes(id)).map(([value, label]) => ({ value, label }))]} onChange={v => set('kind', v)} />
       <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-pressed={filters.unassigned} data-unassigned-chip onClick={() => set('unassigned', !filters.unassigned)}
         title="Rows nobody owns yet" style={{ height: 28, flex: 'none' }}>Unassigned <span style={numStyle}>({view.unassigned})</span></button>
+      {(snoozedView || data?.todos?.snoozed > 0) && <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-pressed={snoozedView} data-snoozed-chip onClick={() => { setData(null); setSnoozedView(v => !v); }}
+        title="To-dos hidden until their snooze day" style={{ height: 28, flex: 'none' }}>Snoozed <span style={numStyle}>({data?.todos?.snoozed ?? 0})</span></button>}
       {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
     </>
   );

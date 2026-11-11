@@ -1,4 +1,5 @@
 import { getSupabase, weekIsFinal, FINAL_ERROR, addDays } from './goalsShared.js';
+import { applyTodo } from './todoWrite.js';
 import { laDateString } from './laDate.js';
 import { CallCapError } from './apolloClient.js';
 import { latestAccounts, partnersToSync, fetchContacts, storeContacts, applyStoredActivity, contactRow } from './partnerContactsSync.js';
@@ -32,12 +33,13 @@ async function ensureEnrichTodo(supabase, { businessId, goal, userId, why, today
   if (existing) return { todo: existing, created: false };
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
-  const todo = must(await supabase.from('sales_week_goals').insert({
-    business_id: businessId, week_start: week, kind: 'todo', status: 'open', text: enrichText(goal.name, why),
+  // R5: the check's own to-do - origin 'system'
+  const { todo: t } = await applyTodo(supabase, { businessId, actor: userId, origin: 'system', create: {
+    week_start: week, kind: 'todo', status: 'open', text: enrichText(goal.name, why),
     owner_user_id: userId, due_date: addDays(today, ENRICH_DUE_DAYS), link_type: linkType, link_id: goal.id,
     category: ENRICH_CATEGORY, sort_order: 0, created_by: userId,
-  }).select('id, text, due_date, owner_user_id, week_start').single());
-  return { todo, created: true };
+  } });
+  return { todo: { id: t.id, text: t.text, due_date: t.due_date, owner_user_id: t.owner_user_id, week_start: t.week_start }, created: true };
 }
 
 // -> { status: 'found' | 'no_account' | 'no_people' | 'skipped', account, people: [{ name, title }],

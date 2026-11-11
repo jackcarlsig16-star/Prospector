@@ -1,4 +1,5 @@
 import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, acceptOwner } from './goalsShared.js';
+import { applyTodo, rollbackCreates, undoCreate, relinkAll } from './todoWrite.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { scheduleRecompute } from './intentScoreRun.js';
 import { laDateString } from './laDate.js';
@@ -129,12 +130,13 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       link = ['target', m.id]; targetId = m.id; via = 'target'; record = { type: 'target', id: m.id, name: m.name };
     }
 
-    const todo = must(await supabase.from('sales_week_goals').insert({
-      business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: SIGNAL_CATEGORY, sort_order: 0,
+    const { todo } = await applyTodo(supabase, { businessId, actor: userId, origin: 'signal', now, create: {
+      week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: SIGNAL_CATEGORY, sort_order: 0,
       text: todoText(s), due_date: due, owner_user_id: who.owner, created_by: userId, link_type: link?.[0] || null, link_id: link?.[1] || null,
       ...(isDone ? { completed_at: now.toISOString() } : {}),
-    }).select().single());
-    undo.push(() => supabase.from('sales_week_goals').delete().eq('id', todo.id));
+    } });
+    // R3: a failed Accept takes its own to-do back in the same request (deleted, one 'undo' event)
+    undo.push(() => rollbackCreates(supabase, { businessId, todos: [todo], actor: userId, origin: 'signal' }));
 
     const rows = must(await supabase.from('sales_signals').update({
       status: 'accepted', decided_by: userId, decided_at: now.toISOString(), updated_at: now.toISOString(), target_id: targetId, todo_id: todo.id,
@@ -207,10 +209,11 @@ export async function undoSignal(supabase, { businessId, userId = null, id, body
         const touch = await doneTouchEvent(supabase, businessId, body?.touch_event_id, e => e.meta?.from_signal_id === s.id);
         if (touch) { const refused = await undoDoneTouch(supabase, { businessId, touch, userId, now }); if (refused) return refused; }
       }
-      if (s.todo_id) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', s.todo_id).in('status', ['open', 'done']));
+      // R3: a person's Undo drops the to-do the Accept made (origin kept), it is never deleted
+      if (s.todo_id) await undoCreate(supabase, { businessId, todoId: s.todo_id, actor: userId, now });
       const via = s.match?.via;
       if (via === 'new_target' && s.target_id) {
-        must(await supabase.from('sales_week_goals').update({ link_type: null, link_id: null }).eq('business_id', businessId).eq('link_type', 'target').eq('link_id', s.target_id));
+        await relinkAll(supabase, { businessId, from: { link_type: 'target', link_id: s.target_id }, to: null, actor: userId, origin: 'signal', now });
         must(await supabase.from('sales_targets').delete().eq('business_id', businessId).eq('id', s.target_id).eq('signal_id', s.id));
         must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'target').eq('record_id', s.target_id));
       } else if (via === 'partner' && s.match?.id) {

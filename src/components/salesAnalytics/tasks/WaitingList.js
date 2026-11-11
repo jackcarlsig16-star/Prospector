@@ -42,7 +42,7 @@ export default function WaitingList({ businessId, rows, partnerName, canEdit, on
               {canEdit && (
                 <span style={{ display: 'inline-flex', gap: 6 }}>
                   <button type="button" disabled={busy === w.id} style={btn} aria-label={`Got it: ${w.waiting_on} - ${w.text}`}
-                    onClick={() => run(w.id, () => goalsApi.updateWeekGoal(businessId, w.id, { status: 'done' }))}>Got it ✓</button>
+                    onClick={() => run(w.id, () => goalsApi.updateWeekGoal(businessId, w.id, { status: 'done' }, w))}>Got it ✓</button>
                   <button type="button" disabled={busy === w.id || nudged[w.id]} style={btn} aria-label={`Nudge ${w.waiting_on}`}
                     onClick={() => run(w.id, async () => { await goalsApi.nudgeWaiting(businessId, w.id); setNudged(n => ({ ...n, [w.id]: true })); })}>Nudge →</button>
                 </span>

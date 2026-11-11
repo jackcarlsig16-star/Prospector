@@ -11,7 +11,7 @@ jest.mock('./goalsApi', () => ({
   goalsApi: {
     actions: jest.fn(), acceptSignal: jest.fn(), dismissSignal: jest.fn(), undoSignal: jest.fn(),
     acceptSuggestion: jest.fn(), dismissSuggestion: jest.fn(), snoozeSuggestion: jest.fn(), undoSuggestion: jest.fn(),
-    updateWeekGoal: jest.fn(), nudgeWaiting: jest.fn(), deleteWeekGoal: jest.fn(),
+    updateWeekGoal: jest.fn(), nudgeWaiting: jest.fn(), deleteWeekGoal: jest.fn(), todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})),
     contactAction: jest.fn(), contactDraft: jest.fn(),
     pipelineBoard: jest.fn(() => new Promise(() => {})), companyDetail: jest.fn(() => new Promise(() => {})),
   },
@@ -52,6 +52,9 @@ const acts = text => within(screen.getByRole('group', { name: `Actions for ${tex
 const more = (text, label) => fireEvent.change(screen.getByLabelText(`More for ${text}`), { target: { value: screen.getByLabelText(`More for ${text}`).querySelector(`option[value="${label}"]`) ? label : [...screen.getByLabelText(`More for ${text}`).options].find(o => o.textContent === label).value } });
 const undoToast = async () => fireEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'Undo' }));
 const toastGone = () => waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+
+// todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
+beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
 
 test('model: Who = that person\'s rows, Team = all, Unassigned = nobody\'s; bands in order; Viewer kinds; folds + due choices', () => {
   const E = { kind: '', q: '', unassigned: false };
@@ -160,7 +163,7 @@ test('A3 slots: every row = Primary · Done/Due · More, same order per kind', a
   expect(shape('Follow up Lakeshore Mutual')).toEqual(['Accept', 'Done', '[More ▾]']);
   expect(shape('Possible duplicate: Lockton / Lockton Inc')).toEqual(['Accept', '·', '[More ▾]']);
   expect(shape('Waiting on Pat: the MSA')).toEqual(['Got it', '[Due ▾]', '[More ▾]']);
-  expect(shape('Call back')).toEqual(['Done', '[Due ▾]', '·']);
+  expect(shape('Call back')).toEqual(['Done', '[Due ▾]', '[More ▾]']);
   expect(shape('Follow up the benefits lead')).toEqual(['Contacted', '·', '·']);
   expect(shape('Book two meetings')).toEqual(['Done', '·', '·']);
   expect([...screen.getByLabelText('More for Follow up Lakeshore Mutual').options].map(o => o.textContent)).toEqual(['More ▾', 'Dismiss for 7 days', 'Snooze 7 days']);
@@ -205,7 +208,7 @@ test('A4 owner select: a to-do is PATCHed (Undo back), a flag is reassigned; wai
   const sel = screen.getByLabelText('Owner of Call back');
   expect([...sel.options].map(o => o.textContent)).toEqual(['Unassigned', 'Jack', 'Cyrus']);
   fireEvent.change(sel, { target: { value: CY } });
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { owner_user_id: CY }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { owner_user_id: CY }, expect.anything()));
   expect((await screen.findByRole('status')).textContent).toContain('Call back: owner Cyrus');
   await undoToast();
   await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { owner_user_id: JACK }));
@@ -224,36 +227,36 @@ test('A4 due date: Due ▾ moves a to-do / waiting row (Undo back); text edits i
   setup();
   await screen.findByText('Call back');
   fireEvent.change(screen.getByLabelText('Due date for Call back'), { target: { value: 'friday' } });
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { due_date: '2026-10-23' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { due_date: '2026-10-23' }, expect.anything()));
   expect((await screen.findByRole('status')).textContent).toContain('Due Oct 23: Call back');
   await undoToast();
   await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { due_date: TODAY }));
   await toastGone();
   fireEvent.change(screen.getByLabelText('Due date for Waiting on Pat: the MSA'), { target: { value: 'none' } });
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w1', { due_date: null }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w1', { due_date: null }, expect.anything()));
   await toastGone().catch(() => {});
   fireEvent.click(screen.getByRole('button', { name: 'Show details for Call back' }));
   fireEvent.click(screen.getByRole('button', { name: 'Change the text: Call back' }));
   const input = screen.getByLabelText('Edit Call back');
   fireEvent.change(input, { target: { value: 'Call back about the pilot' } });
   fireEvent.keyDown(input, { key: 'Escape' });
-  expect(goalsApi.updateWeekGoal).not.toHaveBeenCalledWith('b1', 't1', { text: 'Call back about the pilot' });
+  expect(goalsApi.updateWeekGoal).not.toHaveBeenCalledWith('b1', 't1', { text: 'Call back about the pilot' }, expect.anything());
   fireEvent.click(screen.getByRole('button', { name: 'Change the text: Call back' }));
   fireEvent.change(screen.getByLabelText('Edit Call back'), { target: { value: 'Call back about the pilot' } });
   fireEvent.keyDown(screen.getByLabelText('Edit Call back'), { key: 'Enter' });
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { text: 'Call back about the pilot' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { text: 'Call back about the pilot' }, expect.anything()));
   await undoToast();
   await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { text: 'Call back' }));
 });
 
 test('to-do Done, waiting Got it / Nudge (More), Focus Done - each with its reverse write on Undo', async () => {
   goalsApi.updateWeekGoal.mockResolvedValue({});
-  goalsApi.nudgeWaiting.mockResolvedValue({ id: 'nd', text: 'Nudge Pat re the MSA' });
+  goalsApi.nudgeWaiting.mockResolvedValue({ id: 'nd', text: 'Nudge Pat re the MSA', event_id: 'ev-nd' });
   setup();
   await screen.findByText('Call back');
   fireEvent.click(acts('Call back').getByRole('button', { name: 'Done' }));
   expect(rows()).not.toContain('todo-t1');
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { status: 'done' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { status: 'done' }, expect.anything()));
   await undoToast();
   await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { status: 'open' }));
   await toastGone();
@@ -261,13 +264,13 @@ test('to-do Done, waiting Got it / Nudge (More), Focus Done - each with its reve
   await waitFor(() => expect(goalsApi.nudgeWaiting).toHaveBeenCalledWith('b1', 'w1'));
   expect(rows()).toContain('waiting-w1');
   await undoToast();
-  await waitFor(() => expect(goalsApi.deleteWeekGoal).toHaveBeenCalledWith('b1', 'nd'));
+  await waitFor(() => expect(goalsApi.undoTodoEvent).toHaveBeenCalledWith('b1', 'ev-nd'));
   await toastGone();
   fireEvent.click(acts('Waiting on Pat: the MSA').getByRole('button', { name: 'Got it' }));
   expect(rows()).not.toContain('waiting-w1');
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w1', { status: 'done' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w1', { status: 'done' }, expect.anything()));
   fireEvent.click(acts('Book two meetings').getByRole('button', { name: 'Done' }));
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'c1', { status: 'done' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'c1', { status: 'done' }, expect.anything()));
 });
 
 test('Contacted (flag) is the deferred write: the row leaves, the flag closes only when the 10 s window ends; Undo keeps it open', async () => {
@@ -409,4 +412,55 @@ test('Viewer: campaign rows are not on a Viewer list', async () => {
   render(<ActionsView businessId="b1" canEdit={false} meId="u-seif" owner="team" members={members} lookup={lookup} onOpenFull={jest.fn()} />);
   await screen.findByText('Call back');
   expect(screen.queryByText('Send step 1 to Ana')).toBeNull();
+});
+
+// todo-events-v1 T4 / T5 / T6 / T8 on the Actions screen.
+test('todo-events: a PATCH carries the row as expect; Undo is the server\'s event undo; Snooze 1 week writes snooze_until; a 409 says so and reloads; the row detail shows the last change', async () => {
+  goalsApi.updateWeekGoal.mockResolvedValue({ id: 't1', event_id: 'ev-1' });
+  goalsApi.todoEvents.mockResolvedValue([{ id: 'e9', kind: 'due', words: 'due Oct 23', at: '2026-10-20T18:00:00Z', by_user: CY }]);
+  setup();
+  await screen.findByText('Call back');
+  fireEvent.click(acts('Call back').getByRole('button', { name: 'Done' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { status: 'done' }, expect.objectContaining({ id: 't1', kind: 'todo' })));
+  await undoToast();
+  await waitFor(() => expect(goalsApi.undoTodoEvent).toHaveBeenCalledWith('b1', 'ev-1'));
+  expect(goalsApi.updateWeekGoal).toHaveBeenCalledTimes(1);
+  await toastGone();
+
+  more('Call back', 'snooze');
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenLastCalledWith('b1', 't1', { snooze_until: '2026-10-28' }, expect.objectContaining({ id: 't1' })));
+  expect(rows()).not.toContain('todo-t1');
+  expect((await screen.findByRole('status')).textContent).toContain('Snoozed until');
+  await undoToast();
+  await waitFor(() => expect(goalsApi.undoTodoEvent).toHaveBeenCalledTimes(2));
+  await toastGone();
+
+  goalsApi.updateWeekGoal.mockRejectedValue(Object.assign(new Error('This to-do changed since you opened it - reloaded'), { status: 409, changed: true }));
+  const loads = goalsApi.actions.mock.calls.length;
+  fireEvent.click(acts('Draft the one-pager').getByRole('button', { name: 'Done' }));
+  expect(await screen.findByText('This to-do changed since you opened it - reloaded')).toBeTruthy();
+  await waitFor(() => expect(goalsApi.actions.mock.calls.length).toBeGreaterThan(loads));
+
+  fireEvent.click(screen.getByText('Call back'));
+  expect((await screen.findByText(/due Oct 23 · .* by Cyrus/)).closest('[data-todo-last-change]')).toBeTruthy();
+  expect(goalsApi.todoEvents).toHaveBeenCalledWith('b1', { todo_id: 't1' });
+});
+
+test('todo-events T6: the Snoozed (n) chip shows only when something is snoozed, loads the snoozed to-dos alone, and each row offers Unsnooze', async () => {
+  setup();
+  await screen.findByText('Call back');
+  expect(document.querySelector('[data-snoozed-chip]')).toBeNull();
+  goalsApi.actions.mockResolvedValue({ ...payload(), todos: { total: 2, shown: 2, snoozed: 1 } });
+  window.dispatchEvent(new Event('todos'));
+  const chip = await waitFor(() => { const c = document.querySelector('[data-snoozed-chip]'); expect(c).toBeTruthy(); return c; });
+  expect(chip.textContent).toBe('Snoozed (1)');
+  const snoozed = item('todo', 't9', { band: 'today', text: 'Chase the pilot', due_date: TODAY, owner_user_id: JACK, snooze_until: '2026-10-28', updated_at: '2026-10-20T10:00:00Z' });
+  goalsApi.actions.mockResolvedValue({ ...payload([snoozed, items[0]], []), todos: { total: 1, shown: 1, snoozed: 1 }, snoozed_view: true });
+  fireEvent.click(chip);
+  await screen.findByText('Chase the pilot');
+  expect(goalsApi.actions).toHaveBeenLastCalledWith('b1', { snoozed: true });
+  expect(rows()).toEqual(['todo-t9']);
+  goalsApi.updateWeekGoal.mockResolvedValue({ id: 't9', event_id: 'ev-2' });
+  fireEvent.click(acts('Chase the pilot').getByRole('button', { name: 'Unsnooze' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't9', { snooze_until: null }, expect.objectContaining({ id: 't9', updated_at: '2026-10-20T10:00:00Z' })));
 });

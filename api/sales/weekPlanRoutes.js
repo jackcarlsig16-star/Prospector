@@ -1,4 +1,5 @@
 import { getSupabase, isDate, isMonday, laStartOfDayMs, weekIsFinal, FINAL_ERROR, fail } from './goalsShared.js';
+import { applyTodo, createTodos, rollbackCreates } from './todoWrite.js';
 import { LINKABLE_METRICS, checkLink } from './goalsRoutes.js';
 import { laDateString } from './laDate.js';
 import { callAnthropic } from '../businesses/shared.js';
@@ -222,9 +223,11 @@ export async function saveWeekPlanRoute(req, res) {
 
     // No transaction across these writes, so a failure puts back what this
     // call already changed and removes the plan row.
-    const inserted = [], dropped = [], relinked = [];
+    // To-dos go through the one writer (origin 'plan', the plan's id as the batch); commitments are not to-dos (R1).
+    const inserted = [], dropped = [], relinked = [], madeTodos = [];
     const undo = async () => {
-      if (relinked.length) for (const r of relinked) await supabase.from('sales_week_goals').update(r.before).eq('id', r.id);
+      for (const r of relinked) await applyTodo(supabase, { businessId, todoId: r.id, patch: r.before, actor: userId, origin: 'plan', batchId: plan.id }).catch(() => {});
+      if (madeTodos.length) await rollbackCreates(supabase, { businessId, todos: madeTodos, actor: userId, origin: 'plan' });
       if (inserted.length) await supabase.from('sales_week_goals').delete().in('id', inserted);
       for (const d of dropped) await supabase.from('sales_week_goals').update({ status: 'open', why_not_done: d.why_not_done }).eq('id', d.id);
       await supabase.from('sales_week_plans').delete().eq('id', plan.id);
@@ -260,15 +263,13 @@ export async function saveWeekPlanRoute(req, res) {
       const newTodos = v.items.filter(c => c.as === 'todo' && !c.existing_todo_id);
       let todoRows = [];
       if (newTodos.length) {
-        const { data, error } = await supabase.from('sales_week_goals').insert(newTodos.map(c => {
+        ({ todos: todoRows } = await createTodos(supabase, { businessId, actor: userId, origin: 'plan', batchId: plan.id, rows: newTodos.map(c => {
           const link = c.link_to_rank != null ? { link_type: 'commitment', link_id: commitByRank.get(c.link_to_rank).id }
             : { link_type: c.link_type, link_id: c.link_id };
-          return { business_id: businessId, week_start, kind: 'todo', status: 'open', text: c.text, owner_user_id, due_date: c.due_date,
+          return { week_start, kind: 'todo', status: 'open', text: c.text, owner_user_id, due_date: c.due_date,
             sort_order: c.rank, created_by: userId, ...link, ...planned(c) };
-        })).select();
-        if (error) throw new Error(error.message);
-        todoRows = data;
-        inserted.push(...data.map(r => r.id));
+        }) }));
+        madeTodos.push(...todoRows);
       }
 
       // An item that already is an open to-do isn't copied: the to-do gets the
@@ -281,9 +282,7 @@ export async function saveWeekPlanRoute(req, res) {
         if (target && !row.link_type) Object.assign(patch, { link_type: 'commitment', link_id: target.id });
         if (!Object.keys(patch).length) continue;
         relinked.push({ id: row.id, before: Object.fromEntries(Object.keys(patch).map(k => [k, row[k] ?? null])) });
-        const { data, error } = await supabase.from('sales_week_goals').update({ ...patch, updated_at: now }).eq('id', row.id).select().single();
-        if (error) throw new Error(error.message);
-        updatedTodos.push(data);
+        updatedTodos.push((await applyTodo(supabase, { businessId, todoId: row.id, patch, actor: userId, origin: 'plan', batchId: plan.id })).todo);
       }
 
       const chosenCount = v.items.length;

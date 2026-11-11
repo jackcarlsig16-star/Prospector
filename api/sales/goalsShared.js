@@ -5,8 +5,10 @@ import { createClient } from '@supabase/supabase-js';
 // enforced the workspace (viewer reads, member writes). The tables carry
 // member-scoped RLS too; these routes use the service key and re-check every
 // id they're handed against the workspace.
+// goalsDeps.supabase: a suite hands the route handlers its own client (the to-do route tests).
+export const goalsDeps = { supabase: null };
 export function getSupabase() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+  return goalsDeps.supabase || createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
 // dashboard-v3 Stage 1: human_open_rate (Apollo opens × the human share of tracked opens) joins; a goal for it needs

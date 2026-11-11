@@ -93,7 +93,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     const goal = await goalsApi.createWeekGoal(businessId, { week_start: mondayOf(due || today()), kind: 'todo', text: draft.text.trim(), owner_user_id: draft.owner ?? meId ?? null, due_date: due, link_type: LINK_TYPE[rec.type], link_id: rec.id });
     setForm(null); onChanged();
     const who = members.find(m => m.user_id === goal.owner_user_id);
-    onToast({ text: `To-do added${who ? ` for ${who.name.split(' ')[0]}` : ''}`, undo: async () => { await goalsApi.deleteWeekGoal(businessId, goal.id); onChanged(); } });
+    onToast({ text: `To-do added${who ? ` for ${who.name.split(' ')[0]}` : ''}`, undo: async () => { await goalsApi.undoTodoEvent(businessId, goal.event_id); onChanged(); } });
   });
   const addContact = () => act('contact', async () => {
     const rec = await ensureRecord(); if (!rec) return;

@@ -89,7 +89,7 @@ async function selectAll(build) {
     business_id: BUSINESS_ID, week_start: TODO_WEEK, kind: 'todo', text: t.title.trim(), category: t.category || null,
     contacts: t.contacts || [], owner_user_id: /givinggo/i.test(t.title) ? cyrus : jack, sort_order: i,
   } })).filter(x => !haveGoal.has(goalKey(TODO_WEEK, 'todo', x.row.text)));
-  const insertedTodos = await write('sales_week_goals', todoRows.map(x => x.row));
+  const insertedTodos = await write('sales_week_goals', todoRows.map(x => ({ ...x.row, origin: 'import' })));
   const steps = insertedTodos.flatMap((g, i) => (todoRows[i].t.steps || []).map((text, j) => ({ business_id: BUSINESS_ID, goal_id: g.id, text: text.trim(), sort_order: j })));
   await write('sales_week_goal_steps', steps);
   report.todos = { in_seed: seed.todos.length, inserted: insertedTodos.length, steps_inserted: steps.length, already_there: seed.todos.length - insertedTodos.length, week: TODO_WEEK };

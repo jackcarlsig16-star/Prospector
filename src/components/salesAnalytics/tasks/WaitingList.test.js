@@ -24,7 +24,7 @@ test('rows sort by due date, show who · partner · what · due (late in words);
   expect(items[0]).toHaveTextContent('was due Oct 23');
   expect(items[1]).toHaveTextContent('no date');
   fireEvent.click(screen.getByRole('button', { name: 'Got it: Dana - Send the pilot employer list' }));
-  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w2', { status: 'done' }));
+  await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'w2', { status: 'done' }, expect.objectContaining({ id: 'w2' })));
   expect(onChanged).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Nudge Priya' }));
   await waitFor(() => expect(goalsApi.nudgeWaiting).toHaveBeenCalledWith('b1', 'w1'));

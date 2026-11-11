@@ -1,4 +1,5 @@
 import { getSupabase } from './goalsShared.js';
+import { applyTodo, loadTodo, isTodo } from './todoWrite.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { hasPii, cleanText } from './scrubText.js';
 import { laDateString } from './laDate.js';
@@ -300,7 +301,10 @@ export async function undoClient(supabase, { businessId, userId, body = {}, via 
       if (!back.length) continue;
       must(await supabase.from('sales_outreach_events').insert({ contact_id: c.id, business_id: businessId, at: now.toISOString(), source: 'manual', kind: 'status', by_user: userId, meta: { undone: true, prev: { status: c.next_status }, next: c.prev } }));
     }
-    if (u.todo_id) must(await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', u.todo_id).eq('status', 'open'));
+    if (u.todo_id) {
+      const todo = await loadTodo(supabase, businessId, u.todo_id);
+      if (todo && isTodo(todo) && todo.status === 'open') await applyTodo(supabase, { businessId, row: todo, patch: { status: 'dropped' }, actor: userId, origin: 'panel', now });
+    }
     // Ruling 3 (Nov 3): delete only an employer THIS call created, inside the window, with nothing linked to it since
     // (the contacted-undo guard); otherwise put the prior row back and archive it.
     const fresh = u.created && now - Date.parse(row.created_at) <= UNDO_WINDOW_MS;
