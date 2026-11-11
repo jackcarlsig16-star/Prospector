@@ -8,6 +8,7 @@ import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
 import { goalsApi } from './goalsApi';
 import VisitorTrendChart, { summaryLine } from './VisitorTrendChart';
+import EmailFunnel from './EmailFunnel';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote } from './goalsUi';
 
 // signals-v1 Stage 5 (D12) - the daily visitor report from Prospector's own
@@ -257,6 +258,7 @@ export default function VisitorReport({ businessId, canEdit, isAdmin = false, on
         {notice && <span role="status" style={{ fontSize: 13, color: SA.soft }}>{notice}</span>}
       </section>
 
+      <EmailFunnel businessId={businessId} />
       <VisitorTrendChart businessId={businessId} onPickWindow={onPickWindow} onLoaded={setTrend} />
 
       {skipOpen && <SkipList businessId={businessId} canEdit={canEdit} onChanged={load} />}

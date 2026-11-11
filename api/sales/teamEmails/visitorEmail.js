@@ -176,6 +176,7 @@ export const thresholdWords = t => `Hot ≥ ${t.P1} · Warm ${t.P2}–${t.P1 - 1
 // drawn with cell backgrounds (NEW in the P1 hue, RETURNING in P3, the rest empty), every width a %, so a 390 phone keeps
 // all seven. The route's numbers, never a second count. Pure; -> { html, text } or null when there is no window.
 const stripWord = w => `${wdOf(w.days[0])}${w.days.length > 1 ? `–${wdOf(w.days[w.days.length - 1])}` : ''} ${Number(w.days[0].slice(8, 10))}${w.days.length > 1 ? `–${Number(w.days[w.days.length - 1].slice(8, 10))}` : ''}`;
+export const STRIP_CAPTION = 'Companies identified per day · new / returning ·';
 export function trendStrip(trend) {
   const wins = (trend?.windows || []).slice(-STRIP_WINDOWS);
   if (!wins.length) return null;
@@ -185,9 +186,10 @@ export function trendStrip(trend) {
   const bar = w => { const a = pct(w.new), b = Math.min(100 - a, pct(w.returning)); return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;margin-top:4px"><tr>${a ? `<td width="${a}%" style="height:8px;background:${BAND_HUE.P1};font-size:0;line-height:0">&nbsp;</td>` : ''}${b ? `<td width="${b}%" style="height:8px;background:${BAND_HUE.P3};font-size:0;line-height:0">&nbsp;</td>` : ''}${100 - a - b > 0 ? `<td width="${100 - a - b}%" style="height:8px;background:${DARK.surface};font-size:0;line-height:0">&nbsp;</td>` : ''}</tr></table>`; };
   const cell = w => `<td width="${cellW}%" valign="bottom" style="padding:0 3px;vertical-align:bottom"><div style="font:600 11px ${SANS};color:${DARK.text};white-space:nowrap">${esc(stripWord(w))}</div><div style="font:11px ${SANS};color:${DARK.muted};white-space:nowrap">${w.companies} <span style="color:${BAND_HUE.P1}">(${w.new} new)</span></div>${bar(w)}</td>`;
   const html = `<div style="font:600 10.5px ${MONO};letter-spacing:.08em;text-transform:uppercase;color:${DARK.faint};margin-top:14px">Companies identified · last ${wins.length} pull windows</div>
+<div style="font:11.5px ${SANS};color:${DARK.muted};margin-top:3px">${esc(STRIP_CAPTION)} ${dlink(TREND_URL, '30-day graph →', true)}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;table-layout:fixed;margin-top:6px"><tr>${wins.map(cell).join('')}</tr></table>
-<div style="font:11.5px ${SANS};color:${DARK.faint};margin-top:6px">A Monday pull covers Fri–Sun as one window · ${tagPill('NEW', BAND_HUE.P1).replace('margin-left:6px', 'margin-left:0')} first time on the site · ${dlink(TREND_URL, '30-day graph →', true)}</div>`;
-  const text = [`COMPANIES IDENTIFIED · LAST ${wins.length} PULL WINDOWS`, ...wins.map(w => `${w.label} · ${plural(w.companies, 'company', 'companies')} (${w.new} new) · ${w.visits_7d} 7-day visits`), `30-day graph → ${TREND_URL}`].join('\n');
+<div style="font:11.5px ${SANS};color:${DARK.faint};margin-top:6px">A Monday pull covers Fri–Sun as one window · ${tagPill('NEW', BAND_HUE.P1).replace('margin-left:6px', 'margin-left:0')} first time on the site</div>`;
+  const text = [`COMPANIES IDENTIFIED · LAST ${wins.length} PULL WINDOWS`, ...wins.map(w => `${w.label} · ${plural(w.companies, 'company', 'companies')} (${w.new} new) · ${w.visits_7d} 7-day visits`), `${STRIP_CAPTION} 30-day graph → ${TREND_URL}`].join('\n');
   return { html, text, windows: wins.length };
 }
 
@@ -241,12 +243,13 @@ export function funnelTables(funnel, { when = 'yesterday' } = {}) {
   return { html, text, tables: weekRows ? 3 : 2 };
 }
 
-export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, funnel = null, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
+export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, funnel = null, funnelTablesOn = false, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
   const strip = trendStrip(trend);
   const sorted = rankVisitors(companies);
   const n = sorted.length, multi = w.days.length > 1, days = windowDays(w);
   const when = multi ? 'Fri–Sun' : 'yesterday', whose = multi ? "Fri–Sun's" : "yesterday's";
-  const funnelT = funnelTables(funnel, { when });
+  // FIX email-simplify-v1 E2: the tables ship only when the owner's switch is on (HTML and text alike).
+  const funnelT = funnelTablesOn ? funnelTables(funnel, { when }) : null;
   const fresh = sorted.filter(c => c.is_new), returning = n - fresh.length;
   const qualified = sorted.filter(qualifies), q = qualified.length;
   const listNew = fresh.slice(0, TOP_N), listQ = qualified.slice(0, TOP_N);
@@ -288,9 +291,9 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   const textBook = c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)} · ${inProspector(c)} · ${touch(c)}`, `   ${url(c)}`].join('\n');
   const text = [
     eyebrow.toUpperCase(), head, `${subWords} Open the Map → ${MAP_URL}`, '',
+    ...(strip ? [strip.text, ''] : []),
     ...(funnelT ? [funnelT.text, ''] : []),
     `${n} visited · ${fresh.length} new · ${returning} returning · ${q} worth a look`, intentWords, '',
-    ...(strip ? [strip.text, ''] : []),
     `NEW ${when.toUpperCase()}`, newSub, ...listNew.map(textRow), ...(newFoot ? [`${newFoot} ${MAP_URL}`] : []), '',
     `WORTH A LOOK ${when.toUpperCase()}`, qSub, ...listQ.map(textRow), ...(qFoot ? [`${qFoot} ${MAP_URL}`] : []),
     ...(overall ? ['', `TOP ${TOP_N} RIGHT NOW — WHOLE BOOK`, bookSub, ...(book.length ? book.map(textBook) : ['No ranked companies yet'])] : []),
@@ -317,9 +320,9 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   ];
   const HEADS = ['Company · why', 'Intent', 'In Prospector · owner', 'Last touch'], WIDTHS = [42, 19, 22, 17];
   const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+${strip ? `<tr><td style="padding:0">${strip.html}</td></tr>` : ''}
 ${funnelT ? `<tr><td style="padding:4px 0 0">${funnelT.html}</td></tr>` : ''}
 <tr><td style="padding:18px 0 0">${tileGrid(tiles)}</td></tr>
-${strip ? `<tr><td style="padding:0">${strip.html}</td></tr>` : ''}
 <tr><td style="padding:12px 0 0;font:12.5px ${SANS};color:${DARK.muted}">${n ? `Intent of ${esc(whose)} ${n}: ${BANDS.map(b => outlinePill(`${BAND_WORD[b]} ${bands[b]}`, BAND_HUE[b])).join(' ')} &nbsp;·&nbsp; ${esc(inProspectorWords)} &nbsp;·&nbsp; ${notIn} not yet` : esc(intentWords)}</td></tr>
 ${section(`${h2(`New ${when}`, 'NEW')}${sub(newSub)}${listNew.length ? dataTable(HEADS, WIDTHS, listNew.map(row)) : ''}${newFoot ? foot(newFoot) : ''}`)}
 ${section(`${h2(`Worth a look ${when}`, 'RETURNING')}${sub(qSub)}${listQ.length ? dataTable(HEADS, WIDTHS, listQ.map(row)) : ''}${qFoot ? foot(qFoot) : ''}`)}

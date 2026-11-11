@@ -1,11 +1,12 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import VisitorReport from './VisitorReport';
 import { goalsApi } from './goalsApi';
+import { FUNNEL } from './funnelFixture';
 
 jest.mock('./goalsApi', () => ({ goalsApi: {
   visitReport: jest.fn(), visitStatus: jest.fn(), visitPull: jest.fn(), visitSkip: jest.fn(), addVisitSkip: jest.fn(), removeVisitSkip: jest.fn(),
   visitExportUrl: id => `/api/sales/${id}/goals/visits/export`, uploadVisitedPeople: jest.fn(),
-  visitorsExportUrl: (id, p) => `/api/sales/${id}/goals/visits/export-visitors?window=${p.window}&format=csv`, visitorsExport: jest.fn(), visitorsTrend: jest.fn(),
+  visitorsExportUrl: (id, p) => `/api/sales/${id}/goals/visits/export-visitors?window=${p.window}&format=csv`, visitorsExport: jest.fn(), visitorsTrend: jest.fn(), funnel: jest.fn(),
 } }));
 // visitor-trend-v1 T2 / T6: the 30-day trend the chart draws and the PDF's summary line reads.
 const TREND = { days: 30, today: '2026-11-06', since: '2026-10-21', windows: [{ start: '2026-11-05', end: '2026-11-06', days: ['2026-11-05'], label: 'Thu Nov 5', merged: 1, companies: 25, new: 9, returning: 16, visits_7d: 68, company_keys: [], new_keys: [], record_keys: [] }], summary: { windows: 1, companies: 25, company_windows: 25, new: 9, returning: 16, visits_7d: 68, busiest: { label: 'Thu Nov 5', start: '2026-11-05', companies: 25 } } };
@@ -30,6 +31,7 @@ beforeEach(() => {
   goalsApi.visitStatus.mockResolvedValue({ last_run: { la_date: '2026-10-20', status: 'ok' }, paused: null, spent: 0, cap: 500, today: { P1: 1, P2: 0, P3: 1, P4: 1 } });
   goalsApi.visitSkip.mockResolvedValue({ skip: [{ id: 's1', company_key: 'vendor', reason: 'Seed (D10)' }] });
   goalsApi.visitorsTrend.mockResolvedValue(TREND);
+  goalsApi.funnel.mockResolvedValue({ ready: false });
 });
 afterEach(() => jest.clearAllMocks());
 
@@ -182,4 +184,15 @@ test('Export visitors: a Member has no button; an admin picks the window, CSV fe
   expect(within(panel).getByRole('status')).toHaveTextContent('2 companies · headcount known for 1 of 2 companies');
   expect(print.textContent).not.toMatch(/@/);
   click.mockRestore();
+});
+
+// email-funnel-v1 F5: the funnel section (three tables + the rate chart) sits directly above the 30-day trend chart.
+test('F5: the email funnel section sits above the trend chart, from GET goals/funnel', async () => {
+  goalsApi.funnel.mockResolvedValue(FUNNEL);
+  render(<VisitorReport businessId="b1" canEdit isAdmin onPickWindow={() => {}} />);
+  const funnel = await screen.findByRole('region', { name: 'Email to site funnel' });
+  const trend = await screen.findByRole('region', { name: 'Visitors, last 30 days' });
+  expect(funnel.compareDocumentPosition(trend) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(funnel.querySelectorAll('[data-funnel-table]')).toHaveLength(3);
+  expect(funnel.querySelector('[data-rate-chart]')).not.toBeNull();
 });

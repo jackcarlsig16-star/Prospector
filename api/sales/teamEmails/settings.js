@@ -41,6 +41,8 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
     visitor_on: settings.visitor_on, client_on: settings.client_on, ready, banner, is_owner: isOwner,
     // visitor-trend-v1 T4 / R4: the weekend switch (default OFF) and the measured cost of a pull run this LA month - the
     // Settings copy quotes these numbers, never a constant.
+    // FIX email-simplify-v1 E2: the funnel tables switch (default OFF); absent while its migration has not run.
+    ...(settings.funnel_tables_pending ? {} : { funnel_tables: !!settings.funnel_tables }),
     weekend_on: !!settings.weekend_on, pull_runs_month: await pullRunsThisMonth(supabase, businessId, now),
     domains, max: MAX_RECIPIENTS, counts: await recipientCounts(supabase, businessId, settings, grant), total: live.length,
     sends: sends.map(s => ({ id: s.id, at: s.created_at, kind: s.kind, test: s.test, recipients: s.recipients, status: s.status, error: s.error })),
@@ -60,9 +62,10 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
 export async function updateTeamEmails(supabase, { businessId, userId, body = {}, isOwner, grantOf = getGrant }) {
   if (!isOwner) return ownerOnly;
   const keys = Object.keys(body);
-  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on'].includes(k));
-  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on and / or weekend_on' });
-  for (const k of ['visitor_on', 'client_on', 'weekend_on']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
+  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on', 'funnel_tables'].includes(k));
+  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on, weekend_on and / or funnel_tables' });
+  if ('funnel_tables' in body && (await loadSettings(supabase, businessId))?.funnel_tables_pending) return reply(503, { error: 'Run supabase/migrations/20261111_email_simplify_v1.sql first (funnel_tables is missing)', migration_pending: true });
+  for (const k of ['visitor_on', 'client_on', 'weekend_on', 'funnel_tables']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
   if ('sender_user_id' in body) {
     const id = body.sender_user_id;
     if (!UUID.test(id || '')) return reply(400, { error: 'sender_user_id must be a member' });
@@ -182,7 +185,7 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
   if (!isOwner) return ownerOnly;
   if (body.kind === 'visitor') {
     const r = await visitorEmailJob(supabase, businessId, { pull: null, deps, test: true });
-    return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, new_rows: r.new_rows ?? 0 });
+    return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, new_rows: r.new_rows ?? 0, strip: r.strip ?? 0, funnel: r.funnel ?? 0, subject: r.subject ?? null });
   }
   if (body.kind === 'client') {
     if (!UUID.test(body.opportunity_id || '')) return reply(400, { error: 'opportunity_id must be a client' });

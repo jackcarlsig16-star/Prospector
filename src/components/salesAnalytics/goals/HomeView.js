@@ -5,6 +5,7 @@ import { goalsApi } from './goalsApi';
 import { fetchInsights } from '../salesApi';
 import { RULE_IDS, actionFor } from '../InsightsPanel';
 import { HOME_TILES, PulseGrid, md, agoOf } from './PulseTiles';
+import { EMAIL_SITE_TILE, emailSiteMetric } from './funnelModel';
 import { cardStyle, labelStyle, numStyle, ErrorNote, Chip, fmt } from './goalsUi';
 import ExplorerView from './ExplorerView';
 import HomeCards from './HomeCards';
@@ -67,6 +68,7 @@ function Insights({ data, error, syncedAgo, onOpenEmail }) {
 export default function HomeView({ businessId, period, owner, canEdit, lookup, onOpenEmail, onOpenMap, onOpenActions }) {
   const [pulse, setPulse] = useState(null);
   const [error, setError] = useState('');
+  const [emailSite, setEmailSite] = useState(null);
   const [insights, setInsights] = useState(null);
   const [insightsError, setInsightsError] = useState('');
   useEffect(() => {
@@ -75,6 +77,13 @@ export default function HomeView({ businessId, period, owner, canEdit, lookup, o
     goalsApi.pulse(businessId, { period, owner }).then(d => { if (live) setPulse(d); }).catch(e => { if (live) setError(e.message); });
     return () => { live = false; };
   }, [businessId, period, owner]);
+  // email-funnel-v1 F6: the one tile from the funnel route (a fixed 30 days, whatever the period switch says).
+  useEffect(() => {
+    let live = true;
+    setEmailSite(null);
+    goalsApi.funnel(businessId, { windows: '30d', days: 30 }).then(f => { if (live) setEmailSite(emailSiteMetric(f)); }).catch(() => {});
+    return () => { live = false; };
+  }, [businessId]);
   useEffect(() => {
     let live = true;
     fetchInsights(businessId).then(d => { if (live) setInsights(d); }).catch(e => { if (live) setInsightsError(e.message); });
@@ -92,7 +101,7 @@ export default function HomeView({ businessId, period, owner, canEdit, lookup, o
       </div>
       {error && <ErrorNote message={error} />}
       {pulse && (
-        <PulseGrid tiles={HOME_TILES} metrics={pulse.metrics} period={period} />
+        <PulseGrid tiles={emailSite ? [...HOME_TILES, EMAIL_SITE_TILE] : HOME_TILES} metrics={emailSite ? { ...pulse.metrics, email_site: emailSite } : pulse.metrics} period={period} />
       )}
       <Insights data={insights} error={insightsError} syncedAgo={synced} onOpenEmail={onOpenEmail} />
       <ExplorerView businessId={businessId} canEdit={canEdit} context="home" />

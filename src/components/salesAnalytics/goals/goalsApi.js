@@ -125,6 +125,7 @@ export const goalsApi = {
   // signals-v1 Stage 5 - the Website visitors report, Brad's .xlsx (fetched as a blob) and the skip list.
   visitReport: id => call(id, '/visits/report'),
   visitorsTrend: (id, { days } = {}) => call(id, `/visitors/trend?${q({ days })}`),
+  funnel: (id, { windows, days } = {}) => call(id, `/funnel?${q({ windows, days })}`),
   visitExportUrl: id => `/api/sales/${id}/goals/visits/export`,
   // FIX visitor-email-period-v1 P4 - the fundraising visitors export: the CSV url (fetched as a blob) and the JSON the print area renders.
   visitorsExportUrl: (id, params = {}) => `/api/sales/${id}/goals/visits/export-visitors?${q({ ...params, format: 'csv' })}`,

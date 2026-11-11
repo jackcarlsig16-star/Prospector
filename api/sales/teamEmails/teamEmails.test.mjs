@@ -958,12 +958,15 @@ test('T3: the 7-window strip - the LAST 7 of the trend route\'s windows as one t
   assert.ok(TREND_URL.endsWith('&channel=website_visit&visitors=1'));
   assert.ok(!/<img|<svg|<style|<script/i.test(strip.html));
   assert.match(strip.text, /^COMPANIES IDENTIFIED · LAST 7 PULL WINDOWS\nDay 22 · 20 companies \(10 new\) · 40 7-day visits\n/);
-  assert.match(strip.text, /Day 28 · 39 companies \(19 new\) · 79 7-day visits\n30-day graph → https:/);
+  assert.match(strip.text, /Day 28 · 39 companies \(19 new\) · 79 7-day visits\nCompanies identified per day · new \/ returning · 30-day graph → https:/);
+  assert.ok(strip.html.includes('Companies identified per day · new / returning ·') && (strip.html.match(/30-day graph →/g) || []).length === 1, 'E1: the caption, the link once');
   assert.equal(trendStrip(null), null);
   assert.equal(trendStrip({ windows: [] }), null);
   const m = buildVisitorEmail([], { date: '2026-11-06', trend: { windows } });
   assert.equal(m.strip, 7);
-  assert.ok(m.html.indexOf('Companies identified · last 7 pull windows') > m.html.indexOf('worth a look') && m.html.indexOf('Companies identified · last 7 pull windows') < m.html.indexOf('New yesterday'), 'under the tiles, above the lists');
+  // FIX email-simplify-v1 E1: the strip is the first block of the body - under the subhead, above the stat tiles.
+  assert.ok(m.html.indexOf('Open the Map →') < m.html.indexOf('Companies identified · last 7 pull windows') && m.html.indexOf('Companies identified · last 7 pull windows') < m.html.indexOf('companies on the site yesterday') && m.html.indexOf('companies on the site yesterday') < m.html.indexOf('New yesterday'), 'subhead, strip, tiles, lists');
+  assert.ok(m.text.indexOf('COMPANIES IDENTIFIED') < m.text.indexOf('0 visited · 0 new'), 'text: the strip before the tile line');
   assert.match(m.text, /COMPANIES IDENTIFIED · LAST 7 PULL WINDOWS/);
   const none = buildVisitorEmail([], { date: '2026-11-06' });
   assert.equal(none.strip, 0);
@@ -1010,22 +1013,59 @@ test('email-funnel-v1 F4: the three tables from the funnel route body - steps wi
   assert.match(t.text, /^EMAIL FUNNEL · YESTERDAY · LAST 7 D · LAST 30 D \(opens, clicks, replies, meetings of emails sent that day\/week, so far\)\ndelivered {11}3 {21}3 {21}5/);
   assert.match(t.text, /\nEMAIL → SITE\nCompany rate {8}33\.3 % \(1 of 3\) {7}33\.3 % \(1 of 3\) {7}33\.3 % \(1 of 3\)\nPerson rate/);
   assert.match(t.text, /\nTHIS WEEK VS LAST WEEK · this · last · change\ndelivered {11}3 {21}2 {21}\+1\n/);
-  const m = buildVisitorEmail([], { date: '2026-11-04', funnel: body });
+  // FIX email-simplify-v1 E2: OFF by default - no table in the HTML or the text, whatever the route says.
+  const off = buildVisitorEmail([], { date: '2026-11-04', funnel: body });
+  assert.equal(off.funnel, 0);
+  assert.ok(!off.html.includes('>Email funnel<') && !off.html.includes('>Email → site<') && !off.html.includes('This week vs last week') && !/EMAIL FUNNEL|EMAIL → SITE|THIS WEEK VS LAST WEEK/.test(off.text));
+  const WINS = [{ start: '2026-11-03', end: '2026-11-04', days: ['2026-11-03'], label: 'Tue Nov 3', companies: 4, new: 2, returning: 2, visits_7d: 9 }];
+  const m = buildVisitorEmail([], { date: '2026-11-04', funnel: body, funnelTablesOn: true, trend: { windows: WINS } });
   assert.equal(m.funnel, 3);
-  assert.ok(m.html.indexOf('>Email funnel<') < m.html.indexOf('companies on the site yesterday'), 'above the stat tiles');
-  assert.ok(m.text.indexOf('EMAIL FUNNEL') < m.text.indexOf('0 visited · 0 new'));
+  assert.ok(m.html.indexOf('Companies identified · last 1 pull windows') < m.html.indexOf('>Email funnel<') && m.html.indexOf('>Email funnel<') < m.html.indexOf('companies on the site yesterday'), 'E3: under the strip, above the stat tiles');
+  assert.ok(m.text.indexOf('COMPANIES IDENTIFIED') < m.text.indexOf('EMAIL FUNNEL') && m.text.indexOf('EMAIL FUNNEL') < m.text.indexOf('0 visited · 0 new'));
+  assert.ok(!/@/.test(m.text) && !/@/.test(off.text));
   assert.equal(funnelTables(null), null);
   const notReady = (await loadFunnel(sb(seedFunnel(false)), B, { windows: ['7d', '30d', 'this_week', 'last_week'], custom: { from: '2026-11-03', to: '2026-11-03' }, now: NOW4 })).body;
   assert.equal(notReady.ready, false);
   assert.equal(funnelTables(notReady), null);
-  assert.equal(buildVisitorEmail([], { date: '2026-11-04', funnel: notReady }).funnel, 0);
+  assert.equal(buildVisitorEmail([], { date: '2026-11-04', funnel: notReady, funnelTablesOn: true }).funnel, 0);
   // The job: the route body reaches the builder; the test send's text part opens with the tables.
   const g = graph();
-  const r = await visitorEmailJob(sb(seedFunnel()), B, { now: NOW4, pull: null, deps: g.deps, test: true });
+  const on = sb(seedFunnel());
+  on.db.sales_team_email_settings[0].funnel_tables = true;
+  const r = await visitorEmailJob(on, B, { now: NOW4, pull: null, deps: g.deps, test: true });
   assert.deepEqual([r.status, r.funnel], ['sent', 3]);
   const text = Buffer.from(g.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
   assert.match(text, /EMAIL FUNNEL · YESTERDAY · LAST 7 D · LAST 30 D/);
   assert.match(text, /Company rate {8}33\.3 % \(1 of 3\)/);
-  const none = await visitorEmailJob(sb(seedFunnel(false)), B, { now: NOW4, pull: null, deps: graph().deps, test: true });
+  const notReadyOn = sb(seedFunnel(false));
+  notReadyOn.db.sales_team_email_settings[0].funnel_tables = true;
+  const none = await visitorEmailJob(notReadyOn, B, { now: NOW4, pull: null, deps: graph().deps, test: true });
   assert.equal(none.funnel, 0);
+  // The switch off (the default): the job never reads the funnel and the text part carries no table.
+  const g2 = graph();
+  const offJob = await visitorEmailJob(sb(seedFunnel()), B, { now: NOW4, pull: null, deps: g2.deps, test: true });
+  assert.deepEqual([offJob.status, offJob.funnel], ['sent', 0]);
+  assert.ok(!/EMAIL FUNNEL|EMAIL → SITE/.test(Buffer.from(g2.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8')));
+});
+
+test('FIX email-simplify-v1 E2: funnel_tables - off in the state by default, the owner alone flips it, a non-boolean is refused, the switch sends nothing; the test route reply carries strip, funnel and the subject, no address', async () => {
+  const s = sb({ web_visits: [{ id: '00000000-0000-4000-8000-00000000e021', business_id: B, company_key: 'k1', company_name: 'Co 1', visits_7d: 3, unique_visitors_7d: 1, top_paths: [], intent_score: 20, priority: 'P3', matched_type: null, matched_id: null, pulled_on: '2026-11-03', seen_from: '2026-11-02', seen_to: '2026-11-03' }] });
+  const g = graph();
+  const own = { businessId: B, userId: U.owner, isOwner: true, grantOf: async () => SENDS };
+  assert.equal((await teamEmailState(s, B, U.owner, { isOwner: true, grantOf: own.grantOf })).body.funnel_tables, false);
+  assert.equal((await updateTeamEmails(s, { businessId: B, userId: U.m1, body: { funnel_tables: true }, isOwner: false })).status, 403);
+  assert.equal((await updateTeamEmails(s, { ...own, body: { funnel_tables: 'yes' } })).status, 400);
+  const r = await updateTeamEmails(s, { ...own, body: { funnel_tables: true } });
+  assert.deepEqual([r.status, r.body.funnel_tables, g.calls.length, s.db.sales_team_email_sends.length], [200, true, 0, 0]);
+  assert.equal((await updateTeamEmails(s, { ...own, body: { funnel_tables: false } })).body.funnel_tables, false);
+  // Before the migration: the settings load without the column, the state has no switch, the PATCH says which file to run.
+  const pending = { ...s, from: t => (t === 'sales_team_email_settings' ? { select: cols => (/funnel_tables/.test(cols) ? { eq: () => ({ maybeSingle: async () => ({ data: null, error: { code: '42703', message: 'column sales_team_email_settings.funnel_tables does not exist' } }) }) } : s.from(t).select(cols)) } : s.from(t)) };
+  const { loadSettings } = await import('./send.js');
+  assert.equal((await loadSettings(pending, B)).funnel_tables_pending, true);
+  assert.ok(!('funnel_tables' in (await teamEmailState(pending, B, U.owner, { isOwner: true, grantOf: own.grantOf })).body));
+  const p = await updateTeamEmails(pending, { ...own, body: { funnel_tables: true } });
+  assert.deepEqual([p.status, p.body.migration_pending], [503, true]);
+  const t = await sendTest(s, { businessId: B, body: { kind: 'visitor' }, isOwner: true, deps: { ...g.deps, now: () => NOW } });
+  assert.deepEqual([t.status, t.body.status, t.body.strip, t.body.funnel, typeof t.body.subject], [200, 'sent', 1, 0, 'string']);
+  assert.ok(!/@/.test(JSON.stringify(t.body)));
 });

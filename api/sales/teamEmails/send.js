@@ -19,8 +19,16 @@ const firstName = p => String(p?.display_name || '').trim().split(/\s+/)[0] || n
 export const domainOf = a => { const s = lower(a); const i = s.lastIndexOf('@'); return i > 0 ? s.slice(i + 1) : null; };
 export const EMAIL_RE = /^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 
+// FIX email-simplify-v1 E2: funnel_tables arrives with supabase/migrations/20261111_email_simplify_v1.sql; until that
+// file has run the column is missing, the settings read without it and say so (funnel_tables_pending), and the email
+// builds with the tables off - the default either way.
+const SETTINGS_COLS = 'business_id, sender_user_id, visitor_on, client_on, client_alert_since, allowed_domains, weekend_on, updated_at';
+const missingColumn = e => ['42703', 'PGRST204'].includes(e?.code) || /funnel_tables/.test(String(e?.message || ''));
 export async function loadSettings(supabase, businessId) {
-  return must(await supabase.from('sales_team_email_settings').select('business_id, sender_user_id, visitor_on, client_on, client_alert_since, allowed_domains, weekend_on, updated_at').eq('business_id', businessId).maybeSingle());
+  const r = await supabase.from('sales_team_email_settings').select(`${SETTINGS_COLS}, funnel_tables`).eq('business_id', businessId).maybeSingle();
+  if (!r.error || !missingColumn(r.error)) return must(r);
+  const old = must(await supabase.from('sales_team_email_settings').select(SETTINGS_COLS).eq('business_id', businessId).maybeSingle());
+  return old && { ...old, funnel_tables_pending: true };
 }
 
 // Every member with a user id: { userId, role, email (profile first, else the invite), firstName }.

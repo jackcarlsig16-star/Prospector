@@ -124,6 +124,22 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
       ) : <span style={small}>{data.weekend_on ? 'On' : 'Off'}</span>}
     </div>
   );
+  // FIX email-simplify-v1 E2: the funnel tables in the daily email, off by default; the switch changes the next email
+  // only - the server fires no send on it. Absent until the migration has run (the state then has no funnel_tables).
+  const setFunnelTables = on => act('funnel', () => goalsApi.updateTeamEmails(businessId, { funnel_tables: on }), () => flash(on ? 'Funnel tables on - from the next visitor email; nothing was sent now' : 'Funnel tables off - the next visitor email opens with the graph strip'));
+  const funnelRow = 'funnel_tables' in data && (
+    <div data-funnel-row style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: `1px solid ${SA.border}` }}>
+      <div style={{ flex: '1 1 260px', display: 'grid', gap: 2 }}>
+        <b style={{ fontSize: 14, color: SA.text, fontWeight: 600 }}>Show the email funnel tables (delivered → visits → replies)</b>
+        <span data-funnel-copy style={small}>on when the delivered history is complete</span>
+      </div>
+      {isOwner ? (
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: SA.text }}>
+          <input type="checkbox" aria-label="Show the email funnel tables" checked={!!data.funnel_tables} disabled={!!busy} onChange={e => setFunnelTables(e.target.checked)} /> On
+        </label>
+      ) : <span style={small}>{data.funnel_tables ? 'On' : 'Off'}</span>}
+    </div>
+  );
   const weekendDialog = weekendAsk && (
     <div role="dialog" aria-label="Weekend pulls and emails" data-weekend-dialog style={{ display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.border}`, background: SA.inset }}>
       <span style={{ fontSize: 14, color: SA.text }}>
@@ -222,7 +238,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
             : `Scheduler: not running in this server process (Render runs it; its startup log line reads "HomeLover scheduler on: ${data.scheduler.line}")`}
         </span>
       )}
-      <div>{['visitor', 'client'].map(emailRow)}{weekendRow}</div>
+      <div>{['visitor', 'client'].map(emailRow)}{weekendRow}{funnelRow}</div>
       {weekendDialog}
       {sendNowDialog}
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}

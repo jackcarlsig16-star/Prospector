@@ -63,7 +63,8 @@ try {
     const before = await sendsCount();
     const r = await api(PROD, '/goals/team-emails/test', { method: 'POST', body: JSON.stringify({ kind: 'visitor' }) });
     const after = await sendsCount();
-    ok(`PROD test send: HTTP ${r.status} · status ${r.body?.status} · recipients ${r.body?.recipients} · rows ${r.body?.rows} · funnel tables ${r.body?.funnel} · strip ${r.body?.strip} · sales_team_email_sends ${before} -> ${after}`, r.status === 200 && r.body?.status === 'sent' && after === before + 1 && r.body?.funnel === 3);
+    ok(`PROD test send: HTTP ${r.status} · status ${r.body?.status} · recipients ${r.body?.recipients} · rows ${r.body?.rows} · funnel tables ${r.body?.funnel} · strip ${r.body?.strip} · sales_team_email_sends ${before} -> ${after}`, r.status === 200 && r.body?.status === 'sent' && after === before + 1 && r.body?.strip >= 1 && [0, 3].includes(r.body?.funnel) && typeof r.body?.subject === 'string');
+    log(`   subject "${r.body?.subject}" · strip ${r.body?.strip} windows · funnel tables ${r.body?.funnel} (0 = the owner's switch is off, FIX email-simplify-v1 E2)`);
     ok('the reply carries no address', !ADDRESS.test(JSON.stringify(r.body || {})));
     throw Object.assign(new Error('done'), { done: true });
   }
@@ -113,7 +114,7 @@ try {
   const window = dayWindowFor(today, { weekendOn: !!settings?.weekend_on });
   const members = await loadMembers(svc, HL);
   const [companies, overall, cumulative, trend, funnel] = await Promise.all([loadVisitorData(svc, HL, { window, members }), loadRankedBook(svc, HL, { now: Date.now(), members }), loadCumulative(svc, HL), visitorsTrend(svc, HL, {}).then(r => r.body), loadFunnel(svc, HL, { windows: FUNNEL_WINDOWS, custom: { from: window.days[0], to: window.days[window.days.length - 1] } }).then(r => r.body)]);
-  const mail = buildVisitorEmail(companies, { date: today, window, overall, cumulative, trend, funnel });
+  const mail = buildVisitorEmail(companies, { date: today, window, overall, cumulative, trend, funnel, funnelTablesOn: true }); // the tables as built (F4); the switch ships off (FIX email-simplify-v1 E2)
   const r30 = W['30d'];
   const rateText = `${pct(r30.company_rate.rate)}</b></span> <span style="color:#6B7480">· ${r30.company_rate.n} of ${r30.company_rate.d} companies`;
   ok(`builder = route: ${mail.funnel} tables · the 30-day company rate "${pct(r30.company_rate.rate)} · ${r30.company_rate.n} of ${r30.company_rate.d} companies" is in the html and the text`, mail.funnel === 3 && mail.html.includes(rateText) && mail.text.includes(`${pct(r30.company_rate.rate)} (${r30.company_rate.n} of ${r30.company_rate.d})`));

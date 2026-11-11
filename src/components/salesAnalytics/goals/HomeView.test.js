@@ -3,8 +3,9 @@ import HomeView, { topInsights, TILES } from './HomeView';
 import { tileValue, deltaOf } from './PulseTiles';
 import { goalsApi } from './goalsApi';
 import { fetchInsights } from '../salesApi';
+import { FUNNEL } from './funnelFixture';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { pulse: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { pulse: jest.fn(), funnel: jest.fn() } }));
 jest.mock('../salesApi', () => ({ fetchInsights: jest.fn() }));
 // The Explorer has its own suite (ExplorerView.test.js); here it is a stand-in that reports what Home hands it.
 jest.mock('./ExplorerView', () => ({ __esModule: true, default: ({ canEdit, context }) => <section aria-label="Explorer" data-explorer={context} data-can-edit={String(!!canEdit)} /> }));
@@ -40,6 +41,7 @@ const INS = {
 };
 beforeEach(() => {
   goalsApi.pulse.mockResolvedValue(PULSE);
+  goalsApi.funnel.mockResolvedValue({ ready: false });
   fetchInsights.mockResolvedValue(INS);
 });
 afterEach(() => jest.clearAllMocks());
@@ -120,4 +122,23 @@ test('a period change re-reads the pulse with that period and the person; "Nothi
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.getByRole('region', { name: 'Explorer' })).toHaveAttribute('data-can-edit', 'false');
   expect(screen.getByRole('region', { name: 'Small cards' })).toHaveAttribute('data-home-cards-owner', 'u-jack');
+});
+
+// email-funnel-v1 F6: ONE more tile, from the funnel route - the 30-day company rate with its fraction; absent until
+// the route says ready; the seven pulse tiles are untouched.
+test('F6 tile = route: "Email → site (30 d)" shows the 30-day company rate and "n of d companies" from GET goals/funnel; absent while not ready', async () => {
+  goalsApi.funnel.mockResolvedValue(FUNNEL);
+  const { unmount } = render(<HomeView businessId="b1" period="this_week" owner={null} canEdit lookup={{}} />);
+  const tile = await waitFor(() => { const t = document.querySelector('[data-pulse-tile="email_site"]'); expect(t).not.toBeNull(); return t; });
+  expect(goalsApi.funnel).toHaveBeenCalledWith('b1', { windows: '30d', days: 30 });
+  const r = FUNNEL.windows['30d'].company_rate;
+  expect(tile.textContent).toContain('Email → site (30 d)');
+  expect(tile.querySelector('[data-value]').textContent).toBe(`${(r.rate * 100).toFixed(1)}%`);
+  expect(tile.querySelector('[data-delta]').textContent).toBe(`${r.n} of ${r.d} companies`);
+  expect(document.querySelectorAll('[data-pulse-tile]')).toHaveLength(8);
+  unmount();
+  goalsApi.funnel.mockResolvedValue({ ...FUNNEL, ready: false });
+  render(<HomeView businessId="b1" period="this_week" owner={null} canEdit lookup={{}} />);
+  await waitFor(() => expect(document.querySelectorAll('[data-pulse-tile]')).toHaveLength(7));
+  expect(document.querySelector('[data-pulse-tile="email_site"]')).toBeNull();
 });

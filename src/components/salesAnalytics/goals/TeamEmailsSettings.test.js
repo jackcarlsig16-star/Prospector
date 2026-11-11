@@ -174,3 +174,32 @@ test('T4: weekend switch - measured copy, two confirms to turn on, PATCH weekend
   expect(screen.queryByLabelText('Weekend pulls and emails')).toBeNull();
   expect(screen.getByText('Off')).toBeInTheDocument();
 });
+
+// FIX email-simplify-v1 E2: the funnel tables switch - off by default, one click each way for the owner (PATCH
+// funnel_tables only, nothing sent), read-only for a member, absent while the state has no funnel_tables (migration).
+test('E2: funnel tables switch - the label and note, PATCH funnel_tables only, read-only for a member, absent before the migration', async () => {
+  goalsApi.teamEmails.mockResolvedValue({ ...owner, funnel_tables: false });
+  goalsApi.updateTeamEmails.mockResolvedValue({});
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-o" />);
+  expect(await screen.findByText('Show the email funnel tables (delivered → visits → replies)')).toBeInTheDocument();
+  expect(screen.getByText('on when the delivered history is complete')).toBeInTheDocument();
+  const box = screen.getByLabelText('Show the email funnel tables');
+  expect(box.checked).toBe(false);
+  fireEvent.click(box);
+  await waitFor(() => expect(goalsApi.updateTeamEmails).toHaveBeenCalledWith('b1', { funnel_tables: true }));
+  expect(goalsApi.updateTeamEmails).toHaveBeenCalledTimes(1);
+  expect(goalsApi.teamEmailTest).not.toHaveBeenCalled();
+
+  document.body.innerHTML = '';
+  goalsApi.teamEmails.mockResolvedValue({ ...base, funnel_tables: true });
+  render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
+  expect(await screen.findByText('Show the email funnel tables (delivered → visits → replies)')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Show the email funnel tables')).toBeNull();
+  expect(document.querySelector('[data-funnel-row]').textContent).toMatch(/On$/);
+
+  document.body.innerHTML = '';
+  goalsApi.teamEmails.mockResolvedValue({ ...owner });
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-o" />);
+  await screen.findByText('Team emails');
+  expect(document.querySelector('[data-funnel-row]')).toBeNull();
+});

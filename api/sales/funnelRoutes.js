@@ -1,7 +1,7 @@
 import { getSupabase, addDays, isDate } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { funnelContext, funnelWindow, funnelDay, trend30, windowRange, WINDOW_KEYS, FUNNEL_SINCE, VISITS_SINCE, WORDING, STEPS } from './funnelMath.js';
+import { funnelContext, funnelWindow, funnelDay, trend30, windowRange, WINDOW_KEYS, FUNNEL_SINCE, VISITS_SINCE, WORDING, STEPS, STEP_WORD } from './funnelMath.js';
 
 // email-funnel-v1 Stage 1 - GET goals/funnel?windows=yesterday,7d,30d[&window=<from>_<to>][&days=30]: the funnel per
 // window from the raw tables through funnelMath (the one function) plus the daily series from sales_funnel_days; and
@@ -55,7 +55,7 @@ export async function loadFunnel(supabase, businessId, { windows = ['yesterday',
   const deliveredSince = rows.delivered.map(d => d.delivered_day).sort()[0] || null;
   return reply(200, {
     today, since: FUNNEL_SINCE, visits_since: VISITS_SINCE, delivered_since: deliveredSince, ready: !!deliveredSince && deliveredSince <= FUNNEL_SINCE,
-    steps: STEPS, wording: WORDING, windows: out, series: seriesRows, trend_30d: trend30(seriesRows, today),
+    steps: STEPS, step_words: STEP_WORD, wording: WORDING, windows: out, series: seriesRows, trend_30d: trend30(seriesRows, today),
   });
 }
 

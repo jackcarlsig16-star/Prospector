@@ -30,6 +30,7 @@ export function tileValue(key, m) {
 
 // Direction = sign of the route's delta against what "better" means for the metric (good / bad / flat / none).
 export function deltaOf(key, m, period) {
+  if (key === 'email_site') return { dir: m.trend, text: `${m.fraction}${m.vs_prior ? ' · vs prior 30 d' : ''}` };
   if (key === 'meetings' && m.upcoming != null) return { dir: 'flat', text: `${m.upcoming} on the calendar${m.next_at ? ` · next ${md(m.next_at)}` : ''}` };
   if (key === 'first_touched' && m.goal != null && m.value != null) return { dir: m.value >= m.goal ? 'good' : 'flat', text: `${Math.round((m.value / m.goal) * 100)}% of goal · ${m.weeks_in} wk${m.weeks_in === 1 ? '' : 's'} in${m.carried ? ' · goal carried' : ''}` };
   if (m.delta == null) return { dir: 'none', text: m.value == null ? 'no pull in this window' : 'no previous period' };

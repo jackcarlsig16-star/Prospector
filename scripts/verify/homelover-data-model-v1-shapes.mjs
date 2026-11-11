@@ -1,0 +1,51 @@
+// AUDIT homelover-data-model-v1 - READ-ONLY value shapes (group counts) for the tables Parts A/C/D count. Declared:
+// ~30 selects of narrow columns over tables <= 13k rows, ~3 MB, < 60 s; cap 120 s. Prints counts only - no names.
+import { svc, HL, cap, footer } from './homelover-data-model-v1-lib.mjs';
+const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
+cap(120);
+const all = (t, cols, order, build = q => q) => selectAllPages(() => build(svc.from(t).select(cols).eq('business_id', HL)).order(order));
+const grp = (rows, f) => { const m = {}; for (const r of rows) { const k = typeof f === 'function' ? f(r) : f.map(c => r[c] ?? '∅').join(' / '); m[k] = (m[k] || 0) + 1; } return Object.entries(m).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}=${v}`).join(' · '); };
+const show = async (t, cols, order, groups) => { const rows = await all(t, cols, order); console.log(`\n${t} (${rows.length})`); for (const g of groups) console.log(`  [${typeof g === 'function' ? g.label || 'fn' : g.join(',')}] ${grp(rows, g)}`); return rows; };
+await show('sales_week_goals', 'id, kind, status, category, link_type, metric_key, source_note_id, plan_id, prospect_contact_id, land_goal_id, carried_from_id, waiting_on', 'id', [['kind'], ['kind', 'status'], ['kind', 'link_type'], ['kind', 'category']]);
+await show('sales_goals', 'id, goal_type, status, pipeline_status, category, tier, partner_role, channel, source_kind, fit_level, owner_team, employees_source, archived_at', 'id', [['goal_type'], ['goal_type', 'pipeline_status'], ['fit_level'], ['source_kind'], ['employees_source'], ['channel'], ['category'], r => (r.archived_at ? 'archived' : 'live')]);
+await show('sales_opportunities', 'id, stage, client_status, org_type, cohort, tier, channel, source_kind, source, fit_level, owner, owner_team, employees_source, domain_source, archived_at', 'id', [['stage'], ['client_status'], ['fit_level'], ['source_kind'], ['employees_source'], ['domain_source'], ['owner'], ['owner_team'], r => (r.archived_at ? 'archived' : 'live')]);
+await show('sales_targets', 'id, status, kind, source, source_kind, channel, fit_level, owner_team, employees_source, domain_source', 'id', [['status'], ['kind'], ['source'], ['source_kind'], ['fit_level'], ['employees_source'], ['domain_source']]);
+await show('sales_people', 'id, company_type, source_kind, archived_at', 'id', [['company_type'], ['source_kind'], r => (r.archived_at ? 'archived' : 'live')]);
+await show('sales_prospect_state', 'contact_id, owner, status, goal_link_via, opportunity_link_via', 'contact_id', [['owner'], ['status'], ['goal_link_via'], ['opportunity_link_via']]);
+await show('partner_contacts', 'id, source, sequence_status, last_activity_type', 'id', [['source'], ['sequence_status'], ['last_activity_type']]);
+await show('web_visits', 'id, matched_type, priority, noise_reason, maybe_user, priority_rule', 'id', [['matched_type'], ['priority'], ['noise_reason'], ['maybe_user']]);
+await show('sales_company_scores', 'company_id, company_type, band, source_kind, closed, flagged_out, override', 'company_id', [['company_type'], ['band'], ['company_type', 'band'], ['closed'], ['flagged_out'], r => (r.override ? 'override' : 'no override')]);
+await show('sales_person_activity', 'person_key, source_table, heat_band, reply_class', 'person_key', [['source_table'], ['heat_band'], ['reply_class'], r => String(r.person_key).split(':')[0]]);
+await show('sales_flow_events', 'id, record_type, kind, undone_at', 'id', [['record_type', 'kind'], r => (r.undone_at ? 'undone' : 'stands')]);
+await show('sales_partner_events', 'id, event, source, touch_type', 'id', [['event'], ['source'], ['touch_type']]);
+await show('sales_opportunity_events', 'id, event_type', 'id', [['event_type']]);
+await show('sales_prospect_events', 'id, field', 'id', [['field']]);
+await show('sales_client_events', 'id, kind, via', 'id', [['kind', 'via']]);
+await show('sales_source_events', 'id, record_type, from_source, to_source, reason', 'id', [['record_type'], ['to_source'], ['reason']]);
+await show('sales_insights', 'id, kind, status, already_field, seen_count', 'id', [['kind'], ['status'], ['kind', 'status'], ['already_field']]);
+await show('sales_signals', 'id, source, kind, status, match, auto', 'id', [['source'], ['kind'], ['status'], ['match'], ['auto']]);
+await show('sales_suggestions', 'id, kind, ref_type, status', 'id', [['kind', 'status'], ['ref_type']]);
+await show('sales_channel_links', 'id, from_kind, to_kind, relation, archived_at', 'id', [['from_kind', 'to_kind', 'relation']]);
+await show('sales_call_notes', 'id, source_type, source_label', 'id', [['source_type']]);
+await show('research_runs', 'id, entity_type, trigger, status, model', 'id', [['entity_type'], ['trigger'], ['status'], ['model']]);
+await show('business_intel_entries', 'id, source, source_type, content_type, call_platform, project_id, account_id', 'id', [['source_type'], ['content_type'], ['source'], r => (r.account_id ? 'has account' : 'no account'), r => (r.project_id ? 'has project' : 'no project')]);
+await show('sales_email_messages', 'apollo_message_id, replied, reply_class, bounced', 'apollo_message_id', [['replied'], ['reply_class'], ['bounced']]);
+await show('business_anthropic_usage', 'id, call_type, model', 'id', [['call_type'], ['model']]);
+await show('sales_sync_runs', 'id, trigger, status', 'id', [['trigger', 'status']]).catch(e => console.log('sync_runs: ' + e.message));
+await show('sales_team_email_sends', 'id, kind, status', 'id', [['kind', 'status']]).catch(e => console.log('sends: ' + e.message));
+await show('sales_stage_marks', 'id, record_type, stage', 'id', [['record_type', 'stage']]);
+await show('accounts', 'id, account_kind, relationship_type', 'id', [['account_kind'], ['relationship_type']]);
+// single rows: which fields hold text (lengths only)
+const len = v => (v == null ? '∅' : typeof v === 'string' ? `${v.length} ch` : Array.isArray(v) ? `[${v.length}] ${JSON.stringify(v).length} ch` : typeof v === 'object' ? `{${Object.keys(v).length}} ${JSON.stringify(v).length} ch` : String(v));
+for (const t of ['business_profiles', 'sales_settings', 'sales_team_email_settings']) { const r = (await svc.from(t).select('*').eq('business_id', HL)).data?.[0] || {}; console.log(`\n${t}: ` + Object.entries(r).filter(([k]) => !/^(id|business_id)$/.test(k)).map(([k, v]) => `${k}=${/(_at$|_manually$|^model|emoji|^industry$)/.test(k) ? JSON.stringify(v) : len(v)}`).join(' · ')); }
+const st = (await svc.from('sales_settings').select('score_weights, fit_settings, compose_rules, saved_views, visitor_filters').eq('business_id', HL)).data[0];
+console.log('\nsales_settings keys: score_weights ' + JSON.stringify(Object.keys(st.score_weights || {})) + ' · fit_settings ' + JSON.stringify(Object.keys(st.fit_settings || {})) + ' · compose_rules ' + (Array.isArray(st.compose_rules) ? `array ${st.compose_rules.length}` : JSON.stringify(Object.keys(st.compose_rules || {}))) + ' · saved_views ' + JSON.stringify(Array.isArray(st.saved_views) ? st.saved_views.length : Object.keys(st.saved_views || {})) + ' · visitor_filters ' + JSON.stringify(Object.keys(st.visitor_filters || {})));
+const doc = (await svc.from('outreach_doctrine').select('category, is_hard_constraint, active, ai_assisted, rule_text')).data;
+console.log(`\noutreach_doctrine (${doc.length}, platform-wide): ` + grp(doc, ['category', 'is_hard_constraint', 'active']) + ' · total text ' + doc.reduce((n, d) => n + (d.rule_text || '').length, 0) + ' ch');
+const vp = (await svc.from('voice_profiles').select('learned_at, email_count, teach_count, updated_at, profile')).data;
+console.log('voice_profiles: ' + vp.map(v => `learned ${v.learned_at} · ${v.email_count} emails · ${v.teach_count} teach · profile ${len(v.profile)}`).join(' | '));
+const sc = (await svc.from('sales_company_scores').select('components, override').eq('business_id', HL).limit(1)).data[0];
+console.log('\nscore components keys: ' + JSON.stringify(Object.fromEntries(Object.entries(sc.components || {}).map(([k, v]) => [k, v && typeof v === 'object' ? Object.keys(v) : typeof v]))));
+const col = (await svc.from('sales_collateral').select('*', { count: 'exact', head: true })).count;
+console.log('sales_collateral total rows (all workspaces): ' + col);
+footer();
