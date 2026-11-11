@@ -130,6 +130,8 @@ const fakeWrites = () => {
   Object.assign(salesWrites, {
     companyFields: async (sb, a) => { log.push(['companyFields', a.type, a.id, a.body, a.origin]); if (a.id === u('4')) return { status: 500, body: { error: 'the database said no' } }; return { status: 200, body: { event: { id: `flow-${a.id}` } } }; },
     flowUndo: async (sb, a) => { log.push(['flowUndo', a.eventId]); return { status: 200, body: {} }; },
+    person: async (sb, a) => { log.push(['person', a.personKey, a.fields, a.expect, a.origin, a.batchId]); return { event: { id: `pev-${a.personKey}` } }; },
+    personUndo: async (sb, a) => { log.push(['personUndo', a.eventId]); return {}; },
     partnerSignal: async (sb, a) => { log.push(['partnerSignal', a.goalId, a.signal, a.meta]); return { event: { id: `pe-${a.signal.type}` } }; },
     partnerUndo: async (sb, a) => { log.push(['partnerUndo', a.eventId]); return {}; },
     prospect: async a => { log.push(['prospect', a.params.contactId, a.body]); return { status: 200, body: {} }; },
@@ -160,19 +162,52 @@ test('plan -> act -> undo: a single assign through the route with expect + origi
   log.length = 0;
   const batch = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign all four to Ana', rows: answer } });
   assert.equal(batch.body.verb, 'assign');
-  assert.deepEqual(batch.body.rows.map(r => [r.title, r.from, r.to, r.skipped]), [['Mission Lane', 'Unassigned', 'Ana', null], ['Cloudflare', 'Ana', 'Ana', 'already Ana'], ['Northrop Grumman', 'Bo', 'Ana', null], ['Lee Stone', null, null, 'no company record']]);
-  assert.deepEqual(batch.body.summary, { will: 2, skipped: 2 });
+  assert.deepEqual(batch.body.rows.map(r => [r.title, r.from, r.to, r.skipped]), [['Mission Lane', 'Unassigned', 'Ana', null], ['Cloudflare', 'Ana', 'Ana', 'already Ana'], ['Northrop Grumman', 'Bo', 'Ana', null], ['Lee Stone', 'Unassigned', 'Ana', null]]);
+  assert.equal(batch.body.rows[3].kind, 'person', 'person-owner-v1 O5: a person row is the person, with or without a company record');
+  assert.deepEqual(batch.body.summary, { will: 3, skipped: 1 });
   const ran = await act(sb, registry, { auth: ana, body: { plan_id: batch.body.plan_id } });
-  assert.equal(ran.body.line, 'Assigned 1 of 2 to Ana · Northrop Grumman failed: the database said no · 2 skipped');
-  assert.deepEqual(ran.body.rows.map(r => r.ok), [true, false, false, false]);
+  assert.equal(ran.body.line, 'Assigned 2 of 3 to Ana · Northrop Grumman failed: the database said no · 1 skipped');
+  assert.deepEqual(ran.body.rows.map(r => r.ok), [true, false, false, true]);
+  assert.deepEqual(log.find(l => l[0] === 'person'), ['person', 'prospect:c2', { owner_user_id: u('a') }, { owner_user_id: null }, 'scout', batch.body.plan_id]);
   const retry = await act(sb, registry, { auth: ana, body: { plan_id: batch.body.plan_id, keys: [`employers:${u('4')}`] } });
   assert.equal(log.filter(l => l[0] === 'companyFields').length, 3, 'Retry runs the failed row only');
   assert.equal(retry.body.failed, 1);
   const un = await undo(sb, registry, { auth: ana, body: { plan_id: batch.body.plan_id } });
-  assert.deepEqual(un.body.rows.map(r => [r.title, r.ok]), [['Mission Lane', true]]);
-  const person = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Dana Mayer to Bo', rows: [row('people', 'prospect:c1', 'Dana Mayer')] } });
-  assert.equal(person.body.rows[0].title, "Cloudflare (Dana Mayer's company)", 'D5');
-  assert.equal(person.body.rows[0].kind, 'employer');
+  assert.deepEqual(un.body.rows.map(r => [r.title, r.ok]), [['Mission Lane', true], ['Lee Stone', true]]);
+  assert.deepEqual(log.at(-1), ['personUndo', 'pev-prospect:c2']);
+});
+
+test('person-owner-v1 O5: assign on a person row assigns the PERSON; a company name still assigns the company; "<company> people" is one card of person rows acted as one batch and undone by each event', async () => {
+  const sb = seed(), registry = await reg(), log = fakeWrites();
+  sb.db.sales_prospect_state[0].owner_user_id = u('a');
+  salesReads.peopleActivity = async () => ({ status: 200, body: { rows: [person('prospect:c1', 'Dana Mayer', 'Cloudflare', 68, 'hot'), person('prospect:c2', 'Lee Stone', 'Cloudflare', 20, 'warm'), person('prospect:zz', 'Dana Other', null, 0, 'cold')] } });
+  // a row of the answer
+  const picked = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Dana Mayer to Bo', rows: [row('people', 'prospect:c1', 'Dana Mayer')] } });
+  assert.deepEqual(picked.body.rows, [{ key: 'people:prospect:c1', kind: 'person', title: 'Dana Mayer', from: 'Ana', to: 'Bo', skipped: null, note: null }]);
+  // typed, nothing picked: a full name, a first name only one person carries, a first name two people carry
+  const full = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Lee Stone to Bo', rows: [] } });
+  assert.deepEqual(full.body.rows.map(r => [r.kind, r.title, r.from, r.to]), [['person', 'Lee Stone', 'Unassigned', 'Bo']]);
+  const first = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Lee to Bo', rows: [] } });
+  assert.deepEqual(first.body.rows.map(r => [r.kind, r.title]), [['person', 'Lee Stone']]);
+  assert.ok((await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Dana to Bo', rows: [] } })).body.cant, 'two Danas: nothing is guessed');
+  const same = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Dana Mayer to Ana', rows: [row('people', 'prospect:c1', 'Dana Mayer')] } });
+  assert.equal(same.body.rows[0].skipped, 'already Ana');
+  // a company named: the company
+  const co = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Cloudflare to Bo', rows: [] } });
+  assert.deepEqual(co.body.rows.map(r => [r.kind, r.title, r.from, r.to]), [['employer', 'Cloudflare', 'Ana', 'Bo']]);
+  // the company's people: person rows, one batch
+  const ppl = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign the Cloudflare people to Bo', rows: [] } });
+  assert.deepEqual(ppl.body.rows.map(r => [r.kind, r.title, r.from, r.to]), [['person', 'Dana Mayer', 'Ana', 'Bo'], ['person', 'Lee Stone', 'Unassigned', 'Bo']]);
+  assert.equal(log.length, 0, 'a plan writes nothing');
+  const ran = await act(sb, registry, { auth: ana, body: { plan_id: ppl.body.plan_id } });
+  assert.equal(ran.body.line, 'Assigned 2 of 2 to Bo');
+  assert.deepEqual(log, [['person', 'prospect:c1', { owner_user_id: u('b') }, { owner_user_id: u('a') }, 'scout', ppl.body.plan_id], ['person', 'prospect:c2', { owner_user_id: u('b') }, { owner_user_id: null }, 'scout', ppl.body.plan_id]]);
+  await undo(sb, registry, { auth: ana, body: { plan_id: ppl.body.plan_id } });
+  assert.deepEqual(log.slice(2).map(l => l[0]), ['personUndo', 'personUndo']);
+  // a change meanwhile is a skipped row, not an overwrite
+  salesWrites.person = async () => { throw Object.assign(new Error('The owner changed since you opened this - reloaded'), { status: 409, code: 'changed' }); };
+  const stale = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'assign Lee Stone to Bo', rows: [] } });
+  assert.match((await act(sb, registry, { auth: ana, body: { plan_id: stale.body.plan_id } })).body.line, /skipped/);
 });
 
 test('R8: the employer / target assign route is compare-and-set with expect - a changed owner is 409 "owner changed to <x> meanwhile", never overwritten; no expect behaves as before', async () => {

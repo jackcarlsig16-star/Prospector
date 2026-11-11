@@ -63,8 +63,8 @@ export async function fetchFlags(businessId) {
 export async function flagProspect(businessId, contactId, body) {
   return call(`/api/sales/${businessId}/prospects/${contactId}/flag`, json('POST', body), 'Failed to flag');
 }
-export async function unflag(businessId, goalId, restoreOwner, expectOwner) {
-  const q = restoreOwner ? `?restore_owner=${restoreOwner}&expect_owner=${expectOwner}` : '';
+export async function unflag(businessId, goalId, ownerEventId) {
+  const q = ownerEventId ? `?undo_owner_event=${ownerEventId}` : '';
   return call(`/api/sales/${businessId}/flags/${goalId}${q}`, { method: 'DELETE' }, 'Failed to undo the flag');
 }
 // keepalive lets the deferred "Mark contacted" (Actions) finish after the

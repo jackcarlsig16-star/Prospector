@@ -1,10 +1,13 @@
 import { cleanText } from './scrubText.js';
 import { addDays } from './goalsShared.js';
-import { findCompany, findPerson } from './scoutIntents.js';
+import { findCompany, findPerson, salesReads } from './scoutIntents.js';
+import { normName } from './intakeMatch.js';
+import { loadPerson } from './personWrite.js';
 
 // scout-v3 S1 + the Stage 0 rulings (R1-R9) - the sales module's verbs for Scout's plan / act / undo. Every write goes
 // through an EXISTING route or its function with that route's guards, and every reverse is that route's own Undo:
-//   assign        partner: the assign signal + partner undo · employer / target: company fields with expect (R8) + flow undo
+//   assign        a PERSON row: the person's owner through applyPerson with expect + its event Undo (person-owner-v1 O5)
+//                 partner: the assign signal + partner undo · employer / target: company fields with expect (R8) + flow undo
 //   mark contacted  the person's status + a done to-do (employer) or an email touch with no stage move (partner) - R1
 //   not a fit     prospect status 'dead' · target reject · employer / partner fit deprioritize - R2
 //   snooze        prospect snooze_until · partner snooze signal; employers / targets / to-dos can't - R5-R7
@@ -24,6 +27,8 @@ export const salesWrites = {
   partnerUndo: lazy('./partnerSignals.js', 'undoPartnerSignal'),
   companyFields: lazy('./companyFields.js', 'editCompanyFields'),
   flowUndo: lazy('./flowEvents.js', 'undoFlow'),
+  person: lazy('./personWrite.js', 'applyPerson'),
+  personUndo: lazy('./personWrite.js', 'undoPersonEvent'),
   prospect: viaRoute('./huddleRoutes.js', 'updateProspectRoute'),
   todoOn: lazy('./companyPanel.js', 'todoOn'),
   todoUndoCreate: lazy('./todoWrite.js', 'undoCreate'),
@@ -65,18 +70,52 @@ const named = async (sb, businessId, names) => (await Promise.all(names.map(n =>
 const prospectPatch = async (ctx, contactId, body) => salesWrites.prospect({ params: { businessId: ctx.businessId, contactId }, body, auth: ctx.auth });
 const REASONS = [[/outside (the )?u\.?s/, 'mostly_outside_us', 'Mostly outside US'], [/too small/, 'too_small', 'Too small'], [/wrong industry/, 'wrong_industry', 'Wrong industry'], [/housing perk/, 'has_housing_perk', 'Has housing perk'], [/upside/, 'upside_owns', 'Upside owns']];
 
+// person-owner-v1 O5 - what a typed assign names, when no row of the answer was picked: a company ("assign Cloudflare
+// to Cyrus"), a company's people ("assign the Cloudflare people to Cyrus" - one row per person), or a person by full
+// name or by a first name only one person carries ("assign Danilea to Cyrus").
+const PEOPLE_WORD = /\b(people|contacts|prospects|leads)\b/;
+async function assignTargets(sb, ctx, args) {
+  const names = args.names || [];
+  if (!names.length) return [];
+  let people = null;
+  const allPeople = async () => (people ||= await salesReads.peopleActivity(sb, ctx.businessId, { window: 'all', snoozed: 'all' }).then(r => (r.status === 200 ? r.body.rows : [])));
+  const personRow = p => ({ key: `people:${p.key}`, entity: 'people', id: p.key, title: p.name });
+  const out = [];
+  for (const n of names) {
+    const c = await findCompany(sb, ctx.businessId, n);
+    if (c && PEOPLE_WORD.test(args.text || '')) { out.push(...(await allPeople()).filter(p => p.company?.id === c.id && p.company?.type === c.type).map(personRow)); continue; }
+    if (c) { const entity = Object.keys(KIND).find(k => KIND[k] === c.type); out.push({ key: `${entity}:${c.id}`, entity, id: c.id, title: c.name }); continue; }
+    const key = normName(n);
+    const rows = await allPeople();
+    const exact = rows.filter(p => normName(p.name) === key);
+    const hits = exact.length ? exact : rows.filter(p => normName(p.name).split(' ')[0] === key);
+    if (hits.length === 1) out.push(personRow(hits[0]));
+  }
+  return out;
+}
+
 const assign = {
   id: 'assign', label: 'Assign', done: 'Assigned', lead: /^(?:re)?assign\b|^unassign\b/, accepts: ['people', ...COMPANY_ENTITIES], needs: 'member',
   async plan(sb, ctx, targets, args) {
-    const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
+    const list = targets.length ? targets : await assignTargets(sb, ctx, args);
     const members = await salesMembers(sb, ctx.businessId);
     const nameOf = id => (id ? members.find(m => m.id === id)?.name.split(/\s+/)[0] || 'another member' : 'Unassigned');
     const rows = [], seen = new Set();
     for (const t of list) {
-      const { company, person } = await resolve(sb, ctx.businessId, t);
+      if (t.entity === 'people') {
+        // O5 (D5 revised): a person row assigns the PERSON, never their company.
+        const p = await loadPerson(sb, ctx.businessId, t.id);
+        if (!p) { rows.push(block(t, 'that person is no longer on the list')); continue; }
+        const row = { ...base(t, t.title || p.name), from: nameOf(p.owner_user_id), to: nameOf(args.owner_user_id) };
+        if (seen.has(p.key)) rows.push({ ...row, skipped: 'same person as a row above' });
+        else if ((p.owner_user_id || null) === (args.owner_user_id || null)) rows.push({ ...row, skipped: `already ${row.to}` });
+        else rows.push({ ...row, exec: { person: p.key, from: p.owner_user_id } });
+        seen.add(p.key);
+        continue;
+      }
+      const { company } = await resolve(sb, ctx.businessId, t);
       if (!company) { rows.push(block(t, NO_RECORD)); continue; }
-      // D5: a person has no owner; assigning a person row assigns their company.
-      const row = { ...base(t, person ? `${company.name} (${t.title}'s company)` : company.name), kind: company.type, from: nameOf(company.owner_user_id), to: nameOf(args.owner_user_id) };
+      const row = { ...base(t, company.name), kind: company.type, from: nameOf(company.owner_user_id), to: nameOf(args.owner_user_id) };
       const k = `${company.type}:${company.id}`;
       if (seen.has(k)) rows.push({ ...row, skipped: 'same company as a row above' });
       else if ((company.owner_user_id || null) === (args.owner_user_id || null)) rows.push({ ...row, skipped: `already ${row.to}` });
@@ -86,6 +125,13 @@ const assign = {
     return { rows };
   },
   async act(sb, ctx, x, args) {
+    if (x.person) {
+      // one batch per card (the plan id), so a card of people is one batch of events
+      try {
+        const { event } = await salesWrites.person(sb, { businessId: ctx.businessId, personKey: x.person, fields: { owner_user_id: args.owner_user_id ?? null }, expect: { owner_user_id: x.from || null }, actor: ctx.auth.user.id, origin: 'scout', batchId: ctx.planId });
+        return event ? { undo: { person_event: event.id } } : { skipped: 'already that owner' };
+      } catch (e) { if (e.status === 409 && e.code === 'changed') return { skipped: 'owner changed meanwhile' }; throw e; }
+    }
     if (x.type === 'partner') {
       const now = await loadCompany(sb, ctx.businessId, 'partner', x.id);
       if (!now) throw new Error('partner not found');
@@ -98,7 +144,8 @@ const assign = {
     return { undo: { flow_event: ok(r).event?.id || null } };
   },
   async undo(sb, ctx, x, h) {
-    if (h?.partner_event) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.id, eventId: h.partner_event, byUser: ctx.auth.user.id });
+    if (h?.person_event) await salesWrites.personUndo(sb, { businessId: ctx.businessId, eventId: h.person_event, actor: ctx.auth.user.id });
+    else if (h?.partner_event) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.id, eventId: h.partner_event, byUser: ctx.auth.user.id });
     else if (h?.flow_event) ok(await salesWrites.flowUndo(sb, { businessId: ctx.businessId, eventId: h.flow_event, byUser: ctx.auth.user.id }));
     else throw new Error('nothing recorded to undo');
   },

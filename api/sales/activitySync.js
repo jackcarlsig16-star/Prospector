@@ -1,3 +1,4 @@
+import { applyPeople } from './personWrite.js';
 import { apolloRequest, CallCapError } from './apolloClient.js';
 import { loadLinkIndex, linkPatch, LINK_COLUMNS } from './prospectLinks.js';
 
@@ -33,9 +34,22 @@ function chunk(rows, size) {
   return out;
 }
 
-function ownerForSender(email) {
-  const local = (email || '').split('@')[0].toLowerCase();
-  return local === 'jack' || local === 'cyrus' ? local : 'unassigned';
+// person-owner-v1: a NEW prospect belongs to the member whose mailbox sent the first message we see - the mailbox's
+// local part against the members' first names, exactly one match (else nobody). Assigned after the insert through the
+// one writer (origin system); the old text enum is left at its column default and never written (K8).
+const senderName = email => (email || '').split('@')[0].toLowerCase();
+async function assignNewProspects(supabase, businessId, senders, missing) {
+  if (!senders.size) return;
+  const { data: members, error } = await supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null);
+  if (error) { missing.push(`activity: new prospects left unassigned (members: ${error.message})`); return; }
+  const byName = new Map();
+  for (const m of members) { const first = (m.name || '').split(' ')[0].toLowerCase(); if (first) byName.set(first, [...(byName.get(first) || []), m.user_id]); }
+  const groups = new Map();
+  for (const [contactId, name] of senders) { const ids = byName.get(name); if (ids?.length === 1) groups.set(ids[0], [...(groups.get(ids[0]) || []), `prospect:${contactId}`]); }
+  for (const [ownerUserId, personKeys] of groups) {
+    try { await applyPeople(supabase, { businessId, personKeys, fields: { owner_user_id: ownerUserId }, origin: 'system' }); }
+    catch (e) { missing.push(`activity: ${personKeys.length} new prospects left unassigned (${e.message})`); }
+  }
 }
 
 // No pagination object comes back (Stage 1), so a full page means "maybe
@@ -201,7 +215,7 @@ export async function syncActivity({ ctx, supabase, businessId }) {
           email_unsubscribed: !!c.email_unsubscribed || m.reply_class === 'unsubscribe' || !!(prev && prev.snapshot.email_unsubscribed),
           updated_at: new Date().toISOString(),
         },
-        owner: (prev && prev.owner) || ownerForSender(m.from_email),
+        sender: (prev && prev.sender) || senderName(m.from_email),
       });
     }
   }
@@ -250,13 +264,14 @@ export async function syncActivity({ ctx, supabase, businessId }) {
   };
   // Existing rows get the snapshot columns only, so the huddle-owned fields
   // (owner, status, next action, notes) are never touched by a sync.
-  const newProspects = contactIds.filter(id => !existingContacts.has(id))
-    .map(id => ({ ...withLinks(contacts.get(id).snapshot, null), owner: contacts.get(id).owner }));
+  const newIds = contactIds.filter(id => !existingContacts.has(id));
+  const newProspects = newIds.map(id => withLinks(contacts.get(id).snapshot, null));
   const snapshotUpdates = contactIds.filter(id => existingContacts.has(id)).map(id => withLinks(contacts.get(id).snapshot, existingContacts.get(id)));
   for (const part of chunk(newProspects, 500)) {
     const { error } = await supabase.from('sales_prospect_state').insert(part);
     if (error) throw new Error(`activity: insert prospects failed: ${error.message}`);
   }
+  await assignNewProspects(supabase, businessId, new Map(newIds.map(id => [id, contacts.get(id).sender])), missing);
   for (const part of chunk(snapshotUpdates, 500)) {
     const { error } = await supabase.from('sales_prospect_state').upsert(part, { onConflict: 'business_id,contact_id' });
     if (error) throw new Error(`activity: update prospects failed: ${error.message}`);

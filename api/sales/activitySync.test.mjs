@@ -45,3 +45,16 @@ test('nothing waiting -> one search pass, no activity reads, 0 left', async () =
   const r = await run(0);
   assert.deepEqual([r.counts.activities_fetched, r.counts.activity_batches, r.counts.backlog_after_run, r.ctx.callCounter.count], [0, 0, 0, 3]);
 });
+
+test('person-owner-v1: a new prospect carries no text enum; the member whose mailbox sent it becomes its owner through the one writer (origin system), nobody when no single member matches', async () => {
+  const U = 'a0000000-0000-4000-8000-000000000001';
+  const messages = [{ ...msg(1), from_email: 'ana@sender.test' }, { ...msg(2), from_email: 'zed@sender.test' }];
+  const restore = installApolloFixture({}, null, { messages, activities: Object.fromEntries(messages.map((m, i) => [m.id, activity(i + 1)])) });
+  const s = fakeSupabase({ sales_email_messages: [], sales_email_activity: [], sales_prospect_state: [], sales_goals: [], sales_opportunities: [], partner_domains: [], sales_person_events: [], business_members: [{ business_id: B, user_id: U, name: 'Ana Member' }] });
+  try { await syncActivity({ ctx: { callCounter: { count: 0, max: ACTIVITY_MAX_CALLS }, endpointCounts: {} }, supabase: s, businessId: B }); } finally { restore(); }
+  const rows = s.db.sales_prospect_state;
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every(r => !('owner' in r)), 'the enum is left to its column default');
+  assert.deepEqual(rows.map(r => [r.contact_id, r.owner_user_id ?? null]).sort(), [['c1', U], ['c2', null]]);
+  assert.deepEqual(s.db.sales_person_events.map(e => [e.person_key, e.kind, e.origin, e.actor_user_id, e.after]), [['prospect:c1', 'assign', 'system', null, { owner_user_id: U }]]);
+});

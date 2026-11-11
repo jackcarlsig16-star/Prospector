@@ -3,6 +3,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { addDays, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS } from './goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
+import { applyPerson, undoPersonEvent, PersonError } from './personWrite.js';
 
 // sales-huddle-v2 REV1 Stage 3 - "Flag for ...": hand a prospect to a
 // teammate as a Goals to-do (Huddle follow-ups) with a checklist. Flagging
@@ -20,11 +21,6 @@ function laMonday() {
   const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
   return addDays(today, -((dow + 6) % 7));
 }
-// Huddle owners are still the jack / cyrus / unassigned slugs.
-export const ownerSlug = name => {
-  const first = (name || '').split(' ')[0].toLowerCase();
-  return ['jack', 'cyrus'].includes(first) ? first : null;
-};
 
 // POST /prospects/:contactId/flag { assignee_user_id, steps: [text], note? }
 export async function flagProspectRoute(req, res) {
@@ -65,17 +61,17 @@ export async function flagProspectRoute(req, res) {
       .insert(steps.map((text, i) => ({ business_id: businessId, goal_id: todo.id, text: text.trim(), sort_order: i }))).select();
     if (sErr) { await supabase.from('sales_week_goals').delete().eq('id', todo.id); throw new Error(sErr.message); }
 
-    let prospect = p;
-    const slug = ownerSlug(member.name);
-    if (p.owner === 'unassigned' && slug) {
-      const { data, error } = await supabase.from('sales_prospect_state')
-        .update({ owner: slug, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
-        .eq('business_id', businessId).eq('contact_id', contactId).select().single();
-      if (error) throw new Error(error.message);
-      prospect = data;
+    // person-owner-v1: flagging a person nobody owns hands them to the assignee - through the one writer (an
+    // 'assign' event, origin panel); the flag's Undo takes that event back by its id.
+    let prospect = p, ownerEvent = null;
+    if (!p.owner_user_id) {
+      try {
+        ownerEvent = (await applyPerson(supabase, { businessId, personKey: `prospect:${contactId}`, fields: { owner_user_id: assignee }, expect: { owner_user_id: null }, actor: req.auth.user.id, origin: 'panel' })).event;
+        if (ownerEvent) prospect = { ...p, owner_user_id: assignee };
+      } catch (e) { if (!(e instanceof PersonError) || e.status !== 409) throw e; }
     }
     await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: contactId, field: 'flagged', to_value: member.name, changed_by: req.auth.user.email });
-    res.status(201).json({ todo: { ...todo, steps: stepRows.sort((a, b) => a.sort_order - b.sort_order) }, prospect, prev_owner: p.owner });
+    res.status(201).json({ todo: { ...todo, steps: stepRows.sort((a, b) => a.sort_order - b.sort_order) }, prospect, owner_event_id: ownerEvent?.id || null });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
@@ -117,16 +113,13 @@ export async function reassignFlagRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-// DELETE /flags/:goalId?restore_owner=<jack|cyrus|unassigned>&expect_owner=<slug>
-// - undo a flag: removes the to-do (steps cascade) and, when given, puts the
-// prospect's owner back - only if it still is expect_owner (what the flag set),
-// so a teammate's later reassignment isn't overwritten.
+// DELETE /flags/:goalId?undo_owner_event=<the flag's owner_event_id>
+// - undo a flag: removes the to-do (steps cascade) and, when given, takes back
+// the owner the flag set - by that event's Undo, which refuses when the owner
+// changed since, so a teammate's later reassignment isn't overwritten.
 export async function unflagRoute(req, res) {
   const { businessId, goalId } = req.params;
-  const { restore_owner: restore, expect_owner: expectOwner } = req.query;
-  const SLUGS = ['jack', 'cyrus', 'unassigned'];
-  if (restore && !SLUGS.includes(restore)) return res.status(400).json({ error: 'restore_owner must be jack|cyrus|unassigned' });
-  if (restore && !SLUGS.includes(expectOwner)) return res.status(400).json({ error: 'expect_owner (jack|cyrus|unassigned) is required with restore_owner' });
+  const { undo_owner_event: ownerEventId } = req.query;
   const supabase = getSupabase();
   try {
     const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
@@ -140,12 +133,11 @@ export async function unflagRoute(req, res) {
     const { error: dErr } = await supabase.from('sales_week_goals').delete().eq('id', todo.id);
     if (dErr) throw new Error(dErr.message);
     let prospect = null;
-    if (restore) {
-      const { data, error: uErr } = await supabase.from('sales_prospect_state')
-        .update({ owner: restore, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
-        .eq('business_id', businessId).eq('contact_id', todo.prospect_contact_id).eq('owner', expectOwner).select().maybeSingle();
-      if (uErr) throw new Error(uErr.message);
-      prospect = data;
+    if (ownerEventId) {
+      try {
+        const r = await undoPersonEvent(supabase, { businessId, eventId: ownerEventId, actor: req.auth.user.id });
+        if (r.undid.person_key === `prospect:${todo.prospect_contact_id}`) prospect = { contact_id: todo.prospect_contact_id, owner_user_id: r.person.owner_user_id };
+      } catch (e) { if (!(e instanceof PersonError) || e.status >= 500) throw e; }
     }
     await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: todo.prospect_contact_id, field: 'unflagged', from_value: todo.id, changed_by: req.auth.user.email });
     res.json({ deleted: todo.id, prospect });

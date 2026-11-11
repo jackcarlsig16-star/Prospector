@@ -12,7 +12,7 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import { toCsv } from '../../../utils/csv';
 import { readPeopleCompany, writePeopleCompany } from '../salesNav';
 import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/scoutOpen';
-import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, readSort, writeSort, bandGroups, bandRule } from './peopleTableModel';
+import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, csvColumns, readSort, writeSort, bandGroups, bandRule } from './peopleTableModel';
 import { SIZE_BUCKETS, toggleSize, coverageLine, headcountSortValue, headcountText, HEADCOUNT_SOURCE_GLYPH, HEADCOUNT_SOURCE_WORD } from '../../../constants/headcount';
 import { SOURCE_GLYPH_BY_WORD } from '../../../constants/peopleSource';
 import HeatPill, { HEAT_COLOR, BAND_WORD, delta7 } from './HeatPill';
@@ -62,7 +62,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const [coldOpen, setColdOpen] = useState(false);
   // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
   const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
-  const meId = me?.profile?.id || null, myName = me?.profile?.display_name || '';
+  const meId = me?.profile?.id || null;
   const [snoozedOnly, setSnoozedOnly] = useState(false);
   const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
   useEffect(() => { load(); }, [load, reload]);
@@ -77,7 +77,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     return () => clearTimeout(t);
   }, [toast]);
   useEffect(() => onScoutOpen(p => { const k = openKeyOf('person', p.open); if (k) { setFilters(EMPTY_FILTERS); setScoutKey(k); } }), []);
-  const ctx = useMemo(() => ({ meId, myName, now: Date.now() }), [meId, myName, data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const ctx = useMemo(() => ({ meId, now: Date.now() }), [meId, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const all = useMemo(() => data?.rows || [], [data]);
   const rows = useMemo(() => applyFilters(all, filters, ctx), [all, filters, ctx]);
   const counts = useMemo(() => chipCounts(all, ctx), [all, ctx]);
@@ -100,7 +100,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const onSort = s => { setSort(s); writeSort(s); };
 
   const exportCsv = () => {
-    const text = toCsv(rows, CSV_COLUMNS);
+    const text = toCsv(rows, csvColumns(members));
     if (/@/.test(text)) { setToast({ text: 'Export refused: an address would have reached the file' }); return; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));

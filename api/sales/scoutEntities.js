@@ -146,6 +146,8 @@ export async function glossary(sb, { businessId }) {
     `Email → site (the funnel route, the daily email's tables): ${WORDING.company} ${WORDING.person} Opens, clicks, replies and meetings are ${WORDING.cohort}. ${WORDING.since}`,
     // scout-v3 D1: which record a word means.
     'Prospects, people, contacts, leads and "who" mean PEOPLE (one row per person, Pipeline › People); accounts, companies, employers, partners and targets mean COMPANIES. A lead is a person from any source.',
+    // person-owner-v1 O6
+    "A person's owner is separate from their company's: assigning a person changes who owns that person, assigning a company changes who owns the company; a person with no owner is Unassigned.",
   ].filter(Boolean);
   const sources = { ...repWords };
   for (const [k, v] of Object.entries(SOURCE_WORD)) if (!['other', 'scout', 'website'].includes(k)) for (const w of v.toLowerCase().split(' / ')) sources[w] = k;

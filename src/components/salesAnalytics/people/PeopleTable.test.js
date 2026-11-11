@@ -232,9 +232,9 @@ test('CSV: the filtered rows, structured fields only, never an address; Share vi
   fireEvent.click(within(screen.getByRole('group', { name: 'Filter chips' })).getByRole('button', { name: /^Replied/ }));
   fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
   await waitFor(() => expect(texts).toHaveLength(1));
-  expect(texts[0].split('\r\n')[0]).toMatch(/^Person,Title,Company,Company stage,Company size,Size source,Source,Sent,Opened \(human\),Clicked,Replied,/);
+  expect(texts[0].split('\r\n')[0]).toMatch(/^Person,Title,Company,Owner,Company stage,Company size,Size source,Source,Sent,Opened \(human\),Clicked,Replied,/);
   expect(texts[0].split('\r\n')).toHaveLength(2);
-  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,contacted,unknown,,Apollo,2,4,0,1,/);
+  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,Unassigned,contacted,unknown,,Apollo,2,4,0,1,/);
   expect(texts[0]).toMatch(/,108,hot,/);
   expect(texts[0]).not.toMatch(/@/);
   fireEvent.click(screen.getByRole('button', { name: 'Share view' }));

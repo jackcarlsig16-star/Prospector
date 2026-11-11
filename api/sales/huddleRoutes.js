@@ -1,6 +1,7 @@
+import { applyPerson, PersonError } from './personWrite.js';
 import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { replyAt, replyExact, replyWindow } from './replyTime.js';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from './goalsShared.js';
 import { ORG_TYPE_ENUM } from './pipelineStages.js';
 import { isAutomated } from './heatScore.js';
 import { SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
@@ -10,14 +11,8 @@ import { sourceColumns, logSource } from './leadSource.js';
 
 const HUDDLE_SOURCE = { source_kind: 'homelover_outreach' };
 
-// sales-hot-prospects-v1 - server-only access, same posture as every other
-// sales_* table (RLS enabled, zero policies).
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-}
 
 
-const OWNERS = ['jack', 'cyrus', 'unassigned'];
 const STATUSES = ['new', 'claimed', 'contacted', 'booked', 'not_now', 'dead'];
 const NEXT_ACTIONS = ['call', 'email', 'linkedin', 'send_collateral', 'wait'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,7 +31,9 @@ function groupBy(rows, key) {
 // updated_by as "who". Optional `expect: { field: value }` makes it
 // conditional (the Huddle's undo uses it): if a field no longer holds the
 // expected value - someone changed it since - nothing is written and it's 409.
-const PROSPECT_FIELDS = ['owner', 'status', 'next_action', 'next_action_due', 'snooze_until', 'notes'];
+// person-owner-v1: the owner is owner_user_id (a member id or null) and is written by applyPerson alone - one
+// sales_person_events row, expect honoured there; the old text enum `owner` is refused and never written (K8).
+const PROSPECT_FIELDS = ['owner_user_id', 'status', 'next_action', 'next_action_due', 'snooze_until', 'notes'];
 export async function updateProspectRoute(req, res) {
   const { expect, ...body } = req.body || {};
   if (expect !== undefined && (typeof expect !== 'object' || expect === null || Object.keys(expect).some(k => !PROSPECT_FIELDS.includes(k)))) {
@@ -44,8 +41,8 @@ export async function updateProspectRoute(req, res) {
   }
   const payload = {};
   for (const [key, value] of Object.entries(body)) {
-    if (key === 'owner') {
-      if (!OWNERS.includes(value)) return res.status(400).json({ error: `owner must be one of ${OWNERS.join('|')}` });
+    if (key === 'owner_user_id') {
+      if (value !== null && typeof value !== 'string') return res.status(400).json({ error: 'owner_user_id must be a member id or null' });
     } else if (key === 'status') {
       if (!STATUSES.includes(value)) return res.status(400).json({ error: `status must be one of ${STATUSES.join('|')}` });
     } else if (key === 'next_action') {
@@ -62,6 +59,24 @@ export async function updateProspectRoute(req, res) {
   if (!Object.keys(payload).length) return res.status(400).json({ error: 'nothing to update' });
 
   const supabase = getSupabase();
+  let ownerEvent = null;
+  if ('owner_user_id' in payload) {
+    const { owner_user_id: ownerUserId } = payload;
+    delete payload.owner_user_id;
+    const ownerExpect = expect && 'owner_user_id' in expect ? { owner_user_id: expect.owner_user_id } : null;
+    if (expect) delete expect.owner_user_id;
+    try {
+      ownerEvent = (await applyPerson(supabase, { businessId: req.params.businessId, personKey: `prospect:${req.params.contactId}`, fields: { owner_user_id: ownerUserId }, expect: ownerExpect, actor: req.auth.user.id, origin: 'manual' })).event;
+    } catch (e) {
+      if (!(e instanceof PersonError)) return res.status(500).json({ error: e.message });
+      return res.status(e.status).json({ error: e.status === 404 ? 'prospect not found' : e.message, ...(e.code ? { code: e.code } : {}) });
+    }
+    if (!Object.keys(payload).length) {
+      const { data, error } = await supabase.from('sales_prospect_state').select().eq('business_id', req.params.businessId).eq('contact_id', req.params.contactId).maybeSingle();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ prospect: data, owner_event: ownerEvent });
+    }
+  }
   let q = supabase.from('sales_prospect_state')
     .update({ ...payload, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
     .eq('business_id', req.params.businessId)
@@ -74,14 +89,13 @@ export async function updateProspectRoute(req, res) {
     const { data: exists } = await supabase.from('sales_prospect_state').select('contact_id').eq('business_id', req.params.businessId).eq('contact_id', req.params.contactId).maybeSingle();
     return exists ? res.status(409).json({ error: 'Someone changed this since - undo skipped, refresh to see it' }) : res.status(404).json({ error: 'prospect not found' });
   }
-  res.status(200).json({ prospect: data });
+  res.status(200).json({ prospect: data, ...(ownerEvent ? { owner_event: ownerEvent } : {}) });
 }
 
 // POST /prospects/:contactId/pipeline - creates the opportunity AND links it
 // back via opportunity_id in one request, so the card can't end up with an
 // orphan opportunity it doesn't know about. The link write goes through the
 // same trigger as every other huddle change, so it's logged with who/when.
-const OWNER_NAMES = { jack: 'Jack', cyrus: 'Cyrus' };
 
 export async function addToPipelineRoute(req, res) {
   const { businessId, contactId } = req.params;
@@ -121,10 +135,7 @@ export async function addToPipelineRoute(req, res) {
   // company-workflow-v1 W3: the owner person - a picked Member, else the member the prospect's owner names, else the caller.
   let person;
   try {
-    const named = !req.body?.owner_user_id && OWNER_NAMES[p.owner]
-      ? (await supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null)).data?.find(m => (m.name || '').split(' ')[0] === OWNER_NAMES[p.owner])
-      : null;
-    const who = await ownerOrCaller(supabase, businessId, req.body?.owner_user_id || named?.user_id || null, req.auth.user.id);
+    const who = await ownerOrCaller(supabase, businessId, req.body?.owner_user_id || p.owner_user_id || null, req.auth.user.id);
     if (who.error) return res.status(400).json({ error: who.error });
     person = who.person;
   } catch (e) { return res.status(500).json({ error: e.message }); }
@@ -241,14 +252,14 @@ export async function huddleFeedRoute(req, res) {
     const [msgs, priorOpens, people] = await Promise.all([
       msgIds.length ? selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,delivered_at').eq('business_id', businessId).in('apollo_message_id', msgIds).order('apollo_message_id')) : [],
       msgIds.length ? selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,occurred_at').eq('business_id', businessId).eq('event', 'open').in('apollo_message_id', msgIds).order('id')) : [],
-      contactIds.length ? selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,company,owner').eq('business_id', businessId).in('contact_id', contactIds).order('contact_id')) : [],
+      contactIds.length ? selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,company,owner_user_id').eq('business_id', businessId).in('contact_id', contactIds).order('contact_id')) : [],
     ]);
     const deliveredById = new Map(msgs.map(m => [m.apollo_message_id, m.delivered_at]));
     const opensByMsg = groupBy(priorOpens, 'apollo_message_id');
     const personById = new Map(people.map(p => [p.contact_id, p]));
     const item = (x, extra) => {
       const p = personById.get(x.contact_id) || {};
-      return { contact_id: x.contact_id, name: p.name || null, company: p.company || null, owner: p.owner || 'unassigned', step: x.step ?? null, ...extra };
+      return { contact_id: x.contact_id, name: p.name || null, company: p.company || null, owner_user_id: p.owner_user_id || null, step: x.step ?? null, ...extra };
     };
     let items = [
       ...events.map(e => item(e, {

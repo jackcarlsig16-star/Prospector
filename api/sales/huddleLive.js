@@ -5,7 +5,7 @@ import { laDateString } from './laDate.js';
 import { scoreProspect, isAutomated, HEAT } from './heatScore.js';
 import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { stageIndex } from './pipelineStages.js';
-import { ownerSlug, openFlagRows } from './huddleFlags.js';
+import { openFlagRows } from './huddleFlags.js';
 import { asReported, isDeadRun } from './syncRunStatus.js';
 import { STATUS_LABEL, CLOSED_STATUSES } from '../../src/constants/prospectStatus.js';
 
@@ -102,7 +102,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
     const opp = p.opportunity_id ? oppById.get(p.opportunity_id) : null;
     const nba = nextBestAction(msgs, evs, scoreProspect(msgs, evs));
     const row = {
-      contact_id: p.contact_id, name: p.name || null, company: p.company || null, title: p.title || null, owner: p.owner || 'unassigned',
+      contact_id: p.contact_id, name: p.name || null, company: p.company || null, title: p.title || null, owner_user_id: p.owner_user_id || null,
       status: p.status, status_label: STATUS_LABEL[p.status] || p.status, notes: p.notes || null, opportunity_id: p.opportunity_id || null, goal_id: p.goal_id || null,
       snoozed: p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today), snooze_until: p.snooze_until || null, linkedin_url: p.linkedin_url || null,
       apollo_url: `https://app.apollo.io/#/contacts/${p.contact_id}`,
@@ -170,7 +170,7 @@ export async function liveRoute(req, res) {
   const supabase = getSupabase();
   try {
     const [prospects, messages, events, goalRows, statusEvents, deadEvents] = await Promise.all([
-      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,snooze_until,notes,opportunity_id,goal_id').eq('business_id', businessId).order('contact_id')),
+      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner_user_id,status,snooze_until,notes,opportunity_id,goal_id').eq('business_id', businessId).order('contact_id')),
       selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).in('event', ['open', 'click']).order('id')),
       selectAllPages(() => supabase.from('sales_week_goals').select('id,owner_user_id,status,carried_from_id,prospect_contact_id,week_start').eq('business_id', businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id')),
@@ -208,16 +208,11 @@ export async function liveRoute(req, res) {
     const humanRows = all.filter(r => !r.bot_only && (showClosed || !r.closed));
     const numbers = Object.fromEntries(LIVE_FILTERS.map(f => [f, humanRows.filter(r => matchesFilter(r, f, { sinceIso: f === 'flagged_me' ? null : sinceIso, userId })).length]));
 
-    let ownerSlugFilter = null;
-    if (owner && owner !== 'unassigned') {
-      const m = members.data.find(x => x.user_id === owner);
-      if (!m) return res.status(400).json({ error: 'owner must be a member user id or unassigned' });
-      ownerSlugFilter = ownerSlug(m.name);
-    }
+    if (owner && owner !== 'unassigned' && !members.data.some(x => x.user_id === owner)) return res.status(400).json({ error: 'owner must be a member user id or unassigned' });
     const needle = (q || '').trim().toLowerCase();
     const rows = all.filter(r => (showBots || !r.bot_only) && (showClosed || !r.closed)
       && (!filter || matchesFilter(r, filter, { sinceIso: since === 'huddle' && filter !== 'flagged_me' ? sinceIso : null, userId }))
-      && (!owner || (owner === 'unassigned' ? r.owner === 'unassigned' : r.owner === ownerSlugFilter))
+      && (!owner || (owner === 'unassigned' ? !r.owner_user_id : r.owner_user_id === owner))
       && (!sequence || r.sequence_ids.includes(sequence))
       && (!needle || `${r.name || ''} ${r.company || ''}`.toLowerCase().includes(needle)));
     const page = rows.slice(offset, offset + limit);

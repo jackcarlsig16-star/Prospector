@@ -859,6 +859,9 @@ app.get('/api/sales/:businessId/goals/people/activity/:key', salesModuleRoute('.
 app.get('/api/sales/:businessId/goals/people/views', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'listPeopleViewsRoute', 'goals/people/views'));
 app.post('/api/sales/:businessId/goals/people/views', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'savePeopleViewRoute', 'goals/people/views POST'));
 app.delete('/api/sales/:businessId/goals/people/views/:id', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'deletePeopleViewRoute', 'goals/people/views/:id DELETE'));
+// person-owner-v1 O2 - a person's owner: the one writer's two routes (assign with expect; Undo of one event).
+app.post('/api/sales/:businessId/goals/people/events/:id/undo', salesModuleRoute('./api/sales/personWrite.js', 'undoPersonEventRoute', 'goals/people/events/:id/undo POST'));
+app.post('/api/sales/:businessId/goals/people/:key/assign', salesModuleRoute('./api/sales/personWrite.js', 'assignPersonRoute', 'goals/people/:key/assign POST'));
 app.post('/api/sales/:businessId/goals/people/:id/add-record', salesModuleRoute('./api/sales/visitorRoutes.js', 'addRecordFromPersonRoute', 'goals/people/:id/add-record POST'));
 app.post('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'addPersonRoute', 'goals/people POST'));
 app.post('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/companyPanel.js', 'createTargetRoute', 'goals/targets POST'));

@@ -44,16 +44,16 @@ export function peopleRows({ prospects = [], salesPeople = [], partnerContacts =
   for (const p of prospects) {
     const o = p.opportunity_id ? opp.get(p.opportunity_id) : null, g = p.goal_id ? goal.get(p.goal_id) : null;
     out.push({ person_key: `prospect:${p.contact_id}`, source: 'prospect', name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: o ? company('employer', o) : g ? company('partner', g) : p.company ? { type: 'account', id: null, name: cleanText(p.company, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null,
-      apollo_id: p.contact_id, contact_id: p.contact_id, has_email: !!p.email, identified_at: null, last_touch_at: null, status: p.status || null, owner: p.owner || null, snooze_until: p.snooze_until || null });
+      apollo_id: p.contact_id, contact_id: p.contact_id, has_email: !!p.email, identified_at: null, last_touch_at: null, status: p.status || null, owner_user_id: p.owner_user_id || null, snooze_until: p.snooze_until || null });
   }
   for (const p of salesPeople) {
     if (p.archived_at) continue;
     const c = p.company_type === 'employer' && p.opportunity_id ? company('employer', opp.get(p.opportunity_id)) : p.target_id ? company('target', tgt.get(p.target_id)) : p.company_name ? { type: 'parked', id: null, name: cleanText(p.company_name, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null;
     const source = p.source_kind === 'web_visit' || p.visit_id ? 'visitor' : p.upload_id ? 'upload' : 'hand';
-    out.push({ person_key: `person:${p.id}`, source, name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: c, apollo_id: null, contact_id: null, has_email: false, identified_at: source === 'visitor' ? p.created_at || null : null, last_touch_at: null, status: null, owner: null });
+    out.push({ person_key: `person:${p.id}`, source, name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: c, apollo_id: null, contact_id: null, has_email: false, identified_at: source === 'visitor' ? p.created_at || null : null, last_touch_at: null, status: null, owner_user_id: p.owner_user_id || null });
   }
   for (const c of partnerContacts) {
-    out.push({ person_key: `contact:${c.id}`, source: 'contact', name: nameOf(c.name), title: cleanText(c.title, 160) || null, company: company('partner', goal.get(c.goal_id)), apollo_id: c.apollo_contact_id || null, contact_id: c.apollo_contact_id || null, has_email: !!c.email, identified_at: null, last_touch_at: c.last_activity_at || null, status: null, owner: null, partner_contact_ids: [c.id] });
+    out.push({ person_key: `contact:${c.id}`, source: 'contact', name: nameOf(c.name), title: cleanText(c.title, 160) || null, company: company('partner', goal.get(c.goal_id)), apollo_id: c.apollo_contact_id || null, contact_id: c.apollo_contact_id || null, has_email: !!c.email, identified_at: null, last_touch_at: c.last_activity_at || null, status: null, owner_user_id: c.owner_user_id || null, partner_contact_ids: [c.id] });
   }
   return out.filter(r => r.name);
 }
@@ -79,7 +79,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
     const lastTouch = [lastEmail, p.last_touch_at].filter(Boolean).sort().pop() || null;
     const visitsRow = v ? { visits_7d: nz(v.visits_7d), last_visit: v.last_visit || v.seen_to || null, top_page: Array.isArray(v.top_paths) && v.top_paths[0] ? cleanText(String(v.top_paths[0].path || v.top_paths[0]), 200) : null, seen_to: v.seen_to || v.pulled_on || null } : null;
     return {
-      key: p.key, sources: p.sources.map(s => SOURCE_WORD[s]), source: SOURCE_WORD[p.sources[0]], name: p.name, title: p.title, company: p.company, status: p.status, owner: p.owner, snooze_until: p.snooze_until || null,
+      key: p.key, sources: p.sources.map(s => SOURCE_WORD[s]), source: SOURCE_WORD[p.sources[0]], name: p.name, title: p.title, company: p.company, status: p.status, owner_user_id: p.owner_user_id || null, snooze_until: p.snooze_until || null,
       emails, last_email: lastEmail ? { at: lastEmail, what: lastEmailWhat, reply_class: a?.reply_class || null } : null,
       heat: a?.heat ?? null, heat_band: a?.heat_band ?? null, heat_7d_ago: p.source_keys.map(k => heatAgo.get(k)).find(v => v != null) ?? null, visits: visitsRow,
       identified_at: p.identified_at ? String(p.identified_at).slice(0, 10) : null,
@@ -111,9 +111,9 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
   try { activity = await selectAllPages(() => supabase.from('sales_person_activity').select('person_key, contact_id, sent, opened_h, bot_opens, clicked, replied, last_sent_at, last_open_at, last_click_at, last_reply_at, reply_class, heat, heat_band, computed_at').eq('business_id', businessId).order('person_key')); }
   catch (e) { if (isMigrationPending(e)) return reply(503, { error: 'Run supabase/migrations/20261106_people_v2_stage1.sql first (sales_person_activity is missing)', migration_pending: true }); throw e; }
   const [prospects, salesPeople, partnerContacts, opportunities, targets, partners, visits, settings] = await Promise.all([
-    selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner, email, snooze_until').eq('business_id', businessId).order('contact_id')),
-    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, source_kind, visit_id, upload_id, archived_at, created_at, company_name'),
-    all('partner_contacts', 'id, goal_id, name, title, email, apollo_contact_id, last_activity_at'),
+    selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner_user_id, email, snooze_until').eq('business_id', businessId).order('contact_id')),
+    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, source_kind, visit_id, upload_id, archived_at, created_at, company_name, owner_user_id'),
+    all('partner_contacts', 'id, goal_id, name, title, email, apollo_contact_id, last_activity_at, owner_user_id'),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, archived_at, employees, employees_source'),
     all('sales_targets', 'id, name, status, owner_user_id, employees, employees_source'),
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, employees, employees_source', x => x.eq('goal_type', 'partnership')),

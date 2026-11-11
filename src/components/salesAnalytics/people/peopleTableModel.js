@@ -24,10 +24,9 @@ export function bandGroups(rows, sort) {
 export const bandRule = (band, r = { hot: 40, warm: 10 }) => (band === 'hot' ? `score ≥ ${r.hot}` : band === 'warm' ? `score ${r.warm}–${r.hot - 1}` : `score < ${r.warm}`);
 
 const DAY = 864e5;
-const slug = name => String(name || '').trim().split(/\s+/)[0].toLowerCase();
 const sevenDaysAgo = now => new Date(now - 6 * DAY).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
-// ctx = { meId, myName, now }
+// ctx = { meId, now }
 export function chipMatches(r, chip, ctx = {}) {
   const now = ctx.now ?? Date.now();
   switch (chip) {
@@ -40,7 +39,7 @@ export function chipMatches(r, chip, ctx = {}) {
     case 'buyer': return !!r.buyer;
     case 'hot': return r.heat_band === 'hot';
     case 'needs_touch': return !r.last_touch_at || Date.parse(r.last_touch_at) < now - NEEDS_TOUCH_DAYS * DAY;
-    case 'mine': return !!ctx.meId && (r.company?.owner_user_id === ctx.meId || (!!r.owner && r.owner === slug(ctx.myName)));
+    case 'mine': return !!ctx.meId && (r.company?.owner_user_id === ctx.meId || r.owner_user_id === ctx.meId);
     default: return true;
   }
 }
@@ -96,8 +95,10 @@ export function targetToFilters(target, base = EMPTY_FILTERS) {
 
 const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' }) : '');
 // P7: the CSV of the filtered rows - structured fields only (never an address; the ✉ is a yes / no).
-export const CSV_COLUMNS = [
+// members = the workspace's members ({ user_id, name }); the Owner column is the person's owner, first name or Unassigned (person-owner-v1 O6).
+export const csvColumns = (members = []) => [
   { label: 'Person', value: r => r.name || '' }, { label: 'Title', value: r => r.title || '' }, { label: 'Company', value: r => r.company?.name || '' },
+  { label: 'Owner', value: r => (r.owner_user_id ? String(members.find(m => m.user_id === r.owner_user_id)?.name || '').trim().split(/\s+/)[0] || 'Another member' : 'Unassigned') },
   { label: 'Company stage', value: r => r.company?.stage || '' },
   { label: 'Company size', value: r => headcountCsv(r.company?.employees) }, { label: 'Size source', value: r => headcountSourceWord(r.company?.employees, r.company?.employees_source) },
   { label: 'Source', value: r => r.sources.join(' + ') },

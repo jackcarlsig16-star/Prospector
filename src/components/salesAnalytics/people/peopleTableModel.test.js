@@ -1,18 +1,19 @@
-import { chipMatches, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, bandGroups, bandRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
+import { chipMatches, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, activeFilters, removeFilter, toggleChip, targetToFilters, csvColumns, bandGroups, bandRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
 import { toCsv } from '../../../utils/csv';
 
 // people-v2 Stage 2 - the table's pure rules over invented rows (the route's shape).
 const NOW = Date.parse('2026-11-06T18:00:00Z');
-const row = (name, over = {}) => ({ key: `prospect:${name}`, sources: ['Apollo'], source: 'Apollo', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner: 'jack',
+const row = (name, over = {}) => ({ key: `prospect:${name}`, sources: ['Apollo'], source: 'Apollo', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner_user_id: 'u1',
   emails: { sent: 1, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: { at: '2026-11-03T12:00:00Z', what: 'sent', reply_class: null }, heat: 5, heat_band: 'cold', visits: null, identified_at: null, buyer: false, has_email: true, last_touch_at: '2026-11-03T12:00:00Z', ...over });
 const ROWS = [
   row('Ana', { emails: { sent: 3, opened: 2, clicked: 1, replied: 1, bot_opens: 1 }, heat: 150, heat_band: 'hot', buyer: true, visits: { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' } }),
-  row('Bo', { source: 'Website', sources: ['Website'], identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
-  row('Cy', { company: { type: 'partner', id: 'g1', name: 'Harbor Lane', stage: 'replied', owner_user_id: 'u2' }, owner: 'cyrus', emails: { sent: 2, opened: 1, clicked: 0, replied: 0, bot_opens: 0 }, heat: 12, heat_band: 'warm', last_touch_at: '2026-10-01T12:00:00Z' }),
+  row('Bo', { source: 'Website', sources: ['Website'], identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner_user_id: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
+  row('Cy', { company: { type: 'partner', id: 'g1', name: 'Harbor Lane', stage: 'replied', owner_user_id: 'u2' }, owner_user_id: 'u9', emails: { sent: 2, opened: 1, clicked: 0, replied: 0, bot_opens: 0 }, heat: 12, heat_band: 'warm', last_touch_at: '2026-10-01T12:00:00Z' }),
 ];
-const ctx = { meId: 'u1', myName: 'Jack Carlson', now: NOW };
+const ctx = { meId: 'u1', now: NOW };
+const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson' }, { user_id: 'u9', name: 'Cyrus Test' }];
 
-test('chips: each rule alone; Mine = my company or my prospect owner slug; needs a touch = none in 14 d; visited 7 d needs a pull window ending this week', () => {
+test('chips: each rule alone; Mine = my company or the person own owner (owner_user_id); needs a touch = none in 14 d; visited 7 d needs a pull window ending this week', () => {
   expect(ROWS.map(r => chipMatches(r, 'opened', ctx))).toEqual([true, false, true]);
   expect(ROWS.map(r => chipMatches(r, 'clicked', ctx))).toEqual([true, false, false]);
   expect(ROWS.map(r => chipMatches(r, 'replied', ctx))).toEqual([true, false, false]);
@@ -23,7 +24,7 @@ test('chips: each rule alone; Mine = my company or my prospect owner slug; needs
   expect(ROWS.map(r => chipMatches(r, 'hot', ctx))).toEqual([true, false, false]);
   expect(ROWS.map(r => chipMatches(r, 'needs_touch', ctx))).toEqual([false, true, true]);
   expect(ROWS.map(r => chipMatches(r, 'mine', ctx))).toEqual([true, false, false]);
-  expect(chipMatches(ROWS[2], 'mine', { meId: 'u9', myName: 'Cyrus Test', now: NOW })).toBe(true);
+  expect(chipMatches(ROWS[2], 'mine', { meId: 'u9', now: NOW })).toBe(true);
   expect(chipCounts(ROWS, ctx)).toEqual({ opened: 2, clicked: 1, replied: 1, sent: 2, identified: 1, visited_7d: 1, buyer: 1, hot: 1, needs_touch: 2, mine: 1 });
 });
 
@@ -62,14 +63,15 @@ test('the old feed links land on chips; the band groups follow the heat order an
   expect([bandRule('hot'), bandRule('warm'), bandRule('cold'), bandRule('hot', { hot: 50, warm: 20 })]).toEqual(['score ≥ 40', 'score 10–39', 'score < 10', 'score ≥ 50']);
 });
 
-test('CSV: structured fields only, the address a yes / no, Company size = number or unknown + the source word, never an @', () => {
+test('CSV: structured fields only, the Owner column = the person\'s owner by first name or Unassigned, the address a yes / no, Company size = number or unknown + the source word, never an @', () => {
   const rows = [row('Ana', { ...ROWS[0], company: { ...ROWS[0].company, employees: 12000, employees_source: 'manual' } }), ROWS[1], ROWS[2]];
-  const csv = toCsv(rows, CSV_COLUMNS);
+  const csv = toCsv(rows, csvColumns(MEMBERS));
   const lines = csv.split('\r\n');
-  expect(lines[0]).toBe('Person,Title,Company,Company stage,Company size,Size source,Source,Sent,Opened (human),Clicked,Replied,Last email,Heat,Heat band,Company visits 7 d,Last visit,Identified,Buyer title,Address on file,Last touch');
-  expect(lines[1]).toBe('Ana,VP People,Acme Health,contacted,12000,typed,Apollo,3,2,1,1,Nov 3 sent,150,hot,6,2026-11-05,,yes,yes,Nov 3');
-  expect(lines[2]).toBe('Bo,VP People,Quarry Labs,researching,unknown,,Website,0,0,0,0,,,,1,2026-10-22,2026-11-02,,yes,');
-  expect(toCsv([row('Nil', { company: null })], CSV_COLUMNS).split('\r\n')[1].startsWith('Nil,VP People,,,unknown,,')).toBe(true);
+  expect(lines[0]).toBe('Person,Title,Company,Owner,Company stage,Company size,Size source,Source,Sent,Opened (human),Clicked,Replied,Last email,Heat,Heat band,Company visits 7 d,Last visit,Identified,Buyer title,Address on file,Last touch');
+  expect(lines[1]).toBe('Ana,VP People,Acme Health,Jack,contacted,12000,typed,Apollo,3,2,1,1,Nov 3 sent,150,hot,6,2026-11-05,,yes,yes,Nov 3');
+  expect(lines[2]).toBe('Bo,VP People,Quarry Labs,Unassigned,researching,unknown,,Website,0,0,0,0,,,,1,2026-10-22,2026-11-02,,yes,');
+  expect(toCsv([row('Nil', { company: null })], csvColumns(MEMBERS)).split('\r\n')[1].startsWith('Nil,VP People,,Jack,,unknown,,')).toBe(true);
+  expect(toCsv([ROWS[2]], csvColumns([])).split('\r\n')[1]).toContain('Harbor Lane,Another member,');
   expect(csv).not.toMatch(/@/);
 });
 
