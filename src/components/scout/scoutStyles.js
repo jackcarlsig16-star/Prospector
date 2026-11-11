@@ -155,6 +155,10 @@ const SCOUT_CSS = `
 .scout-btn kbd { font:inherit; font-size:10px; margin-left:4px; color:inherit; border-color:currentColor; }
 .scout-btn--accent:hover { color:#12161B; border-color:var(--ui-accent); }
 .scout-menu__list { display:flex; flex-direction:column; }
+.scout-link { all:unset; cursor:pointer; color:var(--ui-link, var(--ui-accent)); font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.scout-link:hover { text-decoration:underline; }
+.scout-link:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; border-radius:3px; }
+.scout-owner { display:inline-flex; align-items:center; gap:6px; }
 .scout-confirm { border:1px solid var(--ui-accent); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; background:color-mix(in srgb, var(--ui-accent) 6%, transparent); min-width:0; }
 .scout-confirm__title { font-size:13px; color:var(--ui-text); }
 .scout-confirm ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }

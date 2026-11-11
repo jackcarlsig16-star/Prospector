@@ -9,7 +9,7 @@ import { openKeyOf, readOpenKey, writeOpenParams, readAccountParam } from './sco
 // marked, Records / footer / thread, + Task (D14) and the Viewer, every edge state, the thread per day, the 390 sheet.
 const mockPhone = { on: false };
 jest.mock('../../utils/useMediaQuery', () => () => mockPhone.on);
-jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: { members: jest.fn(() => Promise.resolve([])) } }));
+jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: { members: () => Promise.resolve([]) } }));
 
 const B1 = { id: 'b1', name: 'HomeLover', color: '#E2418A', features: { goals_sales: true } };
 const B2 = { id: 'b2', name: 'Other', color: '#4FD1C5', features: { hk_sales: true } };

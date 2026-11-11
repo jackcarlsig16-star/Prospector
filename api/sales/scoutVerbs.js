@@ -106,8 +106,9 @@ const assign = {
 
 const contacted = {
   id: 'contacted', label: 'Mark contacted', done: 'Marked contacted', lead: /^mark\b.*\bcontacted\b|^log (?:a |an )?(?:touch|email)\b/, accepts: ['people', ...COMPANY_ENTITIES],
-  async plan(sb, ctx, targets) {
+  async plan(sb, ctx, targets, args) {
     const rows = [];
+    if (!targets.length) targets = await named(sb, ctx.businessId, args?.names || []);
     for (const t of targets) {
       const { company, prospect, person } = await resolve(sb, ctx.businessId, t);
       if (!person && company?.type === 'partner') { rows.push({ ...base(t, company.name), from: null, to: 'email touch logged', exec: { partner: { id: company.id, stage: company.stage || 'not_started' }, name: null } }); continue; }
@@ -150,6 +151,7 @@ const notFit = {
     const why = REASONS.find(([re]) => re.test(args.text || ''));
     const fit = why ? { reason: why[1], note: null, word: why[2] } : { reason: 'other', note: 'Not a fit', word: 'Not a fit' };
     const rows = [];
+    if (!targets.length) targets = await named(sb, ctx.businessId, args?.names || []);
     for (const t of targets) {
       if (t.entity === 'people') {
         const prospect = await prospectOf(sb, ctx.businessId, t.id);
@@ -185,6 +187,7 @@ const snooze = {
   async plan(sb, ctx, targets, args) {
     const date = args.date || addDays(ctx.today, SNOOZE_DEFAULT_DAYS);
     const rows = [];
+    if (!targets.length) targets = await named(sb, ctx.businessId, args?.names || []);
     for (const t of targets) {
       if (t.entity === 'todos') { rows.push(block(t, "snoozing a task isn't available yet - change its due date in Actions")); continue; }
       if (t.entity === 'people') {

@@ -92,7 +92,9 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const openRef = useRef(null);
   const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, onTurn, onOpenItem: item => openRef.current?.(item), onCompose: setCompose });
   useEffect(() => { setMembers([]); }, [scope]);
-  useEffect(() => { if (menu && canAct && !members.length) goalsApi.members(scope).then(ms => setMembers(ms.map(m => ({ user_id: m.user_id, first: String(m.name || 'Member').split(' ')[0] })))).catch(() => {}); }, [menu, canAct, members.length, scope]);
+  // the members of the answer's workspace: owner names on task rows, the Assign ▸ list (with each member's colour)
+  const salesScope = scope !== 'all' && !!businesses.find(b => b.id === scope)?.features?.goals_sales;
+  useEffect(() => { if (current && salesScope && !members.length) goalsApi.members(scope).then(ms => { const list = (ms || []).map(m => ({ user_id: m.user_id, first: String(m.name || 'Member').split(' ')[0], color: m.color || null })); const mine = String(me?.profile?.display_name || '').split(' ')[0]; setMembers(meId && mine && !list.some(m => m.user_id === meId) ? [...list, { user_id: meId, first: mine, color: null }] : list); }).catch(() => {}); }, [current, salesScope, members.length, scope]);
 
   const ask = useCallback(async (question = text) => {
     if (!question || question.length < MIN_CHARS) return;

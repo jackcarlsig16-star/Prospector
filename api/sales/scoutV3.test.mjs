@@ -109,7 +109,7 @@ test('D2 details: a pronoun carries the part before\'s company into the to-do re
   assert.deepEqual(c.parts[0].brief, { entity: 'employers', id: u('4') });
   assert.equal(c.parts[1].ask.carried, true);
   assert.equal(c.parts[1].count, 2);
-  assert.deepEqual(c.parts[1].labels.map(l => c.items.get(l).row.link), [{ type: 'employer', id: u('4') }, null], 'K1: the link reads employer, never opportunity');
+  assert.deepEqual(c.parts[1].labels.map(l => c.items.get(l).row.link), [{ entity: 'employers', type: 'employer', id: u('4'), name: 'Northrop Grumman', open: { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: `employer-${u('4')}` } } }, null], 'K1: the link reads employer, never opportunity; it carries its name and opener');
   const s = sectioned('Two parts.\n@@ 1\n[r1] [r3]\n@@ 2\nNothing is due.', { parts: [{ ...c.parts[0], labels: ['r1'] }, { ...c.parts[1], labels: [], count: 0 }], items: c.items });
   assert.deepEqual(s.sections[0].rows.map(x => x.id), [u('4')]);
   assert.equal(s.sections[1].rows.length, 0); assert.equal(s.sections[1].line, 'Nothing is due.');

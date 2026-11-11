@@ -73,7 +73,7 @@ export function sectioned(text, ctx) {
   const meta = p => ({ title: p.title || cleanText(p.q, 80), count: p.count, rule: p.rule, read: p.read, brief: p.brief });
   if (ctx.parts.length < 2) {
     const r = resolveRefs(text, ctx.items), p = ctx.parts[0];
-    return { ...r, summary: r.answer_md, sections: [{ ...meta(p), total: p.count, rows: r.items, line: null }] };
+    return { ...r, summary: r.answer_md, sections: [{ ...meta(p), count: r.items.length, total: Math.max(p.count, r.items.length), rows: r.items, line: null }] };
   }
   const chunks = text.split(new RegExp(BLOCK.source, 'gm'));
   const summary = resolveRefs(chunks[0], new Map()).answer_md;
@@ -86,8 +86,8 @@ export function sectioned(text, ctx) {
     const rows = (cited.length ? cited : p.labels.map(l => own.get(l))).slice(0, cap);
     for (const r of rows) all.set(`${r.entity}:${r.id}`, r);
     const said = cleanText((blocks.get(i + 1) || '').replace(TOKEN, '').replace(/\s+/g, ' '), 300);
-    // a count asked for ("5 most important") is the section's count; total keeps how many matched in all
-    return { ...meta(p), count: p.ask.limit ? rows.length : p.count, total: p.count, rows, line: rows.length ? null : said || `Nothing matched. Read: ${p.read || 'nothing'}.` };
+    // the count is the rows shown; total keeps how many matched in all ("5 of 49")
+    return { ...meta(p), count: rows.length, total: Math.max(p.count, rows.length), rows, line: rows.length ? null : said || `Nothing matched. Read: ${p.read || 'nothing'}.` };
   });
   const answer_md = [summary, ...sections.map(x => `${x.title} (${x.count})\n${x.rows.length ? x.rows.map(r => `- ${r.title}`).join('\n') : x.line}`)].filter(Boolean).join('\n\n');
   return { answer_md, items: [...all.values()], summary, sections };

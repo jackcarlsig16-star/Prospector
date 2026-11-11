@@ -183,8 +183,9 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
         const r = await i.run(supabase, ctx);
         matched.push(i.id); partReads.push(many ? `${b.name}: ${r.read}` : r.read); add(r.items, b, null, 1);
         const rule = r.rule || (typeof i.rule === 'function' ? i.rule(ask) : i.rule); if (rule) rules.push(rule);
-        const title = typeof i.title === 'function' ? i.title(ask) : i.title; if (title) titles.push(title);
-        if (typeof r.total === 'number') total = (total || 0) + r.total;
+        // an intent marked `context` (a brief riding along with a list) lends its lines, not the section's title or count
+        const title = typeof i.title === 'function' ? i.title(ask) : i.title; if (title) titles.push({ title, context: !!i.context });
+        if (typeof r.total === 'number' && !(i.context && hit.length > 1)) total = (total || 0) + r.total;
         if (r.brief) brief = r.brief;
       }
       if (!hit.length) {
@@ -229,11 +230,13 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
         const open = registry.openerFor(entity);
         // the row's words are checked, not its ids (a uuid reads as a phone shape)
         const row = item.row && !hasPii([item.row.name, item.row.title, item.row.text, item.row.company?.name].filter(Boolean).join(' · ')) ? item.row : null;
+        // a row's company / link ref opens through its own entity's opener (the client never builds a route)
+        if (row) for (const ref of [row.company, row.link]) if (ref?.entity && ref.id) { const o = registry.openerFor(ref.entity); ref.open = o ? o(String(ref.id), ref) : null; }
         items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null, ...(row ? { row } : {}) });
       }
     }
     if (multi && !partLabels.length && matched.length) push('(no rows for this part)');
-    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: titles[0] || null, rule: rules.join(' ') || null, read: partReads.join(' · '), labels: partLabels, count: total ?? partLabels.length, brief: ask.flags.brief && brief ? brief : null });
+    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.join(' · '), labels: partLabels, count: total ?? partLabels.length, brief: ask.flags.brief && brief ? brief : null });
   }
   const intent = matchedAll.length ? [...new Set(matchedAll)].join('+') : 'none';
   return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };

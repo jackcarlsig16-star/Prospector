@@ -24,24 +24,32 @@ function due(row) {
 }
 
 // columns per row kind: [{ label, cell(item), w }]
-function columnsFor(kind, { scopeAll, colorOf, sorted }) {
+// A company named on a row opens through the opener the server attached (never a route built here).
+const CompanyLink = ({ refTo, onOpen, sub }) => (refTo?.open
+  ? <span className="scout-stack"><button type="button" className="scout-link" title={`Open ${refTo.name}`} onClick={() => onOpen({ entity: refTo.entity, id: refTo.id, title: refTo.name, open: refTo.open })}>{refTo.name}</button>{sub && <small>{sub}</small>}</span>
+  : <Stack top={refTo.name} sub={sub} />);
+const ownerName = (row, members) => { const m = row.owner_user_id ? members.find(x => x.user_id === row.owner_user_id) : null; return m ? { name: m.first, color: m.color } : { name: ({ mine: 'You', unassigned: 'Unassigned' })[row.owner] || 'Another owner', color: null }; };
+const Owner = ({ row, members }) => { const o = ownerName(row, members); return <span className="scout-owner">{o.color && <i className="scout-dot" style={{ background: o.color }} />}{o.name}</span>; };
+
+function columnsFor(kind, { scopeAll, colorOf, sorted, members, onOpen }) {
   const ws = scopeAll ? [{ label: 'Workspace', w: 140, cell: r => <WorkspaceTag name={r.workspace_name} color={colorOf(r.workspace_id)} /> }] : [];
   if (kind === 'person') return [
     { label: 'Person', cell: r => <Stack top={r.row.name} sub={r.row.title} /> },
-    { label: 'Company', cell: r => (r.row.company ? <Stack top={r.row.company.name} sub={r.row.company.id ? stage(r.row.company.stage) : 'no company record'} /> : <span className="scout-dim">—</span>) },
+    { label: 'Company', cell: r => (r.row.company ? <CompanyLink refTo={r.row.company} onOpen={onOpen} sub={r.row.company.id ? stage(r.row.company.stage) : 'no company record'} /> : <span className="scout-dim">—</span>) },
     ...ws,
     { label: <Mark>Heat</Mark>, w: 104, cell: r => <HeatPill heat={r.row.heat} band={r.row.heat_band} size="sm" /> },
-    { label: 'Last visit', w: 92, cell: r => fmt(r.row.last_visit) || <span className="scout-dim">—</span> },
+    { label: 'Last visit', w: 150, cell: r => (r.row.last_visit ? <span title={r.row.last_path || undefined}>{[fmt(r.row.last_visit), r.row.last_path].filter(Boolean).join(' · ')}</span> : <span className="scout-dim">—</span>) },
     { label: 'Last email', w: 128, cell: r => (r.row.last_email ? `${fmt(r.row.last_email.at)} · ${r.row.last_email.what}` : <span className="scout-dim">—</span>) },
   ];
   if (kind === 'task') return [
     { label: 'Task', cell: r => <span title={r.row.text} className="scout-clip">{r.row.text}</span> },
+    { label: 'Company', w: 150, cell: r => (r.row.link ? <CompanyLink refTo={r.row.link} onOpen={onOpen} /> : <span className="scout-dim">—</span>) },
     ...ws,
-    { label: 'Owner', w: 120, cell: r => ({ mine: 'You', unassigned: 'Unassigned' })[r.row.owner] || 'Another owner' },
+    { label: 'Owner', w: 120, cell: r => <Owner row={r.row} members={members} /> },
     { label: <Mark dir="▲">Due</Mark>, w: 136, cell: r => due(r.row) },
   ];
   if (kind === 'company') return [
-    { label: 'Company', cell: r => <Stack top={r.title} sub={[entityLabel(r.entity), stage(r.row?.stage)].filter(Boolean).join(' · ')} /> },
+    { label: 'Company', cell: r => <CompanyLink refTo={{ entity: r.entity, id: r.id, name: r.title, open: r.open }} onOpen={onOpen} sub={[entityLabel(r.entity), stage(r.row?.stage)].filter(Boolean).join(' · ')} /> },
     ...ws,
     { label: 'Owner', w: 120, cell: r => r.row?.owner || <span className="scout-dim">Unassigned</span> },
     { label: sorted ? <Mark>Score</Mark> : 'Score', w: 92, cell: r => <span className="scout-num">{r.score ?? r.row?.score ?? '—'}{r.row?.band ? ` · ${r.row.band}` : ''}</span> },
@@ -65,7 +73,7 @@ export function RowMenu({ item, phone, members, onPick, onClose }) {
     return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('mousedown', out); };
   }, [sub, onClose]);
   const items = menuFor(item);
-  const subItems = sub === 'members' ? [...members.map(m => ({ id: m.user_id, label: m.first || m.name })), { id: null, label: 'Unassigned' }] : sub === 'dates' ? SNOOZE_CHOICES : null;
+  const subItems = sub === 'members' ? [...members.map(m => ({ id: m.user_id, label: m.first || m.name, color: m.color })), { id: null, label: 'Unassigned' }] : sub === 'dates' ? SNOOZE_CHOICES : null;
   const title = [item.title, item.row?.company?.name].filter(Boolean).join(' · ');
   return (
     <div ref={ref} className={`scout-menu${phone ? ' scout-menu--sheet' : ''}`} data-scout-menu={sub || 'root'}>
@@ -78,7 +86,7 @@ export function RowMenu({ item, phone, members, onPick, onClose }) {
         </button>
       ))}
       {subItems && subItems.map(m => (
-        <button key={String(m.id)} type="button" role="menuitem" data-scout-pick={`${sub}:${m.id}`} onClick={() => onPick(sub === 'members' ? 'assign' : 'snooze', sub === 'members' ? { owner_user_id: m.id } : { days: m.days })}>{m.label}</button>
+        <button key={String(m.id)} type="button" role="menuitem" data-scout-pick={`${sub}:${m.id}`} onClick={() => onPick(sub === 'members' ? 'assign' : 'snooze', sub === 'members' ? { owner_user_id: m.id } : { days: m.days })}><span className="scout-owner">{m.color && <i className="scout-dot" style={{ background: m.color }} />}{m.label}</span></button>
       ))}
       </div>
     </div>
@@ -97,13 +105,13 @@ function Actions({ item, canAct, onOpen, onMenu, menu, phone, members, onPick })
   );
 }
 
-function PhoneCard({ item, kind, actions }) {
+function PhoneCard({ item, kind, actions, members }) {
   const r = item.row || {};
   return (
     <div className="scout-card" data-scout-row={keyOf(item)}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ flex: 1, minWidth: 0 }}>{kind === 'task' ? r.text : item.title}</span>{kind === 'person' && <HeatPill heat={r.heat} band={r.heat_band} size="sm" />}</span>
       {kind === 'person' && <small className="scout-dim">{[r.title, r.company?.name].filter(Boolean).join(' · ')}</small>}
-      <div><span>{kind === 'person' ? (r.last_visit ? `visit ${fmt(r.last_visit)}` : r.last_email ? `${r.last_email.what} ${fmt(r.last_email.at)}` : 'no visit yet') : kind === 'task' ? <>{({ mine: 'You', unassigned: 'Unassigned' })[r.owner] || 'Another owner'} · {due(r)}</> : [entityLabel(item.entity), item.subtitle, item.date ? fmt(item.date) : item.score].filter(Boolean).join(' · ')}</span>{actions}</div>
+      <div><span>{kind === 'person' ? (r.last_visit ? `visit ${fmt(r.last_visit)}${r.last_path ? ` · ${r.last_path}` : ''}` : r.last_email ? `${r.last_email.what} ${fmt(r.last_email.at)}` : 'no visit yet') : kind === 'task' ? <>{[r.link?.name, ownerName(r, members).name].filter(Boolean).join(' · ')} · {due(r)}</> : [entityLabel(item.entity), item.subtitle, item.date ? fmt(item.date) : item.score].filter(Boolean).join(' · ')}</span>{actions}</div>
       <Result r={item.result} />
     </div>
   );
@@ -113,7 +121,7 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
   const [all, setAll] = useState(false);
   const kinds = new Set(section.rows.map(rowKind));
   const kind = kinds.size === 1 ? [...kinds][0] : 'other';
-  const cols = columnsFor(kind, { scopeAll, colorOf, sorted });
+  const cols = columnsFor(kind, { scopeAll, colorOf, sorted, members, onOpen });
   const cap = phone && !all ? PHONE_SHOWN[kind === 'person' ? 'people' : kind === 'task' ? 'todos' : ''] || section.rows.length : section.rows.length;
   const shown = section.rows.slice(0, cap), hidden = section.rows.length - shown.length;
   const act = item => <Actions item={item} canAct={canAct} onOpen={onOpen} onMenu={onMenu} menu={menu} phone={phone} members={members} onPick={onPick} />;
@@ -143,7 +151,7 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
           </table>
         </div>
       )}
-      {shown.length > 0 && phone && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} />)}</div>}
+      {shown.length > 0 && phone && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} members={members} />)}</div>}
       {hidden > 0 && <button type="button" className="scout-btn scout-more" onClick={() => setAll(true)}>{hidden} more <CaretGlyph /></button>}
       {foot.length > 0 && section.rows.length > 0 && <footer className="scout-rule" data-scout-rule>{foot.map((f, i) => <span key={i}>{f}</span>)}</footer>}
     </section>

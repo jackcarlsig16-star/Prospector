@@ -47,6 +47,18 @@ export async function findCompany(sb, businessId, name) {
   return cands.find(c => normName(c.name) === normName(name)) || cands[0] || null;
 }
 
+// A to-do's company link -> { entity, type, id, name } (the three record tables, one read each), keyed "type:id".
+const LINK_TABLE = { partner: ['sales_goals', 'name'], employer: ['sales_opportunities', 'organization'], target: ['sales_targets', 'name'] };
+async function linkNames(sb, businessId, rows) {
+  const out = new Map();
+  for (const [type, [table, col]] of Object.entries(LINK_TABLE)) {
+    const ids = [...new Set(rows.filter(r => readType(r.link_type) === type && r.link_id).map(r => r.link_id))];
+    if (!ids.length) continue;
+    for (const x of must(await sb.from(table).select(`id, ${col}`).eq('business_id', businessId).in('id', ids))) out.set(`${type}:${x.id}`, { entity: ENTITY_OF[type], type, id: x.id, name: cleanText(x[col], 160) });
+  }
+  return out;
+}
+
 // D9: a person named in the question -> their People row (exact normalised name), when no company carries the name.
 export async function findPerson(sb, businessId, name, today) {
   const r = await salesReads.peopleActivity(sb, businessId, { window: 'all', snoozed: 'all' });
@@ -74,14 +86,14 @@ export function rankTodos(rows, today, userId) {
 const heatFilter = (rows, ask) => (ask.band && ask.bandKind === 'heat' ? rows.filter(p => p.heat_band === HEAT_OF[ask.band]) : rows);
 // scout-v3 D1: a person is a ROW - name over title, the company link over its stage, heat on the one scale, last
 // visit, last email. company.id is null when the person has no company record (ruling K4).
-export const personRow = p => ({ kind: 'person', key: p.key, name: p.name, title: p.title || null, company: p.company ? { type: readType(p.company.type), id: p.company.id || null, name: p.company.name, stage: p.company.stage || null } : null, heat: p.heat ?? null, heat_band: p.heat_band || null, last_visit: p.visits?.last_visit ? day(p.visits.last_visit) : null, last_email: p.last_email ? { at: day(p.last_email.at), what: p.last_email.what } : null, status: p.status || null, sequenced: String(p.key).startsWith('prospect:') });
+export const personRow = p => ({ kind: 'person', key: p.key, name: p.name, title: p.title || null, company: p.company ? { entity: ENTITY_OF[readType(p.company.type)] || null, type: readType(p.company.type), id: p.company.id || null, name: p.company.name, stage: p.company.stage || null } : null, heat: p.heat ?? null, heat_band: p.heat_band || null, last_visit: p.visits?.last_visit ? day(p.visits.last_visit) : null, last_path: p.visits?.top_page || null, last_email: p.last_email ? { at: day(p.last_email.at), what: p.last_email.what } : null, status: p.status || null, sequenced: String(p.key).startsWith('prospect:') });
 const personItem = p => ({ company: p.company?.name || null, row: personRow(p), entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d${p.visits.last_visit ? ` · last ${day(p.visits.last_visit)}` : ''}` : null, p.identified_at ? `identified on the site ${p.identified_at}` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') });
 
 // Each intent declares one example phrasing (A5): the fallback answer offers three, the `suggest` ones first.
 export const salesIntents = [
   // scout-v3 D9: a named company - or a named PERSON when no company carries the name - is a brief. A pronoun's
   // carried companies ("... my tasks for them") never re-open the brief. brief = the one record, for the brief header.
-  { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,
+  { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', context: true, rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,
     async run(sb, { businessId, ask, today }) {
       const items = [], reads = [], records = [];
       for (const name of ask.company.slice(0, 2)) {
@@ -127,10 +139,12 @@ export const salesIntents = [
         kept = kept.filter(r => found.some(c => readType(r.link_type) === c.type && String(r.link_id) === String(c.id)) || names.some(n => String(r.text || '').toLowerCase().includes(n)));
         of = ` · for ${ask.company.map(n => cleanText(n, 60)).join(', ')}`;
       }
-      kept = rankTodos(kept, today, auth.user.id);
+      const matched = kept.length;
+      kept = rankTodos(kept, today, auth.user.id).slice(0, 40);
+      const linkName = await linkNames(sb, businessId, kept);
       const owner = r => (r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned');
-      return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})${of}`, total: kept.length, items: kept.slice(0, 40).map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
-        row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), link: r.link_type && r.link_id && ['partner', 'employer', 'target'].includes(readType(r.link_type)) ? { type: readType(r.link_type), id: r.link_id } : null },
+      return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})${of}`, total: matched, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
+        row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), owner_user_id: r.owner_user_id || null, link: linkName.get(`${readType(r.link_type)}:${r.link_id}`) || null },
         text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}${day(r.due_date) < today ? ' (overdue)' : ''}` : 'no date', owner(r), r.steps?.length ? `${r.steps.filter(x => x.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people' && !ask.flags.email_site,

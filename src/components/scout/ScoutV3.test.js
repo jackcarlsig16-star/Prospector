@@ -12,7 +12,7 @@ import { looksLikeCommand, planRows, cardTitle, menuFor, withResults, withoutRes
 const mockPhone = { on: false };
 jest.mock('../../utils/useMediaQuery', () => () => mockPhone.on);
 jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: {
-  members: () => Promise.resolve([{ user_id: 'u1', name: 'Ana Member' }, { user_id: 'u2', name: 'Bo Member' }]),
+  members: () => Promise.resolve([{ user_id: 'u1', name: 'Ana Member', color: '#6F8CF0' }, { user_id: 'u2', name: 'Bo Member', color: '#C97626' }]),
   copyBundle: () => Promise.resolve('# Cloudflare — employer\n'),
 } }));
 jest.mock('../salesAnalytics/goals/priorities/ComposePanel', () => ({ row, onClose }) => <div role="dialog" aria-label={`Write email · ${row.name}`}><button type="button" onClick={onClose}>Close draft</button></div>);
@@ -20,11 +20,12 @@ jest.mock('../salesAnalytics/goals/priorities/ComposePanel', () => ({ row, onClo
 const B1 = { id: 'b1', name: 'HomeLover', color: '#E2418A', features: { goals_sales: true } };
 const member = { profile: { id: 'u1' }, memberships: [{ business_id: 'b1', role: 'member' }] };
 const viewer = { profile: { id: 'u9' }, memberships: [{ business_id: 'b1', role: 'viewer' }] };
-const person = (i, name, heat, co = { type: 'employer', id: 'e1', name: 'Cloudflare', stage: 'contacted' }) => ({ entity: 'people', id: `prospect:p${i}`, title: name, score: heat, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'pipeline', view: 'people', open: `person:prospect:p${i}` } }, why: `${name} · VP People`,
-  row: { kind: 'person', key: `prospect:p${i}`, name, title: 'VP People', company: co, heat, heat_band: 'hot', last_visit: '2026-11-08', last_email: { at: '2026-10-29', what: 'opened' }, status: 'new', sequenced: true } });
-const task = (i, text, due, overdue = false, owner = 'mine') => ({ entity: 'todos', id: `t${i}`, title: text, date: due, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'actions', open: `todo:t${i}` } }, why: text, row: { kind: 'task', id: `t${i}`, text, due, overdue, owner, link: null } });
+const CO_OPEN = { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: 'employer-e1' } };
+const person = (i, name, heat, co = { entity: 'employers', type: 'employer', id: 'e1', name: 'Cloudflare', stage: 'contacted', open: CO_OPEN }) => ({ entity: 'people', id: `prospect:p${i}`, title: name, score: heat, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'pipeline', view: 'people', open: `person:prospect:p${i}` } }, why: `${name} · VP People`,
+  row: { kind: 'person', key: `prospect:p${i}`, name, title: 'VP People', company: co, heat, heat_band: 'hot', last_visit: '2026-11-08', last_path: '/terms', last_email: { at: '2026-10-29', what: 'opened' }, status: 'new', sequenced: true } });
+const task = (i, text, due, overdue = false, owner = 'mine', link = null) => ({ entity: 'todos', id: `t${i}`, title: text, date: due, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'actions', open: `todo:t${i}` } }, why: text, row: { kind: 'task', id: `t${i}`, text, due, overdue, owner, owner_user_id: { mine: 'u1', 'another owner': 'u2' }[owner] || null, link } });
 const PEOPLE = [person(1, 'Dana Mayer', 48), person(2, 'Meg Earley', 46), person(3, 'Paola Ball', 46), person(4, 'James Curcio', 46), person(5, 'Lee Stone', 41, { type: 'account', id: null, name: 'Marriott', stage: null })];
-const TASKS = [task(1, 'Send the joint note', '2026-11-08', true), task(2, 'Intro two partners', '2026-11-10'), task(3, 'Create the reporting draft', '2026-11-11', false, 'another owner'), task(4, 'Reach out to PerkSpot', '2026-11-12'), task(5, 'Find a contact', null, false, 'unassigned')];
+const TASKS = [task(1, 'Send the joint note', '2026-11-08', true, 'mine', { entity: 'partners', type: 'partner', id: 'pa1', name: 'Upside', open: { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: 'partner-pa1' } } }), task(2, 'Intro two partners', '2026-11-10'), task(3, 'Create the reporting draft', '2026-11-11', false, 'another owner'), task(4, 'Reach out to PerkSpot', '2026-11-12'), task(5, 'Find a contact', null, false, 'unassigned')];
 const ANSWER = {
   answer_md: 'Two parts.', summary: 'Two parts: five hot prospects on the site and five tasks, one overdue.',
   sections: [
@@ -58,7 +59,7 @@ const enter = (input, v) => { fireEvent.focus(input); fireEvent.change(input, { 
 const answered = async (props) => { const m = mount(props); enter(m.input, 'pull me 5 most important prospects who are visiting and hot and show 5 most important tasks'); await waitFor(() => expect(m.container.querySelector('[data-scout-answer]')).toBeTruthy()); return m; };
 
 test('the sectioned answer: summary, two numbered sections with count pills, people rows (name over title, company over stage, heat pill, sort mark), task rows, rule footers, no Records block', async () => {
-  const { container } = await answered();
+  const { container, onOpen } = await answered();
   expect(container.querySelector('[data-scout-prose]').textContent).toBe('Two parts: five hot prospects on the site and five tasks, one overdue.');
   const [s1, s2] = container.querySelectorAll('[data-scout-section]');
   expect(s1.querySelector('.scout-num-badge').textContent).toBe('1');
@@ -75,10 +76,18 @@ test('the sectioned answer: summary, two numbered sections with count pills, peo
   expect(s1.querySelector('[data-scout-rule]').textContent).toContain('People ranked by heat');
   expect(s2.querySelector('[data-scout-count]').textContent).toBe('5 of 342 open');
   expect(s2.querySelector('[data-scout-due="overdue"]').textContent).toBe('overdue · Nov 8');
-  expect([...s2.querySelectorAll('tbody tr')].map(tr => tr.querySelectorAll('td')[1].textContent)).toEqual(['You', 'You', 'Another owner', 'You', 'Unassigned']);
+  expect([...s2.querySelectorAll('thead th')].map(th => th.textContent.trim())).toEqual(['Task', 'Company', 'Owner', 'Due ▲', 'Actions']);
+  expect([...s2.querySelectorAll('tbody tr')].map(tr => tr.querySelectorAll('td')[1].textContent)).toEqual(['Upside', '—', '—', '—', '—']);
+  await waitFor(() => expect([...s2.querySelectorAll('tbody tr')].map(tr => tr.querySelectorAll('td')[2].textContent)).toEqual(['Ana', 'Ana', 'Bo', 'Ana', 'Unassigned']));
+  expect(s2.querySelector('tbody tr td:nth-child(3) .scout-dot')).toBeTruthy();
+  expect(first.querySelectorAll('td')[3].textContent).toBe('Nov 8 · /terms');
+
   expect(container.querySelector('[data-scout-records]')).toBeNull();
   expect(container.textContent).not.toMatch(/Records \(|@/);
   expect(readThread('u1')[0].sections).toHaveLength(2);
+  expect(within(s2).getByRole('button', { name: 'Upside' }).className).toBe('scout-link');
+  fireEvent.click(within(first).getByRole('button', { name: 'Cloudflare' }));
+  expect(onOpen).toHaveBeenLastCalledWith({ entity: 'employers', id: 'e1', title: 'Cloudflare', open: CO_OPEN });
 });
 
 test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, Snooze ▸ the dates; a task row lists Done · Reassign · Snooze · Open and opens the task (no Scout write)', async () => {
@@ -88,6 +97,7 @@ test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, 
   expect(within(menu).getAllByRole('menuitem').map(b => b.textContent.replace('▸', ''))).toEqual(['Assign', 'Task', 'Mark contacted', 'Not a fit', 'Draft email', 'Snooze', 'Copy for Claude']);
   fireEvent.click(within(menu).getByRole('menuitem', { name: /Assign/ }));
   await waitFor(() => expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Ana', 'Bo', 'Unassigned']));
+  expect(screen.getByRole('menu').querySelectorAll('.scout-dot')).toHaveLength(2);
   fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Bo' }));
   await waitFor(() => expect(container.querySelector('[data-scout-card]')).toBeTruthy());
   expect(calls('/api/scout/plan')[0]).toMatchObject({ scope: 'b1', verb: 'assign', keys: ['people:prospect:p1'], args: { owner_user_id: 'u2' } });
