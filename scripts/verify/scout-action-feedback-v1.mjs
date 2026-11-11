@@ -1,7 +1,7 @@
 // FIX scout-action-feedback-v1 - live, localhost against the build, as Jack (ownerSession) on the REAL HomeLover
 // workspace. DECLARED before it runs:
-//   F3      first: prod's main.js hash (asset-manifest.json on Render) must equal this build's, and HEAD must equal
-//           origin/main - otherwise the run stops before the browser opens.
+//   F3      first: prod's bundle (asset-manifest.json on Render) must no longer be the one Jack clicked on and must
+//           hold this commit's strings, and HEAD must equal origin/main - otherwise the run stops before the browser.
 //   Claude  cap 1: ONE Write email open from a person row at 1440 (POST goals/compose, the panel's own call). Its
 //           reply is cached in .screenshots/scout-action-feedback-v1/ledger.json with a spent counter: 390 and any
 //           re-run replay it (0 Claude) and a second real compose call is REFUSED (aborted in the browser - the
@@ -49,14 +49,22 @@ const finish = () => {
   process.exit(failed.length ? 1 : 0);
 };
 
-// ---- F3: Render is Live on this hash
+// ---- F3: Render is Live on this commit. Render's build and this one do not share a main.js hash (measured on
+// 4bb2d80: main.d1e6b424.js on prod, main.91746a37.js here), so the proof is the content: prod's bundle is no longer
+// the one Jack clicked on, and it carries strings that exist only from this commit on.
+const PREV_PROD = 'main.d1e6b424.js'; // what prod served for 4bb2d80 (read Nov 10 8:21 PM PT, built 7:57 PM PT)
+const FIRST_FIX = 'main.b6aa17ee.js'; // 7cebcc0, the FIX's first commit: its Write email panel had no background when opened from Scout
+const MARKS = ['Copy draft bundle', 'Opened the task in Actions', 'data-scout-actblock', 'data-scout-compose'];
 const mainOf = m => m?.files?.['main.js'] || null;
 const local = mainOf(JSON.parse(fs.readFileSync(path.join(ROOT, 'build', 'asset-manifest.json'), 'utf8')));
 const prod = mainOf(await (await fetch(`${PROD}/asset-manifest.json`, { cache: 'no-store' })).json().catch(() => null));
+const prodJs = prod ? await (await fetch(`${PROD}${prod}`)).text() : '', localJs = fs.readFileSync(path.join(ROOT, 'build', local), 'utf8');
+const built = (await fetch(`${PROD}/`, { cache: 'no-store' })).headers.get('last-modified');
 const head = execSync('git rev-parse HEAD', { cwd: ROOT }).toString().trim(), remote = execSync('git ls-remote origin main', { cwd: ROOT }).toString().split(/\s/)[0];
-results.deploy = { head: head.slice(0, 7), remote: remote.slice(0, 7), local_bundle: local, prod_bundle: prod };
-ok(`F3: Render is Live on HEAD ${head.slice(0, 7)} (= origin/main) - prod serves ${prod}, this build is ${local}`, head === remote && !!local && local === prod, JSON.stringify(results.deploy));
-if (!(head === remote && local && local === prod)) finish();
+const live = head === remote && !!prod && !prod.endsWith(PREV_PROD) && !prod.endsWith(FIRST_FIX) && MARKS.every(m => prodJs.includes(m)) && MARKS.every(m => localJs.includes(m));
+results.deploy = { head: head.slice(0, 7), remote: remote.slice(0, 7), prod_bundle: prod, prod_built: built, clicked_on: PREV_PROD, local_bundle: local, marks_on_prod: MARKS.filter(m => prodJs.includes(m)).length };
+ok(`F3: Render is Live on HEAD ${head.slice(0, 7)} (= origin/main) - prod serves ${prod} (built ${built}), not ${PREV_PROD}, and holds ${results.deploy.marks_on_prod} of ${MARKS.length} strings that exist only from this commit`, live, JSON.stringify(results.deploy));
+if (!live) finish();
 
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 const HL = (await svc.from('businesses').select('id').ilike('name', 'homelover')).data?.[0]?.id;
@@ -126,7 +134,8 @@ try {
   // One pick: ⋯ on the row, the item (and the first choice of a submenu), then the settled line: its text, its kind,
   // how long it took to appear, and whether it sits inside the visible part of the panel.
   async function pick(page, w, kind, rowSel, id, input) {
-    if (!(await page.locator('[data-scout-answer]').isVisible().catch(() => false))) { await input.click(); await page.locator('[data-scout-answer]').waitFor(); }
+    if (!(await page.locator('[data-scout-answer]').isVisible().catch(() => false))) { await input.focus(); await page.locator('[data-scout-answer]').waitFor(); }
+    const clipBefore = ['bundle', 'copy'].includes(id) ? await page.evaluate(() => navigator.clipboard.readText()).catch(() => '') : null;
     const row = page.locator(rowSel).first();
     await row.scrollIntoViewIfNeeded();
     await row.locator('.scout-more-btn').click();
@@ -153,12 +162,13 @@ try {
       rec.capture = await page.locator('input[aria-label="New task"]').inputValue({ timeout: 8000 }).catch(() => null);
       await page.locator('button[aria-label="Close quick capture"]').click({ timeout: 2000 }).catch(() => page.keyboard.press('Escape'));
     }
-    if (id === 'bundle' || id === 'copy') { const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => ''); rec.clipboard = clip.length; rec.clip_pii = hasPii(clip) || clip.includes('@'); rec.clip_prompt = /Draft one first email to /.test(clip); }
+    if (id === 'bundle' || id === 'copy') { const clip = await page.evaluate(() => navigator.clipboard.readText()).catch(() => ''); rec.clipboard = clip.length; rec.clip_unchanged = clip === clipBefore; rec.clip_pii = hasPii(clip) || clip.includes('@'); rec.clip_prompt = /Draft one first email to /.test(clip); }
     if (id === 'draft') {
       const panel = page.locator('aside[aria-label^="Write email"]');
       rec.panel = await panel.waitFor({ timeout: 8000 }).then(() => true).catch(() => false);
       if (rec.panel) {
         rec.panel_title = await panel.locator('h2').textContent();
+        rec.panel_solid = await panel.evaluate(el => { const c = getComputedStyle(el).backgroundColor; return !/rgba\(.*, 0\)$|transparent/.test(c); });
         rec.panel_to = await panel.locator('[data-compose-to]').textContent().catch(() => null);
         await page.waitForFunction(() => !/Writing…/.test(document.querySelector('aside[aria-label^="Write email"]')?.textContent || ''), null, { timeout: 90000 }).catch(() => {});
         rec.panel_draft = await panel.locator('textarea').count() > 0;
@@ -173,10 +183,12 @@ try {
     return rec;
   }
   const ITEMS = { person: ['assign', 'add_task', 'contacted', 'not_fit', 'draft', 'bundle', 'snooze', 'copy'], company: ['assign', 'add_task', 'contacted', 'not_fit', 'draft', 'snooze', 'copy'], task: ['task:done', 'task:reassign', 'task:snooze', 'open'] };
-  const good = r => r.text.length > 8 && r.in_view && !r.pii && r.first_ms <= 300
-    && ({ assign: r.what === 'card' || r.what === 'cant', contacted: r.what === 'card' || r.what === 'cant', not_fit: r.what === 'card' || r.what === 'cant', snooze: r.what === 'card' || r.what === 'cant',
+  // A copy the server's address / phone check refuses is a line too ("Not copied: ..."): counted apart, never hidden.
+  const refused = r => ['bundle', 'copy'].includes(r.item) && r.what === 'note' && /^Not copied: .*(email or phone shape|address or phone shape)/.test(r.text) && r.clip_unchanged;
+  const good = r => r.text.length > 8 && r.in_view && !r.pii && r.first_ms <= 300 && (refused(r) || kindOk(r));
+  const kindOk = r => ({ assign: r.what === 'card' || r.what === 'cant', contacted: r.what === 'card' || r.what === 'cant', not_fit: r.what === 'card' || r.what === 'cant', snooze: r.what === 'card' || r.what === 'cant',
       add_task: r.what === 'opened' && r.text === 'Opened quick capture — save it there' && !!r.capture,
-      draft: r.what === 'opened' && /^Opened Write email for .+( · address it to .+| — nothing sent)$/.test(r.text) && r.panel,
+      draft: r.what === 'opened' && /^Opened Write email for .+( · address it to .+| — nothing sent)$/.test(r.text) && r.panel && r.panel_solid,
       bundle: r.what === 'copied' && /^✓ Copied the draft bundle for .+ · [\d,]+ chars — paste it into Claude$/.test(r.text) && Number(r.text.match(/· ([\d,]+) chars/)[1].replace(/,/g, '')) === r.clipboard && r.clip_prompt && !r.clip_pii,
       copy: r.what === 'copied' && /^✓ Copied · \d+ records? · [\d,]+ chars$/.test(r.text) && r.clipboard > 0 && !r.clip_pii,
       'task:done': r.what === 'opened' && /mark it done there$/.test(r.text), 'task:reassign': r.what === 'opened' && /reassign it there$/.test(r.text), 'task:snooze': r.what === 'opened' && /snooze it there$/.test(r.text), open: r.what === 'opened' && r.text === 'Opened the task in Actions' })[r.item];
@@ -185,10 +197,10 @@ try {
     const phone = w < 900;
     const { ctx, page, errors } = await open(w, h);
     let input;
-    if (phone) { await page.locator('button[aria-label="Search or ask Scout"]').first().click(); input = page.locator('[data-scout-sheet] input').first(); }
-    else input = page.locator('.scout-bar input').first();
-    await input.waitFor(); await page.waitForTimeout(phone ? 600 : 2500);
-    const ask = async q => { await input.click(); await input.fill(q); await page.waitForTimeout(500); await page.keyboard.press('Enter'); await page.locator('[data-scout-answer]').waitFor(); await page.waitForTimeout(600); };
+    // the header's Scout mounts once the workspace has loaded: let the page settle before opening the sheet
+    if (phone) { await page.locator('button[aria-label="Search or ask Scout"]').first().waitFor(); await page.waitForTimeout(3000); await page.locator('button[aria-label="Search or ask Scout"]').first().click(); input = page.locator('[data-scout-sheet] input').first(); await input.waitFor(); }
+    else { input = page.locator('.scout-bar input').first(); await input.waitFor(); await page.waitForTimeout(2500); }
+    const ask = async q => { await input.focus(); await input.fill(q); await page.waitForTimeout(500); await page.keyboard.press('Enter'); await page.locator('[data-scout-answer]').waitFor(); await page.waitForTimeout(600); };
     const sel = { person: phone ? '[data-scout-section="1"] .scout-card' : '[data-scout-table="person"] tbody tr', task: phone ? '[data-scout-section="2"] .scout-card' : '[data-scout-table="task"] tbody tr', company: phone ? '[data-scout-cards] .scout-card' : '[data-scout-table="company"] tbody tr' };
     await ask(ASK_ROWS);
     const recs = [];
@@ -200,6 +212,8 @@ try {
     for (const id of ITEMS.company) recs.push(await pick(page, w, 'company', sel.company, id, input));
     await shot(page, `company-last-line-${w}`);
     const bad = recs.filter(r => !good(r));
+    const no = recs.filter(refused);
+    (results.refused_copies ||= []).push(...no.map(r => `${w} ${r.row} · ${r.item}: ${r.text}`));
     for (const kind of ['person', 'company', 'task']) { const mine = recs.filter(r => r.row === kind); ok(`${w}: a ${kind} row - every one of its ${ITEMS[kind].length} menu items ends in its line, in view, first paint within 300 ms, no address or phone shape`, mine.length === ITEMS[kind].length && mine.every(good), JSON.stringify(mine.filter(r => !good(r)))); }
     const d = recs.find(r => r.row === 'person' && r.item === 'draft');
     ok(`${w}: Draft email on a person opens the Write email panel for their company with the person named in the panel, and the line says who to address`, d?.panel && / · address it to /.test(d.text) && !!d.panel_to && d.panel_draft, JSON.stringify(d));

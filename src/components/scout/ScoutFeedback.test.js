@@ -101,6 +101,7 @@ test.each(CASES)('%s row · %s (%s) ends in a visible line, scrolled into view',
   else if (id === 'draft') {
     expect(block.querySelector('[data-scout-note="opened"]').textContent).toBe('Opened Write email for Cloudflare · address it to Dana Mayer');
     expect(screen.getByRole('dialog', { name: 'Write email · Cloudflare' }).getAttribute('data-to')).toBe('Dana Mayer');
+    expect(screen.getByRole('dialog', { name: 'Write email · Cloudflare' }).closest('.sa-theme.ui-theme-dark')).toBeTruthy();
     expect(clip).toHaveLength(0);
   } else if (id === 'bundle') {
     expect(block.querySelector('[data-scout-note="copied"]').textContent).toBe(bundleLine('Dana Mayer', clip[0].length));

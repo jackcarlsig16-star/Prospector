@@ -8,6 +8,7 @@ import { ConfirmCard, ActWorking, DoneLine, CantDo, ActNote } from './scout/Scou
 import { useScoutActions } from './scout/useScoutActions';
 import { looksLikeCommand } from './scout/scoutActions';
 import ComposePanel from './salesAnalytics/goals/priorities/ComposePanel';
+import { SA_THEME_CSS, SA_THEME_CLASS } from './salesAnalytics/theme';
 import { StarGlyph, ScopePill, StaticScope } from './scout/ScoutParts';
 import { MIN_CHARS, DEBOUNCE_MS, THREAD_MAX, isQuestion, readThread, saveThread, threadMessages, canActIn } from './scout/scoutModel';
 
@@ -213,7 +214,8 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
         {view === 'working' && <span className="scout-think" aria-hidden="true" />}
       </div>
       {panel && <div className={`scout-pop ui-theme-dark${answerish ? ' scout-pop--answer' : ''}`} data-scout-pop>{panel}</div>}
-      {compose && <ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={t => setComposeToast(t.text)} />}
+      {/* the panel's colours are the sales page's variables: outside that page they come from the theme class */}
+      {compose && <span className={`${SA_THEME_CLASS} ui-theme-dark`} data-scout-compose><style>{SA_THEME_CSS}</style><ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={t => setComposeToast(t.text)} /></span>}
       {composeToast && <div className="scout-toast ui-theme-dark" role="status" data-scout-toast>{composeToast}</div>}
     </div>
   );
