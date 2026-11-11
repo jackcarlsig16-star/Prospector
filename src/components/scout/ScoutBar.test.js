@@ -1,8 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import PersistentScout from '../PersistentScout';
 import DataTable from '../../ui/DataTable';
-import { goalsApi } from '../salesAnalytics/goals/goalsApi';
-import { SCOPE_KEY, THREAD_KEY, readThread, saveThread, splitMatch, isQuestion, answerSort, taskBody, footerParts } from './scoutModel';
+import { SCOPE_KEY, THREAD_KEY, readThread, saveThread, splitMatch, isQuestion, footerParts } from './scoutModel';
 import { openKeyOf, readOpenKey, writeOpenParams, readAccountParam } from './scoutOpen';
 
 // scout-v2 REV3 Stage 2 - the bar to the mockups: grouped hits with neon match text, the scope pill (a listbox, no
@@ -10,7 +9,7 @@ import { openKeyOf, readOpenKey, writeOpenParams, readAccountParam } from './sco
 // marked, Records / footer / thread, + Task (D14) and the Viewer, every edge state, the thread per day, the 390 sheet.
 const mockPhone = { on: false };
 jest.mock('../../utils/useMediaQuery', () => () => mockPhone.on);
-jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: { createWeekGoal: jest.fn(() => Promise.resolve({ id: 'new' })) } }));
+jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: { members: jest.fn(() => Promise.resolve([])) } }));
 
 const B1 = { id: 'b1', name: 'HomeLover', color: '#E2418A', features: { goals_sales: true } };
 const B2 = { id: 'b2', name: 'Other', color: '#4FD1C5', features: { hk_sales: true } };
@@ -45,7 +44,6 @@ const json = (status, body) => Promise.resolve({ ok: status < 400, status, json:
 beforeEach(() => {
   localStorage.clear();
   mockPhone.on = false;
-  goalsApi.createWeekGoal.mockClear();
   replies = { search: () => json(200, HIT()), ask: () => json(200, ANSWER) };
   global.fetch = jest.fn(url => (String(url).startsWith('/api/scout/search') ? replies.search(url) : replies.ask(url)));
 });
@@ -109,7 +107,7 @@ test('B3 keyboard: ↓ moves, ↵ opens the row through the opener (navTo by key
   expect(onOpen).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'e1', open: company('employer', 'e1') }));
 });
 
-test('B4: a question asks once on Enter -> working sweep + elapsed, then the answer: kit table sorted on Scout\'s field marked in neon, Records, footer from the usage row, thread', async () => {
+test('B4: a question asks once on Enter -> working sweep + elapsed, then the answer: the prose, the rows as ONE table (no Records block), footer from the usage row, thread', async () => {
   let release;
   replies.ask = () => new Promise(r => { release = () => r({ ok: true, status: 200, json: async () => ANSWER }); });
   const { input, container } = mount();
@@ -123,37 +121,23 @@ test('B4: a question asks once on Enter -> working sweep + elapsed, then the ans
   expect(asked()).toHaveLength(1);
   expect(JSON.parse(asked()[0][1].body)).toEqual({ q: 'show me my open tasks', scope: 'b1', thread: [] });
   expect(container.querySelector('[data-scout-prose] b').textContent).toBe('3 open tasks');
-  const table = screen.getByRole('table', { name: "Scout's records" });
-  const mark = table.querySelector('.scout-sortmark');
-  expect(mark.dataset.scoutSort).toBe('date');
-  expect(mark.textContent).toBe('Date');
-  expect(mark.closest('th').getAttribute('aria-sort')).toBe('ascending');
-  expect([...table.querySelectorAll('tbody tr[data-row]')].map(r => r.textContent.split('To-do')[0].split('Partner')[0])).toEqual(['Send 24HF joint note to Upside', 'Intro Upside to Justworks', 'Upside']);
-  expect(container.querySelector('[data-scout-records]').textContent).toContain('Upside — partner · Proposal / pilot');
-  expect(container.querySelector('[data-scout-footer]').textContent).toContain('31 records read · 3 reads: openTodos (12 open, mine) · partners · notes 14 d');
-  expect(container.querySelector('[data-scout-cost]').textContent).toBe('$0.015');
-  expect(container.querySelector('[data-scout-asks]').textContent).toBe('3 of 40 asks today');
-  expect(container.querySelector('.scout-turn.is-now').textContent).toContain('show me my open tasks');
-  expect(container.querySelector('select')).toBeNull();
+  expect(container.querySelectorAll('[data-scout-table] tbody tr')).toHaveLength(3);
+  expect(container.querySelector('[data-scout-records]')).toBeNull();
+  expect(container.textContent).not.toMatch(/Records \(/);
+  const footer = container.querySelector('[data-scout-footer]');
+  expect(footer.textContent).toContain('31 records read');
+  expect(footer.querySelector('[data-scout-cost]').textContent).toBe('$0.015');
+  expect(footer.querySelector('[data-scout-asks]').textContent).toBe('3 of 40 asks today');
+  expect(container.querySelector('[data-scout-thread] .is-now').textContent).toContain('show me my open tasks');
 });
 
-test('B4 / D14: Open goes through the opener; + Task = the quick-capture create, linked for a partner, title-only for a to-do', async () => {
+test('B4: Open goes through the opener; a company row has the ⋯ menu, an answer in another scope does not', async () => {
   const { input, container, onOpen } = mount();
   type(input, 'show me my open tasks');
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => expect(container.querySelector('[data-scout-answer]')).toBeTruthy());
   fireEvent.click(screen.getByRole('button', { name: 'Open Upside' }));
-  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 'pa1', open: company('partner', 'pa1') }));
-  fireEvent.focus(input);
-  await waitFor(() => expect(container.querySelector('[data-scout-answer]')).toBeTruthy());
-  fireEvent.click(screen.getByRole('button', { name: 'Add a task for Upside' }));
-  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledTimes(1));
-  expect(goalsApi.createWeekGoal.mock.calls[0][0]).toBe('b1');
-  expect(goalsApi.createWeekGoal.mock.calls[0][1]).toMatchObject({ kind: 'todo', text: 'Follow up: Upside', owner_user_id: 'u1', link_type: 'partner', link_id: 'pa1' });
-  fireEvent.click(screen.getByRole('button', { name: 'Add a task for Intro Upside to Justworks' }));
-  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledTimes(2));
-  expect(goalsApi.createWeekGoal.mock.calls[1][1]).not.toHaveProperty('link_type');
-  expect(goalsApi.createWeekGoal.mock.calls[1][1].text).toBe('Follow up: Intro Upside to Justworks');
+  expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ entity: 'partners', id: 'pa1' }));
 });
 
 test('B5 Viewer: search and ask read-only - Open, no + Task, the read-only line; scope lists only their workspaces', async () => {
@@ -166,7 +150,7 @@ test('B5 Viewer: search and ask read-only - Open, no + Task, the read-only line;
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => expect(container.querySelector('[data-scout-answer]')).toBeTruthy());
   expect(screen.getAllByRole('button', { name: /^Open / })).toHaveLength(3);
-  expect(screen.queryAllByRole('button', { name: /^Add a task/ })).toHaveLength(0);
+  expect(screen.queryAllByRole('button', { name: /^Actions for/ })).toHaveLength(0);
   expect(container.querySelector('[data-scout-viewer]')).toBeTruthy();
 });
 
@@ -250,12 +234,11 @@ test('B1/B6 390: the header shows only the neon star; it opens the sheet (Scout 
   await waitFor(() => expect(sheet.querySelector('[data-scout-answer]')).toBeTruthy());
   expect(sheet.querySelector('table')).toBeNull();
   expect(sheet.querySelectorAll('.scout-card')).toHaveLength(3);
-  expect(sheet.querySelector('[data-scout-sort="date"]').textContent).toBe('by date');
   fireEvent.click(screen.getByRole('button', { name: 'Close Scout' }));
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-test('list cap: 15 named in the prose + "+ 5 more (in the table)", while the table and Records carry all 20', async () => {
+test('list cap: 15 named in the prose + "+ 5 more (in the table)", while the table carries all 20', async () => {
   const items = Array.from({ length: 20 }, (_, i) => ({ entity: 'todos', id: `t${i + 1}`, title: `Task ${i + 1}`, date: `2026-11-${String(i + 1).padStart(2, '0')}`, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'actions', open: `todo:t${i + 1}` } }, why: 'open to-do' }));
   const prose = `Your open tasks, by due date:\n\n${items.slice(0, 15).map(i => `- ${i.title}`).join('\n')}\n\n+ 5 more (in the table)`;
   replies.ask = () => json(200, { ...ANSWER, answer_md: prose, items });
@@ -265,21 +248,15 @@ test('list cap: 15 named in the prose + "+ 5 more (in the table)", while the tab
   await waitFor(() => expect(container.querySelector('[data-scout-answer]')).toBeTruthy());
   expect(container.querySelectorAll('[data-scout-prose] li')).toHaveLength(15);
   expect(container.querySelector('[data-scout-prose]').textContent).toContain('+ 5 more (in the table)');
-  expect(screen.getByRole('table', { name: "Scout's records" }).querySelectorAll('tbody tr[data-row]')).toHaveLength(20);
-  expect(container.querySelectorAll('[data-scout-records] li')).toHaveLength(20);
-  expect(screen.getByText('Records (20)')).toBeTruthy();
+  expect(container.querySelectorAll('[data-scout-table] tbody tr')).toHaveLength(20);
 });
 
-test('model: match split, question sense, the sort Scout chose, footer, task body', () => {
+test('model: match split, question sense, footer', () => {
   expect(splitMatch('Cloudflare', 'clou')).toEqual([{ text: 'Clou', hit: true }, { text: 'dflare', hit: false }]);
   expect(isQuestion('Clou')).toBe(false);
   expect(isQuestion('who visited yesterday')).toBe(true);
   expect(isQuestion('hot targets Brad referred')).toBe(true);
-  expect(answerSort({ sort: 'score' }, [{ score: 3 }])).toEqual({ id: 'score', dir: 'desc', label: 'Score' });
-  expect(answerSort({ sort: null }, [{ entity: 'todos', date: '2026-11-06' }])).toEqual({ id: 'date', dir: 'asc', label: 'Due' });
-  expect(answerSort({ sort: null }, [{ entity: 'todos' }])).toBeNull();
   expect(footerParts({ usage: { cost_usd: null } }).cost).toBeNull();
-  expect(taskBody({ entity: 'employers', id: 'e1', title: 'Cloudflare' }, 'u1', new Date('2026-11-06T18:00:00Z'))).toEqual({ kind: 'todo', week_start: '2026-11-02', text: 'Follow up: Cloudflare', owner_user_id: 'u1', link_type: 'opportunity', link_id: 'e1' });
 });
 
 test('B7: the openers\' keys - URL params written, read back by prefix; the kit table opens a row from outside', () => {

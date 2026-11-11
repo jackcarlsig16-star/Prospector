@@ -5,11 +5,12 @@ import Button from '../../../ui/Button';
 
 // Type and press Enter. Defaults: owner = me, this week, no due date, no
 // link; the chips appear once there's text.
-export default function QuickAdd({ meId, members, lookup, links, onAdd }) {
-  const [text, setText] = useState('');
+// prefill = { text, due_date, link: { type, id } } (scout-v3 R4: Scout opens this form filled in; saving is the user's).
+export default function QuickAdd({ meId, members, lookup, links, onAdd, prefill = null }) {
+  const [text, setText] = useState(prefill?.text || '');
   const [owner, setOwner] = useState(null); // null = me (meId can arrive after first render)
-  const [due, setDue] = useState('');
-  const [link, setLink] = useState(null);
+  const [due, setDue] = useState(prefill?.due_date || '');
+  const [link, setLink] = useState(prefill?.link || null);
   const [busy, setBusy] = useState(false);
   const ownerId = owner ?? meId ?? '';
 

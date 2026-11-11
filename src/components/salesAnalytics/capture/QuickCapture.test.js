@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import { SCOUT_CAPTURE } from '../../scout/scoutActions';
 import QuickCapture from './QuickCapture';
 import { fetchMe } from '../../../utils/authSession';
 import { goalsApi } from '../goals/goalsApi';
@@ -148,4 +149,20 @@ test('the header "+" opens one menu with eight items in two groups; Note / Idea 
   await waitFor(() => expect(goalsApi.addPerson).toHaveBeenCalledWith('b1', { name: 'Jean Horton', company: { type: 'employer', id: 'o1' } }));
   await waitFor(() => expect(opened).toHaveBeenCalledWith({ key: 'employer-o1', section: 'people' }));
   expect(await screen.findByText('Jean Horton added to Solidcore')).toBeInTheDocument();
+});
+
+test('scout-v3 R4: Scout\'s capture event opens the panel on Task, prefilled (text, due, link - an employer link saved as opportunity); saving is the user\'s; another workspace\'s event is ignored', async () => {
+  setup();
+  await plus();
+  act(() => { window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId: 'other', text: 'Not mine' } })); });
+  expect(screen.queryByLabelText('New task')).toBeNull();
+  act(() => { window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId: 'b1', text: 'Call Cloudflare', due_date: '2026-11-12', link: { type: 'employer', id: 'e1', name: 'Cloudflare' } } })); });
+  const input = await screen.findByLabelText('New task');
+  expect(input.value).toBe('Call Cloudflare');
+  expect(screen.getByLabelText('Due date of the new task').value).toBe('2026-11-12');
+  expect(goalsApi.createWeekGoal).not.toHaveBeenCalled();
+  goalsApi.createWeekGoal.mockResolvedValue({ id: 'new' });
+  fireEvent.submit(input.closest('form'));
+  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledTimes(1));
+  expect(goalsApi.createWeekGoal.mock.calls[0][1]).toMatchObject({ text: 'Call Cloudflare', due_date: '2026-11-12', link_type: 'opportunity', link_id: 'e1' });
 });

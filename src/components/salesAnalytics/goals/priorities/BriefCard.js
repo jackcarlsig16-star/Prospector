@@ -3,14 +3,16 @@ import { SA } from '../../theme';
 import { numStyle } from '../goalsUi';
 
 // intent-score-v1 S3 Brief - the server-built block (GET goals/brief/:type/:id) as a card, with Copy-for-Claude
-// (the same markdown the Write email call and the HK connector read). Names + titles only; no address ever arrives.
+// Names + titles only; no address ever arrives.
 const KIND_LABEL = { company: 'Company', score: 'Score', source: 'Source', visit: 'Website', person: 'People', research: 'Research', task: 'Open to-dos', touch: 'Touches', next: 'Next step' };
 const KIND_ORDER = ['company', 'score', 'source', 'visit', 'person', 'research', 'task', 'touch', 'next'];
 
-export default function BriefCard({ brief, error, onClose }) {
+// scout-v3 R12: Copy for Claude = the ONE builder (GET goals/copy-bundle, which carries these Brief lines too);
+// copyText = () => Promise<markdown>.
+export default function BriefCard({ brief, error, onClose, copyText }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(`${brief.markdown}\n`); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard blocked */ }
+    try { await navigator.clipboard.writeText(copyText ? await copyText() : `${brief.markdown}\n`); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* clipboard blocked */ }
   };
   const groups = brief ? KIND_ORDER.map(k => [k, brief.lines.filter(l => l.kind === k)]).filter(([, ls]) => ls.length) : [];
   return (

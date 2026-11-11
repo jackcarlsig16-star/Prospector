@@ -142,7 +142,8 @@ export const goalsApi = {
   visitPeoplePull: (id, { force = false } = {}) => call(id, '/visits/people-pull', { method: 'POST', body: { force } }),
   people: (id, params = {}) => call(id, `/people?${q(params)}`),
   // people-v2: the one read behind Pipeline › People.
-  peopleActivity: (id, window = 'all') => call(id, `/people/activity?${q({ window })}`),
+  // snoozed = 'only' lists the people Scout snoozed until a date (hidden by default; the route counts them).
+  peopleActivity: (id, window = 'all', snoozed) => call(id, `/people/activity?${q({ window, snoozed })}`),
   peopleActivityDetail: (id, key) => call(id, `/people/activity/${encodeURIComponent(key)}`),
   peopleViews: id => call(id, '/people/views').then(d => d.views),
   savePeopleView: (id, body) => call(id, '/people/views', { method: 'POST', body }),

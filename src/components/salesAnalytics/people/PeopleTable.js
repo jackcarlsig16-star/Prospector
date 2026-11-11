@@ -63,7 +63,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
   const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
   const meId = me?.profile?.id || null, myName = me?.profile?.display_name || '';
-  const load = useCallback(() => goalsApi.peopleActivity(businessId, filters.window).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId, filters.window]);
+  const [snoozedOnly, setSnoozedOnly] = useState(false);
+  const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
   useEffect(() => { load(); }, [load, reload]);
   useEffect(() => {
     goalsApi.members(businessId).then(setMembers).catch(() => setMembers([]));
@@ -194,6 +195,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const chipRow = (
     <div data-people-chips role="group" aria-label="Filter chips" style={{ display: 'flex', gap: 6, ...(phone ? { overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } : { flexWrap: 'wrap' }) }}>
       <h2 className={phone ? 'ui-sr-only' : 'ui-group-label'} style={{ margin: 0, flex: 'none' }}>Filter</h2>
+      {(data?.snoozed > 0 || snoozedOnly) && <ToggleChip data-snoozed-chip pressed={snoozedOnly} count={`(${data?.snoozed ?? 0})`} onClick={() => setSnoozedOnly(v => !v)} title="People snoozed until a date are hidden from this list until that day">Snoozed</ToggleChip>}
       {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} style={id === 'hot' ? { color: HEAT_COLOR.hot, borderColor: HEAT_COLOR.hot } : undefined} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
     </div>
   );

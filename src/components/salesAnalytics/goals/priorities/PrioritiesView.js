@@ -302,7 +302,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
         </section>
       )}
       {effectiveView === 'table' && menu}
-      {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} />}
+      {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} copyText={() => goalsApi.copyBundle(businessId, selected.type, selected.id)} />}
       {composeFor && <ComposePanel businessId={businessId} row={composeFor} onClose={() => { setComposeFor(null); goalsApi.composeStatus(businessId).then(setCompose).catch(() => {}); }} onToast={setToast} />}
       {panelRow && (
         <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={() => starRow(panelRow)} onPatch={patch => patchRow(panelRow, patch)} onChanged={reloadAll} onToast={setToast}

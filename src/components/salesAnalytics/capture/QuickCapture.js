@@ -12,6 +12,7 @@ import { useLinkOptions } from '../tasks/linkTargets';
 import QuickAdd from '../tasks/QuickAdd';
 import CallNotesPanel from '../tasks/CallNotesPanel';
 import Segmented from '../../../ui/Segmented';
+import { SCOUT_CAPTURE } from '../../scout/scoutActions';
 
 // sales-ia-v1 Stage 3 - the "+" in the workspace header. One panel, three
 // modes: Task mounts QuickAdd, Note mounts CallNotesPanel (Intake), Idea
@@ -40,6 +41,7 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   const [savingIdea, setSavingIdea] = useState(false);
   const [adding, setAdding] = useState(null);
   const [addNote, setAddNote] = useState('');
+  const [prefill, setPrefill] = useState(null);
   const noteDirty = useRef(false);
   const panelRef = useRef(null);
   const enabled = !!features?.goals_sales;
@@ -48,7 +50,19 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   useEffect(() => { if ((open || adding) && !members.length) goalsApi.members(businessId).then(setMembers).catch(e => setError(e.message)); }, [open, adding, members.length, businessId]);
   const links = useLinkOptions(businessId, week);
 
-  const close = useCallback(() => { setOpen(false); setStatus(''); setError(''); noteDirty.current = false; }, []);
+  const close = useCallback(() => { setOpen(false); setStatus(''); setError(''); setPrefill(null); noteDirty.current = false; }, []);
+  // scout-v3 R4: Scout's "+ Task" / "add a task …" opens this panel on Task, filled in (K1: an employer link is
+  // 'opportunity' in the to-do's link_type until data-keys-v1).
+  useEffect(() => {
+    const onCapture = e => {
+      const d = e.detail || {};
+      if (d.businessId !== businessId) return;
+      setPrefill({ at: Date.now(), text: d.text || '', due_date: d.due_date || '', link: d.link?.id ? { type: d.link.type === 'employer' ? 'opportunity' : d.link.type, id: d.link.id } : null });
+      setMode('task'); setStatus(''); setError(''); setOpen(true);
+    };
+    window.addEventListener(SCOUT_CAPTURE, onCapture);
+    return () => window.removeEventListener(SCOUT_CAPTURE, onCapture);
+  }, [businessId]);
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
   const show = enabled && canEdit;
 
@@ -134,7 +148,7 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
             </header>
             {mode === 'task' && (
               <div style={{ display: 'flex', flexDirection: 'column', paddingBottom: 12 }}>
-                <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={addTask} />
+                <QuickAdd key={prefill?.at || 'blank'} prefill={prefill} meId={meId} members={members} lookup={lookup} links={links} onAdd={addTask} />
                 <span style={{ fontSize: 12, color: SA.muted, padding: '10px 16px 0' }}>Owner, due and link chips appear once there's text. Enter saves.</span>
               </div>
             )}

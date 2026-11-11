@@ -281,3 +281,19 @@ test('the word "Huddle" is gone from the People files (D3)', () => {
   const offenders = fs.readdirSync(dir).filter(f => f.endsWith('.js') && !f.endsWith('.test.js')).filter(f => /Huddle/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
   expect(offenders).toEqual([]);
 });
+
+test('scout-v3 R6: the "Snoozed (n)" chip shows only when someone is snoozed; pressing it lists them (snoozed=only), pressing again returns', async () => {
+  await table();
+  expect(document.querySelector('[data-snoozed-chip]')).toBeNull();
+  cleanup();
+  goalsApi.peopleActivity.mockImplementation((id, win, snoozed) => Promise.resolve(snoozed === 'only' ? { ...DATA, rows: [ROWS[2]], n: 1, snoozed: 2 } : { ...DATA, snoozed: 2 }));
+  await table();
+  const chip = document.querySelector('[data-snoozed-chip]');
+  expect(chip.textContent).toBe('Snoozed(2)');
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(chip);
+  await waitFor(() => expect(goalsApi.peopleActivity).toHaveBeenLastCalledWith('b1', 'all', 'only'));
+  await waitFor(() => expect(document.querySelector('[data-snoozed-chip]').getAttribute('aria-pressed')).toBe('true'));
+  fireEvent.click(document.querySelector('[data-snoozed-chip]'));
+  await waitFor(() => expect(goalsApi.peopleActivity).toHaveBeenLastCalledWith('b1', 'all'));
+});

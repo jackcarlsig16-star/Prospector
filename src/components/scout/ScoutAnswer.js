@@ -1,14 +1,13 @@
-import { useMemo, useState } from 'react';
-import DataTable from '../../ui/DataTable';
-import { StarGlyph, LockGlyph, OpenGlyph, PlusGlyph, ClearGlyph, SortGlyph, WorkspaceTag } from './ScoutParts';
-import { answerSort, entityLabel, footerParts, summaryOf, clock } from './scoutModel';
+import { useMemo } from 'react';
+import { StarGlyph, LockGlyph, ClearGlyph } from './ScoutParts';
+import { footerParts, summaryOf, clock } from './scoutModel';
+import { sectionsOf, keyOf } from './scoutActions';
+import { Section, BriefHead } from './ScoutSections';
 
 // scout-v2 REV3 B4-B6 + D13 - the panel under the bar: working (the question, a neon sweep, elapsed seconds; the reads
 // arrive WITH the answer - ask is not streamed), the answer (prose · list answers as the kit table sorted on Scout's
 // field, marked in neon · Open + Task per row · Records with a one-line why · the footer from context_stats and the
 // usage row · the thread), and the edge states (one line, at most one way out). Phone: stacked cards, no table.
-
-const fmtDate = d => (d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
 
 function Prose({ text }) {
   const blocks = String(text || '').split(/\n{2,}/).map(b => b.split('\n').filter(l => l.trim()));
@@ -34,75 +33,36 @@ export function WorkingPanel({ q, elapsed }) {
   );
 }
 
-function RowActions({ item, canTask, onOpen, onTask, taskState }) {
-  return (
-    <span className="scout-actions">
-      {item.open && <button type="button" className="scout-btn" onClick={() => onOpen(item)} aria-label={`Open ${item.title}`}><OpenGlyph />Open</button>}
-      {canTask(item) && (
-        <button type="button" className="scout-btn" onClick={() => onTask(item)} disabled={!!taskState} title="Add as task" aria-label={`Add a task for ${item.title}`}>
-          <PlusGlyph />{taskState === 'added' ? 'Added' : taskState === 'busy' ? 'Adding…' : 'Task'}
-        </button>
-      )}
-    </span>
-  );
-}
-
-export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, canTask, viewer, onOpen, onTask, taskStates, taskNote, inlineKey, turns, onReopen, onClear }) {
-  const items = useMemo(() => turn.items || [], [turn.items]);
-  const sortSpec = useMemo(() => answerSort(turn.ask, items), [turn.ask, items]);
-  const [sort, setSort] = useState(() => (sortSpec ? { id: sortSpec.id, dir: sortSpec.dir } : null));
+// scout-v3 Stage 2: the answer = the summary, then one numbered section per part (ScoutSections), the action block
+// for this answer (the confirm card, working, done + Undo, can't-do) and its action sub-lines (D11). No Records block.
+export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null }) {
+  const sections = useMemo(() => sectionsOf(turn), [turn]);
   const foot = footerParts(turn);
-  const keyOf = it => `${it.entity}:${it.id}`;
-  const valueCol = sortSpec || (items.some(i => i.score != null) ? { id: 'score', label: 'Score' } : items.some(i => i.date) ? { id: 'date', label: 'Date' } : null);
-  const columns = [
-    { id: 'title', label: 'Record', sortValue: r => r.title, render: r => <span title={r.title} style={{ color: 'var(--ui-text)', fontWeight: 500 }}>{r.title}</span>, title: r => r.title },
-    { id: 'kind', label: 'Kind', width: 210, sortValue: r => entityLabel(r.entity), render: r => <span title={[entityLabel(r.entity), r.subtitle].filter(Boolean).join(' · ')}>{[entityLabel(r.entity), r.subtitle].filter(Boolean).join(' · ')}</span> },
-    ...(scopeAll ? [{ id: 'ws', label: 'Workspace', width: 150, sortValue: r => r.workspace_name, render: r => <WorkspaceTag name={r.workspace_name} color={colorOf(r.workspace_id)} /> }] : []),
-    ...(valueCol ? [{
-      id: valueCol.id, width: 110,
-      label: sortSpec ? <span className="scout-sortmark" data-scout-sort={sortSpec.id}><SortGlyph />{sortSpec.label}</span> : valueCol.label,
-      sortValue: r => (valueCol.id === 'score' ? r.score : r.date),
-      render: r => <span style={{ fontVariantNumeric: 'tabular-nums' }}>{valueCol.id === 'score' ? (r.score ?? '—') : fmtDate(r.date) || '—'}</span>,
-    }] : []),
-    { id: 'act', label: 'Actions', width: canTask(items[0] || {}) ? 150 : 84, render: r => <RowActions item={r} canTask={canTask} onOpen={onOpen} onTask={onTask} taskState={taskStates[keyOf(r)]} /> },
-  ];
-  const list = items.length >= 2;
+  const numbered = sections.length > 1;
+  const single = sections.length === 1 ? sections[0] : null;
+  const briefOf = s => (s.brief ? s.rows.find(r => r.entity === s.brief.entity && String(r.id) === String(s.brief.id)) || null : null);
+  const inline = inlineKey ? sections.flatMap(s => s.rows).find(r => keyOf(r) === inlineKey) : null;
   return (
     <div className="scout-answer" data-scout-answer>
       <div className="scout-head scout-q"><span className="scout-neon" style={{ display: 'inline-flex' }}><StarGlyph /></span><span>{turn.q}</span>{scopeChip}</div>
-      <div className="scout-panel" style={{ gap: 12 }}>
-        <Prose text={turn.answer_md} />
-        {list && !phone && (
-          <DataTable label="Scout's records" columns={columns} rowKey={keyOf} sort={sort} onSort={setSort} groups={[{ id: 'records', header: 'Records', rows: items }]} />
-        )}
-        {list && phone && (
-          <>
-            {sortSpec && <span className="scout-lbl scout-neon" data-scout-sort={sortSpec.id}><SortGlyph />by {sortSpec.label.toLowerCase()}</span>}
-            <div className="scout-cards" data-scout-cards>
-              {items.map(r => (
-                <div key={keyOf(r)} className="scout-card">
-                  <span>{r.title}</span>
-                  <div><span>{[r.subtitle || entityLabel(r.entity), r.date ? fmtDate(r.date) : r.score != null ? r.score : null].filter(Boolean).join(' · ')}</span><RowActions item={r} canTask={canTask} onOpen={onOpen} onTask={onTask} taskState={taskStates[keyOf(r)]} /></div>
-                </div>
-              ))}
+      <div className="scout-panel" style={{ gap: 14 }}>
+        <Prose text={turn.summary || turn.answer_md} />
+        {sections.map((s, i) => {
+          const b = briefOf(s);
+          // one part with one record and no brief: the prose is the answer, the record rides as a single row
+          if (single && !s.rows.length) return null;
+          return (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+              {b && <BriefHead item={b} onOpen={onOpen} onCopy={onCopy} />}
+              <Section n={i + 1} section={numbered ? s : { ...s, title: s.rows.length >= 2 ? s.title : null }} numbered={numbered} phone={phone} scopeAll={scopeAll} colorOf={colorOf} sorted={turn.ask?.sort === 'score' || turn.ask?.sort === 'heat'}
+                canAct={canAct} onOpen={onOpen} menu={menu} onMenu={onMenu} members={members} onPick={onPick} />
             </div>
-          </>
-        )}
-        {items.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span className="scout-lbl">Records ({items.length})</span>
-            <ul className="scout-records" data-scout-records>
-              {items.map(r => (
-                <li key={keyOf(r)} className={inlineKey === keyOf(r) ? 'is-inline' : undefined} title={r.why || r.title}>
-                  <b>{r.title}</b>{r.why ? ` — ${r.why}` : ''}
-                  {items.length === 1 && <> <RowActions item={r} canTask={canTask} onOpen={onOpen} onTask={onTask} taskState={taskStates[keyOf(r)]} /></>}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {taskNote && <span className="scout-note" role="status">{taskNote}</span>}
-        {viewer && <span className="scout-note" data-scout-viewer>Search and ask work read-only. Open goes to the record; there is no Add as task.</span>}
+          );
+        })}
+        {inline?.why && <span className="scout-note is-inline" data-scout-inline title={inline.why}><b>{inline.title}</b> — {inline.why}</span>}
+        {act}
+        {(turn.actions || []).length > 0 && <div data-scout-actions>{turn.actions.map((a, i) => <div key={i} className="scout-actline">→ {a}</div>)}</div>}
+        {viewer && <span className="scout-note" data-scout-viewer>Search and ask work read-only. Open goes to the record; Scout's actions need Member access.</span>}
       </div>
       <div className="scout-footer" data-scout-footer>
         <span><b>{foot.records}</b> records read · {foot.reads}</span>
@@ -118,7 +78,7 @@ export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, canTask
         </div>
         {!phone && turns.map(t => (t.at === turn.at
           ? <div key={t.at} className="scout-turn is-now"><b>now</b><span>{t.q}</span></div>
-          : <div key={t.at} className="scout-turn"><b>{clock(t.at)}</b><span>{t.q} → {summaryOf(t.answer_md)} · <button type="button" className="ui-link" onClick={() => onReopen(t)}>reopen</button></span></div>))}
+          : <div key={t.at} className="scout-turn"><b>{clock(t.at)}</b><span>{t.q} → {summaryOf(t.summary || t.answer_md)} · <button type="button" className="ui-link" onClick={() => onReopen(t)}>reopen</button></span></div>))}
       </div>
     </div>
   );

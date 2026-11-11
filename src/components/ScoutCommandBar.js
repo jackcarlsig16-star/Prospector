@@ -4,8 +4,12 @@ import { scoutApi } from './scout/scoutApi';
 import { goalsApi } from './salesAnalytics/goals/goalsApi';
 import ScoutResults, { optionId } from './scout/ScoutResults';
 import { WorkingPanel, AnswerPanel, EdgePanel } from './scout/ScoutAnswer';
+import { ConfirmCard, ActWorking, DoneLine, CantDo, ActNote } from './scout/ScoutActionCard';
+import { useScoutActions } from './scout/useScoutActions';
+import { looksLikeCommand } from './scout/scoutActions';
+import ComposePanel from './salesAnalytics/goals/priorities/ComposePanel';
 import { StarGlyph, ScopePill, StaticScope } from './scout/ScoutParts';
-import { MIN_CHARS, DEBOUNCE_MS, THREAD_MAX, isQuestion, readThread, saveThread, threadMessages, taskBody, canTask as canTaskFor } from './scout/scoutModel';
+import { MIN_CHARS, DEBOUNCE_MS, THREAD_MAX, isQuestion, readThread, saveThread, threadMessages, canActIn } from './scout/scoutModel';
 
 // scout-v2 REV3 Stage 2 - one input: typing (2+ chars, 250 ms) searches GET /api/scout/search and shows grouped hits;
 // Enter opens the keyboard row, or asks when the line reads as a question (or nothing matched); asking is one
@@ -28,14 +32,15 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const [current, setCurrent] = useState(null);
   const [asked, setAsked] = useState({ q: '', at: 0 });
   const [tick, setTick] = useState(0);
-  const [taskStates, setTaskStates] = useState({});
-  const [taskNote, setTaskNote] = useState('');
+  const [menu, setMenu] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [compose, setCompose] = useState(null);
   const [inlineKey, setInlineKey] = useState(null);
   const [retry, setRetry] = useState(0);
   const sheet = mode === 'sheet';
   const empty = scopeOptions.length === 0;
   const colorOf = useCallback(id => scopeOptions.find(o => o.id === id)?.color || null, [scopeOptions]);
-  const canTask = useCallback(item => canTaskFor(item, me, businesses), [me, businesses]);
+  const canAct = scope !== 'all' && !viewer && canActIn(scope, me, businesses);
 
   useEffect(() => { setTurns(readThread(meId)); }, [meId]);
   useEffect(() => { if (autoFocus) inputRef.current?.focus(); }, [autoFocus]);
@@ -79,22 +84,32 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     return () => clearInterval(t);
   }, [view]);
 
+  // An acted-on answer is the same turn, updated in place (rows + its action sub-line) and saved to the thread.
+  const onTurn = useCallback(turn => {
+    setCurrent(turn);
+    setTurns(ts => { const next = ts.map(t => (t.at === turn.at ? turn : t)); saveThread(meId, next); return next; });
+  }, [meId]);
+  const openRef = useRef(null);
+  const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, onTurn, onOpenItem: item => openRef.current?.(item), onCompose: setCompose });
+  useEffect(() => { setMembers([]); }, [scope]);
+  useEffect(() => { if (menu && canAct && !members.length) goalsApi.members(scope).then(ms => setMembers(ms.map(m => ({ user_id: m.user_id, first: String(m.name || 'Member').split(' ')[0] })))).catch(() => {}); }, [menu, canAct, members.length, scope]);
+
   const ask = useCallback(async (question = text) => {
     if (!question || question.length < MIN_CHARS) return;
     const at = Date.now();
-    setAsked({ q: question, at }); setTick(0); setView('working'); setOpen(true); setEdge(null); setTaskNote(''); setInlineKey(null);
+    setAsked({ q: question, at }); setTick(0); setView('working'); setOpen(true); setEdge(null); setInlineKey(null); setMenu(null); actions.onNewAsk();
     try {
       const r = await scoutApi.ask({ q: question, scope, thread: threadMessages(turns) });
       const elapsed = Math.max(1, Math.round((Date.now() - at) / 1000));
       if (r.withheld) { setEdge({ kind: 'withheld', q: question }); setView('edge'); return; }
-      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
+      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
       const next = [...turns, turn].slice(-THREAD_MAX);
-      setTurns(next); saveThread(meId, next); setCurrent(turn); setTaskStates({}); setView('answer');
+      setTurns(next); saveThread(meId, next); setCurrent(turn); setView('answer');
     } catch (e) {
       setEdge(e.status === 429 ? { kind: 'cap', cap: e.body?.cap ? { used: e.body.used, max: e.body.cap } : null } : e.offline || e.status >= 500 ? { kind: 'offline', retry: 'ask', q: question } : { kind: 'error', message: e.message });
       setView('edge');
     }
-  }, [text, scope, turns, meId]);
+  }, [text, scope, turns, meId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openItem = useCallback(item => {
     if (!item?.open) return;
@@ -102,22 +117,22 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     if (item.open.inline) { setInlineKey(`${item.entity}:${item.id}`); return; }
     setOpen(false); inputRef.current?.blur(); onDone?.();
   }, [onOpen, onDone]);
+  openRef.current = openItem;
 
-  const addTask = async item => {
-    const k = `${item.entity}:${item.id}`;
-    setTaskStates(s => ({ ...s, [k]: 'busy' }));
-    try {
-      const body = taskBody(item, meId);
-      await goalsApi.createWeekGoal(item.workspace_id, body);
-      setTaskStates(s => ({ ...s, [k]: 'added' }));
-      setTaskNote(`Added to your to-dos: ${body.text}${body.link_type ? ' (linked)' : ''}`);
-    } catch (e) { setTaskStates(s => ({ ...s, [k]: undefined })); setTaskNote(e.message); }
+  // One input: a line that opens with a verb is a command (the server decides; not a command -> it is asked).
+  const submit = async () => {
+    if (!looksLikeCommand(text)) return ask();
+    setOpen(true); setEdge(null); setMenu(null);
+    if (view !== 'answer' || !current) setView('act');
+    if (await actions.command(text) === 'ask') return ask();
+    return setQ('');
   };
 
-  const clearThread = () => { setTurns([]); saveThread(meId, []); setCurrent(null); setView('search'); };
-  const reopen = t => { setCurrent(t); setTaskStates({}); setInlineKey(null); setView('answer'); };
+  const clearThread = () => { setTurns([]); saveThread(meId, []); setCurrent(null); actions.clear(); setView('search'); };
+  const reopen = t => { setCurrent(t); setInlineKey(null); setMenu(null); actions.clear(); setView('answer'); };
 
-  const onChange = e => { setQ(e.target.value); setOpen(true); setEdge(null); if (view !== 'search') setView('search'); };
+  // Typing a command over an answer keeps the answer (its rows are what "those" means); anything else searches.
+  const onChange = e => { const v = e.target.value; setQ(v); setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };
   const onKeyDown = e => {
     const n = flat.length;
     if (e.key === 'ArrowDown' && groups) { e.preventDefault(); setActive(a => (a >= n ? 0 : a + 1)); }
@@ -125,26 +140,39 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     else if (e.key === 'Enter') {
       e.preventDefault();
       if (empty) return;
-      if (groups && active < n) openItem(flat[active]);
-      else ask();
+      if (actions.act?.kind === 'card' && !text) actions.confirm();
+      else if (groups && active < n && !looksLikeCommand(text)) openItem(flat[active]);
+      else submit();
     } else if (e.key === 'Escape') {
       e.preventDefault();
-      if (open) setOpen(false); else { inputRef.current?.blur(); onDone?.(); }
+      if (actions.act?.kind === 'card') actions.cancel();
+      else if (open) setOpen(false); else { inputRef.current?.blur(); onDone?.(); }
     }
   };
 
   const showPanel = open || sheet;
+  const a = actions.act;
+  const actBlock = !a ? null
+    : a.kind === 'card' ? <ConfirmCard card={a.card} onConfirm={actions.confirm} onCancel={actions.cancel} />
+    : a.kind === 'working' ? <ActWorking card={a.card} ticked={a.ticked} />
+    : a.kind === 'done' ? <DoneLine result={a.result} secondsLeft={a.left} undone={a.undone} onUndo={actions.undo} onRetry={actions.retry} />
+    : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} />
+    : a.kind === 'planning' ? <ActNote kind="planning">Reading the command…</ActNote>
+    : <ActNote kind={a.kind}>{a.text}</ActNote>;
   let panel = null, listShown = false;
   if (showPanel && empty) panel = <EdgePanel kind="empty" />;
   else if (showPanel && view === 'working') panel = <WorkingPanel q={asked.q} elapsed={tick} />;
   else if (showPanel && view === 'answer' && current) {
     const opt = scopeOptions.find(o => o.id === current.scope);
     panel = (
-      <AnswerPanel key={current.at} turn={current} phone={sheet} scopeAll={current.scope === 'all'} colorOf={colorOf} canTask={canTask} viewer={viewer}
+      <AnswerPanel key={current.at} turn={current} phone={sheet} scopeAll={current.scope === 'all'} colorOf={colorOf} viewer={viewer} canAct={canAct && current.scope === scope}
         scopeChip={<StaticScope name={opt?.name || allText} color={opt?.color} />}
-        onOpen={openItem} onTask={addTask} taskStates={taskStates} taskNote={taskNote} inlineKey={inlineKey}
+        onOpen={openItem} inlineKey={inlineKey} members={members} menu={menu} onMenu={setMenu} onPick={(item, id, args) => { setMenu(null); actions.pick(item, id, args); }}
+        onCopy={actions.copy} act={actBlock}
         turns={turns} onReopen={reopen} onClear={clearThread} />
     );
+  } else if (showPanel && view === 'act' && actBlock) {
+    panel = <div className="scout-panel" data-scout-actpanel>{actBlock}</div>;
   } else if (showPanel && edge) {
     panel = <EdgePanel kind={edge.kind} q={edge.q} cap={edge.cap} message={edge.message} onAsk={() => ask(text)} onRetry={() => { if (edge.retry === 'search') { setEdge(null); setRetry(n => n + 1); } else ask(edge.q || asked.q); }} />;
   } else if (showPanel && view === 'search' && groups) {
@@ -153,7 +181,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       ? <ScoutResults listId={listId} groups={groups} q={text} active={active} onActive={setActive} onOpen={openItem} onAsk={() => ask()} scopeAll={scope === 'all'} colorOf={colorOf} phone={sheet} />
       : <EdgePanel kind="nohits" q={text} onAsk={() => ask()} />;
   }
-  const answerish = view === 'answer' || view === 'working';
+  const answerish = view === 'answer' || view === 'working' || view === 'act';
   const focusRing = open || sheet;
 
   return (
@@ -170,6 +198,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
         {view === 'working' && <span className="scout-think" aria-hidden="true" />}
       </div>
       {panel && <div className={`scout-pop ui-theme-dark${answerish ? ' scout-pop--answer' : ''}`} data-scout-pop>{panel}</div>}
+      {compose && <ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={() => {}} />}
     </div>
   );
 }

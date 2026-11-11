@@ -66,7 +66,7 @@ const prospectPatch = async (ctx, contactId, body) => salesWrites.prospect({ par
 const REASONS = [[/outside (the )?u\.?s/, 'mostly_outside_us', 'Mostly outside US'], [/too small/, 'too_small', 'Too small'], [/wrong industry/, 'wrong_industry', 'Wrong industry'], [/housing perk/, 'has_housing_perk', 'Has housing perk'], [/upside/, 'upside_owns', 'Upside owns']];
 
 const assign = {
-  id: 'assign', label: 'Assign', done: 'Assigned', lead: /^(?:re)?assign\b|^unassign\b|^give\b/, accepts: ['people', ...COMPANY_ENTITIES], needs: 'member',
+  id: 'assign', label: 'Assign', done: 'Assigned', lead: /^(?:re)?assign\b|^unassign\b/, accepts: ['people', ...COMPANY_ENTITIES], needs: 'member',
   async plan(sb, ctx, targets, args) {
     const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
     const members = await salesMembers(sb, ctx.businessId);

@@ -1,4 +1,4 @@
-import { laDateString, laWeekStart } from '../salesAnalytics/periods';
+import { laDateString } from '../salesAnalytics/periods';
 
 // scout-v2 REV3 Stage 2 - the bar's pure parts: the remembered scope (B2), the day's thread (D12), the matched-text
 // split (B3), what a typed line means (one input; what you typed decides), the answer's sort (B4), the footer line
@@ -34,7 +34,7 @@ export function saveThread(userId, turns, now = new Date()) {
   writeJson(THREAD_KEY, { user: userId, day: laDateString(now), turns: turns.slice(-THREAD_MAX) });
 }
 // The server's thread (≤ 6 messages): the last three turns as question + answer.
-export const threadMessages = turns => turns.filter(t => t.answer_md).slice(-3).flatMap(t => [{ role: 'user', content: t.q }, { role: 'assistant', content: t.answer_md }]);
+export const threadMessages = turns => turns.filter(t => t.answer_md).slice(-3).flatMap(t => [{ role: 'user', content: t.q }, { role: 'assistant', content: t.answer_md, ...(t.actions?.length ? { actions: t.actions } : {}) }]);
 
 // The matched words of the query inside a title: [{ text, hit }] (case-insensitive, every occurrence).
 export function splitMatch(text, q) {
@@ -53,14 +53,6 @@ const LIST_OF = { people: 'People', todos: 'Actions', call_notes: 'Actions', ins
 // Where a row goes: a company-shaped row opens its window ("Open"); a row with a list destination names it.
 export const destination = item => (LIST_OF[item.entity] ? `${LIST_OF[item.entity]} →` : 'Open');
 
-// The answer's table is sorted on the field Scout sorted on (ask.sort), else on dates when every row has one.
-export function answerSort(ask, items) {
-  const s = ask?.sort;
-  if ((s === 'score' || s === 'heat') && items.some(i => i.score != null)) return { id: 'score', dir: 'desc', label: s === 'heat' ? 'Heat' : 'Score' };
-  if (items.length && items.every(i => i.date)) return { id: 'date', dir: s === 'date' ? 'desc' : 'asc', label: items.every(i => i.entity === 'todos') ? 'Due' : 'Date' };
-  return null;
-}
-
 const ENTITY_LABEL = { partners: 'Partner', employers: 'Employer', targets: 'Target', clients: 'Client', people: 'Person', todos: 'To-do', call_notes: 'Call note', insights: 'Insight', intel: 'Intel', accounts: 'Account', outlook: 'Outlook', visitor: 'Visitor' };
 export const entityLabel = e => ENTITY_LABEL[e] || String(e || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
 
@@ -76,19 +68,12 @@ export function footerParts(answer) {
   };
 }
 
-// D14: the quick-capture to-do create (POST goals/week) links what its link check knows; anything else carries the
-// record's title in its text and no link.
-const LINK_OF = { partners: 'partner', employers: 'opportunity', clients: 'opportunity', targets: 'target' };
-export function taskBody(item, ownerId, now = new Date()) {
-  const link = LINK_OF[item.entity];
-  return { kind: 'todo', week_start: laWeekStart(now), text: `Follow up: ${item.title}`, owner_user_id: ownerId, ...(link ? { link_type: link, link_id: item.id } : {}) };
-}
-// Members and above on a sales workspace; never a Viewer, never a workspace without the to-do list.
-export function canTask(item, me, businesses) {
-  const b = businesses.find(x => x.id === item.workspace_id);
+// Scout's actions: Members and above, in one sales workspace (never "all", never a Viewer).
+export function canActIn(scope, me, businesses) {
+  const b = businesses.find(x => x.id === scope);
   if (!b?.features?.goals_sales || !me) return false;
   if (me.profile?.is_platform_owner) return true;
-  const role = me.memberships?.find(m => m.business_id === item.workspace_id)?.role;
+  const role = me.memberships?.find(m => m.business_id === scope)?.role;
   return !!role && role !== 'viewer';
 }
 export const isViewerIn = (me, scope, options) => {

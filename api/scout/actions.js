@@ -22,7 +22,7 @@ const reply = (status, body) => ({ status, body });
 
 // S5: what Scout never does, read from the command's first words.
 const REFUSED = [
-  [/^(send|email|reply|forward)\b/, "I can't send email. Scout never sends, deletes, or moves a stage. I can open a draft for you to send yourself.", 'draft'],
+  [/^(send|reply|forward)\b|^email\s+(?!open|click|repl|rate|funnel|to site|stats|performance|sequence)/, "I can't send email. Scout never sends, deletes, or moves a stage. I can open a draft for you to send yourself.", 'draft'],
   [/^(delete|remove|erase|archive)\b/, "I can't delete a record. Scout never sends, deletes, or moves a stage.", null],
   [/^(move|advance|push|promote|change)\b.*\b(stage|stages|pipeline|contacted|meeting|proposal|client|signed|won|lost)\b|^(mark|make|set)\b.*\b(client|signed|launched|won|lost)\b/, "I can't move a stage or add a client. Scout never sends, deletes, or moves a stage - open the record's window for that.", null],
   [/^(add|put|enrol|enroll)\b.*\b(sequence|apollo|cadence)\b|^(sync|refresh)\b/, "I can't write to Apollo. Scout never sends, deletes, or moves a stage.", null],
