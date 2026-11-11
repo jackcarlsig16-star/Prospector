@@ -5,8 +5,9 @@ const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 const ISO_DATE = /^\s*\d{4}-\d{2}-\d{2}\s*$/;
 
 export const scrubPhones = s => s.replace(PHONE, m => (ISO_DATE.test(m) ? m : '[number removed]'));
-// Anything that still looks like an address or a phone (a YYYY-MM-DD date is neither).
-export const hasPii = s => /@/.test(s) || (s.match(PHONE) || []).some(m => !ISO_DATE.test(m));
+// Anything that still looks like an address or a phone (a YYYY-MM-DD date is neither). "@" is checked on the whole
+// text; the phone shape line by line - a date ending one line and "(11/10)" opening the next is not a number.
+export const hasPii = s => /@/.test(s) || String(s).split('\n').some(line => (line.match(PHONE) || []).some(m => !ISO_DATE.test(m)));
 
 // Saved model text: no email addresses, no phone numbers, one line, capped.
 const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
