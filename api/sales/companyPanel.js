@@ -23,6 +23,7 @@ import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } f
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 import { rematchVisits } from './visitMatch.js';
 import { splitSnoozed } from './snoozed.js';
+import { isSnoozed as todoSnoozed } from '../../src/constants/todoSnooze.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
 // goals/company?type=&id= returns the body sections (to-dos, waiting on them,
@@ -107,11 +108,11 @@ async function visitsFor(supabase, businessId, type, id, key) {
   return [...byKey, ...matched].filter(v => !seen.has(v.id) && seen.add(v.id)).sort((a, b) => b.pulled_on.localeCompare(a.pulled_on)).slice(0, 14);
 }
 
-async function linkedWork(supabase, businessId, type, id, kind, names) {
+async function linkedWork(supabase, businessId, type, id, kind, names, today) {
   if (!LINK_TYPE[type]) return [];
-  const rows = must(await supabase.from('sales_week_goals').select('id, text, owner_user_id, due_date, status, week_start, waiting_on')
+  const rows = must(await supabase.from('sales_week_goals').select('id, text, owner_user_id, due_date, snooze_until, status, week_start, waiting_on')
     .eq('business_id', businessId).eq('kind', kind).eq('link_type', LINK_TYPE[type]).eq('link_id', id).eq('status', 'open').order('due_date').order('id').limit(50));
-  return rows.map(r => ({ id: r.id, text: cleanText(r.text, 300), owner_user_id: r.owner_user_id, owner: names.get(r.owner_user_id) || null, due_date: r.due_date, week_start: r.week_start, waiting_on: kind === 'waiting' ? cleanText(r.waiting_on, 120) : undefined }));
+  return rows.filter(r => kind !== 'todo' || !todoSnoozed(r, today)).map(r => ({ id: r.id, text: cleanText(r.text, 300), owner_user_id: r.owner_user_id, owner: names.get(r.owner_user_id) || null, due_date: r.due_date, week_start: r.week_start, waiting_on: kind === 'waiting' ? cleanText(r.waiting_on, 120) : undefined }));
 }
 
 const clientWord = s => CLIENT_STATUS_LABEL[s] || s;
@@ -318,8 +319,8 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     const key = type === 'visitor' ? id : normName(record.name);
     const prospects = await prospectsFor(supabase, businessId, record);
     const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, lastTouch, stages] = await Promise.all([
-      linkedWork(supabase, businessId, type, id, 'todo', names),
-      linkedWork(supabase, businessId, type, id, 'waiting', names),
+      linkedWork(supabase, businessId, type, id, 'todo', names, laDateString(now)),
+      linkedWork(supabase, businessId, type, id, 'waiting', names, laDateString(now)),
       visitsFor(supabase, businessId, type, id, key),
       supabase.from('sales_signals').select('id, source, kind, signal, why_now, status, signal_week, created_at').eq('business_id', businessId).eq('company_key', key).order('created_at', { ascending: false }).limit(10).then(must),
       recentFor(supabase, businessId, record),

@@ -62,7 +62,7 @@ test('PATCH goals/week/:id: one event per change; expect that no longer holds is
   assert.equal(events(db).length, 3);
 });
 
-test('Undo routes: one event restores before and refuses drift; a create-undo drops the to-do (origin kept); a batch is undone as one with the failed to-do named', async () => {
+test('Undo routes: one event restores before and refuses drift; a create-undo drops the to-do (origin kept); a batch is undone as one with the failed to-do named and, the commitment gone, the rest left unlinked', async () => {
   const db = fresh();
   const made = await todo(db, { origin: 'panel' });
   const due = await call(updateWeekGoalRoute, { params: { id: made.body.goal.id }, body: { due_date: '2026-11-20' } });
@@ -87,8 +87,10 @@ test('Undo routes: one event restores before and refuses drift; a create-undo dr
   assert.deepEqual(db.tables.sales_week_goals.filter(g => linked.some(l => l.id === g.id)).map(g => g.link_type), [null, null, null]);
   db.tables.sales_week_goals.find(g => g.id === linked[1].id).link_type = 'partner';
   const batch = await call(undoTodoBatchRoute, { params: { batchId: del.body.batch_id } });
-  assert.deepEqual([batch.status, batch.body.undone.length, batch.body.failed.map(f => f.todo_id)], [200, 2, [linked[1].id]]);
-  assert.equal(batch.body.undone[0].goal.link_type, 'commitment');
+  // the commitment is gone (Stage 2 ruling): the two untouched to-dos stay unlinked and the result says so; the drifted one is named as failed
+  assert.deepEqual([batch.status, batch.body.undone.length, batch.body.failed.map(f => f.todo_id), batch.body.left_unlinked.map(f => f.todo_id).sort()], [200, 0, [linked[1].id], [linked[0].id, linked[2].id].sort()]);
+  assert.match(batch.body.left_unlinked[0].note, /commitment is gone/);
+  assert.deepEqual([linked[0], linked[2]].map(l => db.tables.sales_week_goals.find(g => g.id === l.id).link_id), [null, null]);
 });
 
 test('T9 DELETE: a member cannot delete a to-do even within two minutes; an admin can, and the delete leaves a drop event', async () => {

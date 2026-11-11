@@ -69,22 +69,24 @@ test('People views: save (state cleaned to the known chips / selects / window), 
 // rows + their company's latest visit row (the table's join) + their identification date; null with no signal at all.
 test('personDetail.heat: a prospect at a visited employer carries the visit why line; a visitor identified today at a quiet company reads 11 · warm on their own date; no rows + no visit = null', async () => {
   const O = '00000000-0000-4000-8000-00000000e001', T = '00000000-0000-4000-8000-00000000e002';
-  const today = new Date().toISOString().slice(0, 10);
+  // a fixed clock two days after the fixture's reply (at(3)): the reply's fade and every window are read against it
+  const NOW = Date.parse(at(5));
+  const today = new Date(NOW).toISOString().slice(0, 10);
   const db = fakeSupabase({
     sales_prospect_state: [{ business_id: B, contact_id: 'A', notes: null, opportunity_id: O, goal_id: null, company: 'Acme Health' }, { business_id: B, contact_id: 'Q', notes: null, opportunity_id: null, goal_id: null, company: 'Nowhere Inc' }],
     sales_opportunities: [{ id: O, business_id: B, organization: 'Acme Health' }],
     sales_targets: [{ id: T, business_id: B, name: 'Quarry Labs' }],
-    sales_people: [{ id: 'sp1', business_id: B, note: null, company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: new Date().toISOString() }, { id: 'sp2', business_id: B, note: 'by hand', company_type: 'target', target_id: T, source_kind: null, created_at: '2026-10-01T00:00:00Z' }],
+    sales_people: [{ id: 'sp1', business_id: B, note: null, company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: new Date(NOW).toISOString() }, { id: 'sp2', business_id: B, note: 'by hand', company_type: 'target', target_id: T, source_kind: null, created_at: '2026-10-01T00:00:00Z' }],
     web_visits: [{ id: 'v1', business_id: B, company_key: 'acme health', matched_type: 'opportunity', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: today, seen_to: today, pulled_on: today }],
     sales_email_messages: msgs, sales_email_activity: evs,
     sales_person_heat_days: [
-      { business_id: B, person_key: 'prospect:A', day: new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10), heat: 20, band: 'warm' },
-      { business_id: B, person_key: 'prospect:A', day: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10), heat: 110, band: 'hot' },
+      { business_id: B, person_key: 'prospect:A', day: new Date(NOW - 40 * 864e5).toISOString().slice(0, 10), heat: 20, band: 'warm' },
+      { business_id: B, person_key: 'prospect:A', day: new Date(NOW - 2 * 864e5).toISOString().slice(0, 10), heat: 110, band: 'hot' },
       { business_id: B, person_key: 'prospect:A', day: today, heat: 114, band: 'hot' },
       { business_id: B, person_key: 'prospect:Q', day: today, heat: 0, band: 'cold' },
     ],
   });
-  const p = await personDetail(db, B, { key: 'prospect:A' });
+  const p = await personDetail(db, B, { key: 'prospect:A', now: NOW });
   assert.equal(p.status, 200);
   // heat-v2 H5: the last 30 LA days of day rows, oldest first; a 40-day-old row is out; another person's rows never leak.
   assert.deepEqual(p.body.history.map(h => [h.heat, h.band]), [[110, 'hot'], [114, 'hot']]);
@@ -92,12 +94,12 @@ test('personDetail.heat: a prospect at a visited employer carries the visit why 
   assert.ok(p.body.heat.why.includes('Company on the site · 3 visits · 2 people (7 d) +14'), JSON.stringify(p.body.heat));
   assert.ok(p.body.heat.why[0].startsWith('Replied (follow up question) +100'), 'the email lines come first');
   assert.ok(['hot', 'warm'].includes(p.body.heat.band) && p.body.heat.score >= 114);
-  const q = await personDetail(db, B, { key: 'prospect:Q' });
+  const q = await personDetail(db, B, { key: 'prospect:Q', now: NOW });
   assert.equal(q.body.heat, null, 'no rows, no visit: nothing to say');
   assert.deepEqual(q.body.history, [{ day: today, heat: 0, band: 'cold' }]);
-  const v = await personDetail(db, B, { key: 'person:sp1' });
+  const v = await personDetail(db, B, { key: 'person:sp1', now: NOW });
   assert.deepEqual([v.body.heat.score, v.body.heat.band, v.body.heat.why, v.body.history], [11, 'warm', ['Identified on the site 0 d ago +11'], []], 'no day rows yet: an empty history');
-  const h = await personDetail(db, B, { key: 'person:sp2' });
+  const h = await personDetail(db, B, { key: 'person:sp2', now: NOW });
   assert.equal(h.body.heat, null, 'a hand-added person at a quiet company');
   assert.ok(!/@/.test(JSON.stringify([p.body, v.body])));
 });

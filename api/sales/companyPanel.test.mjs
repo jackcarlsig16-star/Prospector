@@ -440,3 +440,14 @@ test('company-progress-bar-v1 D2: advance = the next stage on the record\'s own 
   assert.equal((await advanceStage(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: { expect: 'proposed' }, now: NOW })).status, 400);
   assert.equal((await advanceStage(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW })).status, 400);
 });
+
+test('todo-events-v1 choice 6: a snoozed to-do is not on the company window until its day (the one rule); waiting rows are untouched', async () => {
+  const sb = seed();
+  const todo = sb.db.sales_week_goals.find(g => g.id === ID.todo);
+  todo.snooze_until = '2026-10-27';
+  const hidden = await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: NOW });
+  assert.deepEqual(hidden.body.todos, []);
+  assert.equal(hidden.body.waiting.length, 1);
+  const back = await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: new Date('2026-10-27T20:00:00Z') });
+  assert.deepEqual(back.body.todos.map(t => t.text), ['Send Gallagher the deck']);
+});

@@ -125,3 +125,23 @@ test('R3 rollback inside a failed request deletes the rows and logs one undo eve
   const d = await deleteTodo(k.db, { businessId: B, row: k.todos[0], actor: ANA });
   assert.equal(d.event.kind, 'drop'); assert.equal(k.db.tables.sales_week_goals.length, 0); assert.equal(k.events().length, 2);
 });
+
+test('batch Undo of a commitment delete: the commitment gone -> the to-dos stay unlinked and are listed apart; the commitment still there -> linked back', async () => {
+  const C = 'e0000000-0000-4000-8000-000000000001';
+  const run = async keep => {
+    const s = await setup(2, { link_type: 'commitment', link_id: C });
+    s.db.tables.sales_week_goals.push({ id: C, business_id: B, kind: 'commitment', status: 'open' });
+    const batch = await applyTodos(s.db, { businessId: B, todos: s.todos, patch: { link_type: null, link_id: null }, kind: 'link', actor: ANA, origin: 'manual' });
+    if (!keep) s.db.tables.sales_week_goals.splice(s.db.tables.sales_week_goals.findIndex(r => r.id === C), 1);
+    return { s, batch, r: await undoTodoBatch(s.db, { businessId: B, batchId: batch.batchId, actor: ANA }) };
+  };
+  const gone = await run(false);
+  assert.deepEqual([gone.r.undone.length, gone.r.failed.length, gone.r.left_unlinked.length], [0, 0, 2]);
+  assert.match(gone.r.left_unlinked[0].note, /commitment is gone/);
+  assert.deepEqual(gone.s.todos.map(t => gone.s.row(t.id).link_id), [null, null]);
+  assert.equal(gone.s.events().filter(e => e.kind === 'undo').length, 0); assert.ok(gone.s.events().every(e => !e.undone_at));
+  await refuses(() => undoTodoEvent(gone.s.db, { businessId: B, eventId: gone.batch.events[0].id, actor: ANA }), 409, 'gone');
+  const kept = await run(true);
+  assert.deepEqual([kept.r.undone.length, kept.r.failed.length, kept.r.left_unlinked.length], [2, 0, 0]);
+  assert.deepEqual(kept.s.todos.map(t => kept.s.row(t.id).link_id), [C, C]);
+});

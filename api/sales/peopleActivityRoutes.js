@@ -154,7 +154,7 @@ export async function peopleActivityRoute(req, res) {
 // A prospect's timeline reads its messages + events; a partner contact's through its Apollo contact id; a
 // visitor-identified or hand-added person has no email rows (an empty timeline) and shows its note. Never an address.
 const KEY = /^(prospect|contact|person):(.+)$/;
-export async function personDetail(supabase, businessId, { key }) {
+export async function personDetail(supabase, businessId, { key, now = Date.now() }) {
   const m = KEY.exec(String(key || ''));
   if (!m) return reply(400, { error: 'key must be prospect:<contact id> | contact:<id> | person:<id>' });
   const [, kind, id] = m;
@@ -180,7 +180,7 @@ export async function personDetail(supabase, businessId, { key }) {
     selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject,num_opens,num_clicks,last_opened_at,last_clicked_at,bounced').eq('business_id', businessId).eq('contact_id', contactId).order('apollo_message_id')),
     selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).eq('contact_id', contactId).order('id')),
   ]) : [[], []];
-  const [heat, history] = await Promise.all([liveHeat(supabase, businessId, { messages, events, company, identifiedAt }), heatHistory(supabase, businessId, key)]);
+  const [heat, history] = await Promise.all([liveHeat(supabase, businessId, { messages, events, company, identifiedAt, now }), heatHistory(supabase, businessId, key, now)]);
   const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null, heat, history };
   if (ADDRESS.test(JSON.stringify(body))) throw new Error('people detail: an address reached the result - refused');
   return reply(200, body);
@@ -188,7 +188,7 @@ export async function personDetail(supabase, businessId, { key }) {
 // heat-size-v1 Stage 2 (Stage 1 choice 1): the pinned card's heat is computed live by the writer's own function over the
 // person's rows, their company's latest visit row (the same join as the table) and their identification date - nothing
 // stored, no new column. null when the person has no email row and no visit signal (the table shows "—" for them too).
-async function liveHeat(supabase, businessId, { messages, events, company, identifiedAt }) {
+async function liveHeat(supabase, businessId, { messages, events, company, identifiedAt, now }) {
   let ref = null;
   if (company?.opportunity_id) { const o = must(await supabase.from('sales_opportunities').select('id, organization').eq('business_id', businessId).eq('id', company.opportunity_id).maybeSingle()); ref = o ? { type: 'employer', id: o.id, name: o.organization } : null; }
   else if (company?.goal_id) { const g = must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).eq('id', company.goal_id).maybeSingle()); ref = g ? { type: 'partner', id: g.id, name: g.name } : null; }
@@ -196,8 +196,8 @@ async function liveHeat(supabase, businessId, { messages, events, company, ident
   else if (company?.name) ref = { type: 'account', id: null, name: company.name };
   const visits = ref ? await selectAllPages(() => supabase.from('web_visits').select('id, company_key, matched_type, matched_id, visits_7d, unique_visitors_7d, last_visit, seen_to, pulled_on').eq('business_id', businessId).order('id')) : [];
   const visit = visitIndex(visits)(ref);
-  if (!messages.length && !events.length && !visitSignal({ visit, identifiedAt })) return null;
-  const s = summarizePerson(messages, events, Date.now(), visit, identifiedAt);
+  if (!messages.length && !events.length && !visitSignal({ visit, identifiedAt, now })) return null;
+  const s = summarizePerson(messages, events, now, visit, identifiedAt);
   return { score: s.heat, band: s.heat_band, why: s.why };
 }
 export async function personDetailRoute(req, res) {

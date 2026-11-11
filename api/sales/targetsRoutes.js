@@ -12,6 +12,7 @@ import { moveTargetPeople, relinkParked } from './visitorPeopleMove.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 import { rematchVisits } from './visitMatch.js';
+import { isSnoozed } from '../../src/constants/todoSnooze.js';
 
 // call-notes-targets-v1 - companies named in notes that aren't a partner or
 // an employer yet. Written by Intake's Accept (Stage 1); Stage 2 promotes a
@@ -385,8 +386,10 @@ async function memberNames(supabase, businessId) {
 const first = (names, id) => (id && names[id] ? t(names[id].split(' ')[0], 40) : null);
 
 async function openTodos(supabase, businessId, linkType, linkId, names) {
-  const rows = must(await supabase.from('sales_week_goals').select('text, owner_user_id, due_date, status')
-    .eq('business_id', businessId).eq('kind', 'todo').eq('link_type', linkType).eq('link_id', linkId).eq('status', 'open').order('due_date').order('id').limit(50));
+  const today = laDateString();
+  const rows = must(await supabase.from('sales_week_goals').select('text, owner_user_id, due_date, snooze_until, status')
+    .eq('business_id', businessId).eq('kind', 'todo').eq('link_type', linkType).eq('link_id', linkId).eq('status', 'open').order('due_date').order('id').limit(50))
+    .filter(r => !isSnoozed(r, today));
   return rows.length ? rows.map(r => `- ${t(r.text, 300)}${first(names, r.owner_user_id) ? ` · ${first(names, r.owner_user_id)}` : ''}${r.due_date ? ` · due ${onDay(r.due_date)}` : ''}`) : ['- none'];
 }
 

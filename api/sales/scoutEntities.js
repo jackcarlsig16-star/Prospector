@@ -7,6 +7,7 @@ import { SOURCE_WORD as PERSON_SOURCE } from '../../src/constants/peopleSource.j
 import { sourceDirectory } from './leadSource.js';
 import { memberColors } from './memberColors.js';
 import { salesIntents, salesStanding } from './scoutIntents.js';
+import { isSnoozed } from '../../src/constants/todoSnooze.js';
 
 // scout-v2 REV2 Stage 1 - what the sales module registers with Scout (api/scout/registry.js): its searchable entities
 // (D1 search: names, titles and text only - never an address or a phone; Outlook subjects only on a query of 3+ words),
@@ -53,9 +54,9 @@ export const ENTITIES = [
       return [...pros.map(p => row(`prospect:${p.contact_id}`, p.name, p.title, p.company, PERSON_SOURCE.prospect)), ...ppl.map(p => row(`person:${p.id}`, p.name, p.title, p.company_name, p.source_kind === 'web_visit' ? PERSON_SOURCE.visitor : PERSON_SOURCE.hand)), ...contacts.map(c => row(`contact:${c.id}`, c.name, c.title, null, PERSON_SOURCE.contact))].filter(r => r.title).slice(0, limit);
     } },
   { entity: 'todos', label: 'To-dos', open: id => window_({ tab: 'actions', open: `todo:${id}` }),
-    async search(sb, { businessId, q, limit }) {
-      const rows = must(await sb.from('sales_week_goals').select('id, text, status, due_date, owner_user_id, week_start, updated_at').eq('business_id', businessId).eq('kind', 'todo').ilike('text', pat(q)).order('updated_at', { ascending: false }).limit(limit));
-      return rows.map(r => ({ id: r.id, title: cleanText(r.text, 140), subtitle: [r.status, r.due_date ? `due ${day(r.due_date)}` : null].filter(Boolean).join(' · '), date: day(r.due_date || r.updated_at), text: [cleanText(r.text, 200), `to-do ${r.status}`, r.due_date ? `due ${day(r.due_date)}` : 'no date'].join(' · ') }));
+    async search(sb, { businessId, q, limit, today }) {
+      const rows = must(await sb.from('sales_week_goals').select('id, text, status, due_date, snooze_until, owner_user_id, week_start, updated_at').eq('business_id', businessId).eq('kind', 'todo').ilike('text', pat(q)).order('updated_at', { ascending: false }).limit(limit));
+      return rows.filter(r => r.status !== 'open' || !isSnoozed(r, today)).map(r => ({ id: r.id, title: cleanText(r.text, 140), subtitle: [r.status, r.due_date ? `due ${day(r.due_date)}` : null].filter(Boolean).join(' · '), date: day(r.due_date || r.updated_at), text: [cleanText(r.text, 200), `to-do ${r.status}`, r.due_date ? `due ${day(r.due_date)}` : 'no date'].join(' · ') }));
     } },
   { entity: 'call_notes', label: 'Call notes', open: id => window_({ tab: 'actions', open: `note:${id}` }, true),
     async search(sb, { businessId, q, limit }) {

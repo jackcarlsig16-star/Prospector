@@ -235,3 +235,12 @@ test('email-funnel-v1 F7: "what\'s our email to site rate" (and "emails to websi
   assert.ok(line && line.includes('Company rate:') && line.includes('Person rate:') && line.includes('of emails sent that day/week, so far') && line.includes('The funnel starts Oct 26'));
   assert.ok(reg.modules[0].intents.find(i => i.id === 'email_site').example === "what's our email to site rate");
 });
+
+test('todo-events-v1 choice 6: Scout search leaves out an open to-do while it is snoozed (the one rule) and finds it again after', async () => {
+  const sb = seed();
+  const find = async today => (await by('todos').search(sb, { ...ctx(sb, 'hilton'), today })).map(t => t.id);
+  assert.deepEqual(await find('2026-11-06'), [u('6')]);
+  sb.db.sales_week_goals.find(g => g.id === u('6')).snooze_until = '2026-11-13';
+  assert.deepEqual(await find('2026-11-06'), []);
+  assert.deepEqual(await find('2026-11-13'), [u('6')]);
+});

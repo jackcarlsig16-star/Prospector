@@ -173,6 +173,11 @@ export async function undoTodoEvent(supabase, { businessId, eventId, event = nul
   const drift = Object.keys(after).find(k => !same(after[k], cur[k]));
   if (drift) throw new TodoError(`${drift.replace(/_/g, ' ')} changed since - undo skipped`, 409, { code: 'drift', todo: cur });
   const restore = ev.kind === 'create' ? { status: 'dropped', completed_at: null } : ev.before || {};
+  // a link back to a commitment that was deleted meanwhile (the unlink batch of that delete) is not restored
+  if (ev.kind === 'link' && restore.link_type === 'commitment' && restore.link_id) {
+    const there = must(await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('id', restore.link_id).eq('kind', 'commitment').maybeSingle());
+    if (!there) throw new TodoError('the commitment is gone - the to-do stays unlinked', 409, { code: 'gone', todo: cur });
+  }
   let q = supabase.from('sales_week_goals').update({ ...restore, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', cur.id);
   for (const k of Object.keys(after)) q = after[k] == null ? q.is(k, null) : q.eq(k, after[k]);
   const rows = must(await q.select());
@@ -182,18 +187,19 @@ export async function undoTodoEvent(supabase, { businessId, eventId, event = nul
   return { todo: rows[0], event: undo, undid: { id: ev.id, kind: ev.kind, todo_id: ev.todo_id } };
 }
 
-// Every event of the batch as one, newest first. A to-do that fails is named; the rest stay undone.
+// Every event of the batch as one, newest first. A to-do that fails is named; the rest stay undone. A to-do whose
+// commitment is gone is left unlinked and listed apart (left_unlinked) - nothing failed, there is nothing to link to.
 export async function undoTodoBatch(supabase, { businessId, batchId, actor = null, now = new Date(), windowMs = UNDO_WINDOW_MS }) {
   if (!UUID.test(batchId || '')) throw new TodoError('batch not found', 404);
   const events = must(await supabase.from('sales_todo_events').select(`${EVENT_COLS}, business_id`).eq('business_id', businessId).eq('batch_id', batchId).order('at', { ascending: false }))
     .filter(e => e.kind !== 'undo' && !e.undone_at);
   if (!events.length) throw new TodoError('nothing to undo', 409);
-  const undone = [], failed = [];
+  const undone = [], failed = [], leftUnlinked = [];
   for (const ev of events) {
     try { const r = await undoTodoEvent(supabase, { businessId, event: ev, actor, now, windowMs }); undone.push({ todo: r.todo, event: r.event }); }
-    catch (e) { if (!e.status || e.status >= 500) throw e; failed.push({ todo_id: ev.todo_id, error: e.message }); }
+    catch (e) { if (!e.status || e.status >= 500) throw e; (e.code === 'gone' ? leftUnlinked : failed).push({ todo_id: ev.todo_id, [e.code === 'gone' ? 'note' : 'error']: e.message }); }
   }
-  return { batch_id: batchId, undone, failed };
+  return { batch_id: batchId, undone, failed, left_unlinked: leftUnlinked };
 }
 
 // The newest events of a workspace, a to-do, or a set of to-dos (names resolve at the caller).
@@ -210,7 +216,7 @@ const send = (res, fn) => fn().then(body => res.json(body)).catch(e => res.statu
 export function undoTodoEventRoute(req, res) {
   return send(res, async () => { const r = await undoTodoEvent(getSupabase(), { businessId: req.params.businessId, eventId: req.params.id, actor: req.auth.user.id }); return { goal: r.todo, event: r.event, undid: r.undid }; });
 }
-// POST goals/week/events/batch/:batchId/undo -> { batch_id, undone: [{ goal, event }], failed: [{ todo_id, error }] }
+// POST goals/week/events/batch/:batchId/undo -> { batch_id, undone: [{ goal, event }], failed: [{ todo_id, error }], left_unlinked: [{ todo_id, note }] }
 export function undoTodoBatchRoute(req, res) {
-  return send(res, async () => { const r = await undoTodoBatch(getSupabase(), { businessId: req.params.businessId, batchId: req.params.batchId, actor: req.auth.user.id }); return { batch_id: r.batch_id, undone: r.undone.map(u => ({ goal: u.todo, event: u.event })), failed: r.failed }; });
+  return send(res, async () => { const r = await undoTodoBatch(getSupabase(), { businessId: req.params.businessId, batchId: req.params.batchId, actor: req.auth.user.id }); return { batch_id: r.batch_id, undone: r.undone.map(u => ({ goal: u.todo, event: u.event })), failed: r.failed, left_unlinked: r.left_unlinked }; });
 }

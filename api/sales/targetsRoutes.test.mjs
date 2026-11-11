@@ -310,3 +310,12 @@ test('hasPii: the route-level assertion catches emails and phone shapes but not 
   assert.equal(hasPii('due 2026-10-16 · Oct 12, 2026 · 12,000 lives · Tier 2'), false);
   assert.equal(hasPii('- Oct 12, 2026 · email · out'), false);
 });
+
+test('copy bundle: a snoozed to-do is not under Open to-dos until its day (the one rule)', async () => {
+  const s = seed();
+  s.db.sales_week_goals.find(w => w.text === 'Send Gallagher the one-pager').snooze_until = '2999-01-01';
+  const hidden = (await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher })).body.markdown;
+  assert.match(hidden, /## Open to-dos\n- none/);
+  s.db.sales_week_goals.find(w => w.text === 'Send Gallagher the one-pager').snooze_until = '2020-01-01';
+  assert.match((await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher })).body.markdown, /## Open to-dos\n- Send Gallagher the one-pager/);
+});
