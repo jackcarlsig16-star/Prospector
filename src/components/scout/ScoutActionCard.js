@@ -75,4 +75,4 @@ export function CantDo({ cant, onNearest }) {
   );
 }
 
-export const ActNote = ({ kind, children }) => <div className="scout-act" data-scout-note={kind} role="status"><span className={kind === 'opened' || kind === 'copied' ? 'scout-done-line' : 'scout-note'}>{kind === 'planning' && <span className="scout-neon" style={{ display: 'inline-flex', marginRight: 6 }}><StarGlyph size={12} /></span>}{children}</span></div>;
+export const ActNote = ({ kind, children }) => <div className="scout-act" data-scout-note={kind} role="status"><span className={kind === 'opened' || kind === 'copied' ? 'scout-done-line' : 'scout-note'}>{kind === 'planning' && <span className="scout-neon" style={{ display: 'inline-flex', marginRight: 6 }}><StarGlyph size={12} /></span>}{children}</span>{kind === 'planning' && <div className="scout-sweep" aria-hidden="true" />}</div>;

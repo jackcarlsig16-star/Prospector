@@ -82,7 +82,7 @@ const purge = now => { for (const [id, p] of plans) if (now - p.created_at > PLA
 export function cancelPlans(userId) { for (const [id, p] of plans) if (p.user_id === userId && !p.acted_at) plans.delete(id); }
 export const openPlans = () => plans.size;
 
-const pillsOf = verbs => verbs.map(v => ({ id: v.id, label: v.label }));
+const pillsOf = verbs => verbs.filter(v => v.pill !== false).map(v => ({ id: v.id, label: v.label }));
 const cant = (verbs, reason, nearest = null) => ({ cant: { reason, pills: pillsOf(verbs), nearest: nearest ? (verbs.find(v => v.id === nearest) ? { id: nearest, label: verbs.find(v => v.id === nearest).label } : { label: nearest }) : null } });
 const publicRow = r => ({ key: r.key, kind: r.kind, title: r.title, from: r.from ?? null, to: r.to ?? null, skipped: r.skipped || null, note: r.note || null });
 const capNames = raw => { const out = []; let cur = null; for (const tok of String(raw || '').replace(/[",.?!;:()]/g, ' ').split(/\s+/).slice(1)) { if (/^\p{Lu}[\p{L}\p{N}&'’.-]*$/u.test(tok)) { if (cur) cur.push(tok); else out.push(cur = [tok]); } else cur = null; } return out.map(c => c.join(' ')); };

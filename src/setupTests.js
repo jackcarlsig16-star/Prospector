@@ -3,3 +3,6 @@
 // expect(element).toHaveTextContent(/react/i)
 // learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
+
+// jsdom has no layout: Scout scrolls an action's result line into view.
+window.Element.prototype.scrollIntoView = function scrollIntoView() {};

@@ -227,12 +227,24 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
 
   log.length = 0;
   const d1 = await go('draft an email to Cloudflare', [row('employers', u('3'), 'Cloudflare')]);
-  assert.deepEqual(d1.p.body.open, { panel: 'compose', type: 'employer', id: u('3'), name: 'Cloudflare' });
+  assert.deepEqual(d1.p.body.open, { panel: 'compose', type: 'employer', id: u('3'), name: 'Cloudflare', to: null });
+  assert.equal(d1.p.body.line, 'Opened Write email for Cloudflare — nothing sent');
+  // FIX scout-action-feedback-v1: a person's Draft email opens their company's panel and the line names them; the
+  // clipboard bundle is its own verb; a person with no company record can't draft, Copy draft bundle is the nearest.
   const d2 = await go('draft an email to Dana Mayer', [dana]);
-  assert.deepEqual(d2.p.body.open, { copy: 'bundle', type: 'employer', id: u('3'), person: 'Dana Mayer' });
+  assert.deepEqual(d2.p.body.open, { panel: 'compose', type: 'employer', id: u('3'), name: 'Cloudflare', to: 'Dana Mayer' });
+  assert.equal(d2.p.body.line, 'Opened Write email for Cloudflare · address it to Dana Mayer');
+  const b1 = await go('copy the draft bundle for Dana Mayer', [dana]);
+  assert.equal(b1.p.body.verb, 'bundle');
+  assert.deepEqual(b1.p.body.open, { copy: 'bundle', type: 'employer', id: u('3'), person: 'Dana Mayer' });
+  assert.deepEqual((await go('copy draft bundle for Cloudflare', [row('employers', u('3'), 'Cloudflare')])).p.body.open, { copy: 'bundle', type: 'employer', id: u('3'), person: 'Cloudflare' });
+  const d3 = await go('draft an email to Lee Stone', [lee]);
+  assert.match(d3.p.body.cant.reason, /^Lee Stone has no company record, so there is no Write email panel to open/);
+  assert.deepEqual(d3.p.body.cant.nearest, { id: 'bundle', label: 'Copy draft bundle' });
+  assert.deepEqual((await go('copy draft bundle for Lee Stone', [lee])).p.body.open, { copy: 'bundle', type: 'target', records: [{ entity: 'people', id: lee.id }], person: 'Lee Stone' });
   const t = await go('add a task to call Cloudflare Thursday', []);
   assert.deepEqual(t.p.body.open, { quick_capture: { text: 'Call Cloudflare', due_date: '2026-11-12', past: false, link: { type: 'employer', id: u('3'), name: 'Cloudflare' } } });
-  assert.equal(t.p.body.line, 'Opened - save it there');
+  assert.equal(t.p.body.line, 'Opened quick capture — save it there');
   const t2 = await go('add a task for this', [lee]);
   assert.deepEqual(t2.p.body.open.quick_capture, { text: 'Follow up with Lee Stone', due_date: null, past: false, link: null });
   const c = await go('copy this for Claude', [dana]);

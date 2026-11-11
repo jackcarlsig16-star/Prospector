@@ -94,7 +94,7 @@ test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, 
   const { container, onOpen } = await answered();
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Dana Mayer' }));
   const menu = screen.getByRole('menu', { name: 'Actions for Dana Mayer' });
-  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent.replace('▸', ''))).toEqual(['Assign', 'Task', 'Mark contacted', 'Not a fit', 'Draft email', 'Snooze', 'Copy for Claude']);
+  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent.replace('▸', ''))).toEqual(['Assign', 'Task', 'Mark contacted', 'Not a fit', 'Draft email', 'Copy draft bundle', 'Snooze', 'Copy for Claude']);
   fireEvent.click(within(menu).getByRole('menuitem', { name: /Assign/ }));
   await waitFor(() => expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Ana', 'Bo', 'Unassigned']));
   expect(screen.getByRole('menu').querySelectorAll('.scout-dot')).toHaveLength(2);
@@ -198,9 +198,9 @@ test('can\'t-do: the reason, the WHAT I CAN DO pills, one nearest action that re
   expect(container.querySelector('[data-scout-cant]').textContent).toContain("I can't send email. Scout never sends, deletes, or moves a stage.");
   expect([...container.querySelectorAll('[data-scout-pill]')].map(p => p.textContent)).toEqual(PILLS.map(p => p.label));
   expect(container.querySelectorAll('[data-scout-nearest]')).toHaveLength(1);
-  replies.plan = () => json(200, { verb: 'draft', label: 'Draft email', open: { copy: 'bundle', type: 'employer', id: 'e1', person: 'Dana Mayer' }, line: 'Draft bundle for Dana Mayer copied - paste it into Claude. Scout never sends.' });
+  replies.plan = () => json(200, { verb: 'draft', label: 'Draft email', open: { copy: 'bundle', type: 'employer', id: 'e1', person: 'Dana Mayer' }, line: null });
   fireEvent.click(screen.getByRole('button', { name: 'Draft email instead' }));
-  await waitFor(() => expect(container.querySelector('[data-scout-note="opened"]')).toBeTruthy());
+  await waitFor(() => expect(container.querySelector('[data-scout-note="copied"]')).toBeTruthy());
   expect(calls('/api/scout/plan')[1]).toMatchObject({ verb: 'draft', text: 'email Dana Mayer about the savings plan' });
   expect(clip[0]).toContain('# Cloudflare — employer');
   expect(clip[0]).toContain('Draft one first email to Dana Mayer');
@@ -274,18 +274,18 @@ test('a person brief: the brief header (Brief · 1 person · name · heat · Ope
   expect(clip).toHaveLength(1);
 });
 
-test('the opens write nothing: "+ Task" fires the prefilled quick capture with "Opened - save it there"; Draft email on a company opens the Write email panel', async () => {
+test('the opens write nothing: "+ Task" fires the prefilled quick capture with "Opened quick capture — save it there"; Draft email on a company opens the Write email panel', async () => {
   const { container, input } = await answered();
   const heard = [];
   const onCapture = e => heard.push(e.detail);
   window.addEventListener(SCOUT_CAPTURE, onCapture);
-  replies.plan = () => json(200, { verb: 'add_task', label: 'Add task', open: { quick_capture: { text: 'Call MetLife', due_date: '2026-11-12', past: false, link: { type: 'partner', id: 'pa1', name: 'MetLife' } } }, line: 'Opened - save it there' });
+  replies.plan = () => json(200, { verb: 'add_task', label: 'Add task', open: { quick_capture: { text: 'Call MetLife', due_date: '2026-11-12', past: false, link: { type: 'partner', id: 'pa1', name: 'MetLife' } } }, line: 'Opened quick capture — save it there' });
   enter(input, 'add a task to call MetLife Thursday');
   await waitFor(() => expect(container.querySelector('[data-scout-note="opened"]')).toBeTruthy());
-  expect(container.querySelector('[data-scout-note="opened"]').textContent).toBe('Opened - save it there');
+  expect(container.querySelector('[data-scout-note="opened"]').textContent).toBe('Opened quick capture — save it there');
   expect(heard).toEqual([{ businessId: 'b1', text: 'Call MetLife', due_date: '2026-11-12', past: false, link: { type: 'partner', id: 'pa1', name: 'MetLife' } }]);
   window.removeEventListener(SCOUT_CAPTURE, onCapture);
-  replies.plan = () => json(200, { verb: 'draft', label: 'Draft email', open: { panel: 'compose', type: 'employer', id: 'e1', name: 'Cloudflare' }, line: 'Opened Write email for Cloudflare - one draft call under the Write email cap. Scout never sends.' });
+  replies.plan = () => json(200, { verb: 'draft', label: 'Draft email', open: { panel: 'compose', type: 'employer', id: 'e1', name: 'Cloudflare' }, line: 'Opened Write email for Cloudflare — nothing sent' });
   enter(input, 'draft an email to Cloudflare');
   await waitFor(() => expect(screen.getByRole('dialog', { name: 'Write email · Cloudflare' })).toBeTruthy());
   expect(calls('/api/scout/act')).toHaveLength(0);
@@ -314,7 +314,7 @@ test('a Viewer sees the rows and Open but no ⋯; the 390 sheet stacks cards (3 
   const menu = screen.getByRole('menu', { name: 'Actions for Dana Mayer' });
   expect(menu.closest('.scout-menu').className).toContain('scout-menu--sheet');
   expect(menu.closest('.scout-menu').querySelector('.scout-menu__title').textContent).toBe('Dana Mayer · Cloudflare');
-  expect(within(menu).getAllByRole('menuitem')).toHaveLength(7);
+  expect(within(menu).getAllByRole('menuitem')).toHaveLength(8);
 });
 
 test('model: what reads as a command, the rows /plan gets, the card titles, the menus, in-place results', () => {

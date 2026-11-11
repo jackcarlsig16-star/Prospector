@@ -3,7 +3,7 @@ import { laDateString } from '../salesAnalytics/periods';
 // scout-v3 Stage 2 - the pure parts of Scout's actions: what reads as a command, the rows a command resolves against,
 // each row's quick menu, the confirm card's words, the in-place row update after an act, and the countdown.
 // Event: prospector:scout-capture { businessId, text, due_date, link } - the header's quick capture opens prefilled
-// (ruling R4: Scout never writes a task; "Opened - save it there").
+// (ruling R4: Scout never writes a task; "Opened quick capture — save it there").
 export const SCOUT_CAPTURE = 'prospector:scout-capture';
 export const UNDO_SECONDS = 10;
 export const PHONE_SHOWN = { people: 3, todos: 2 };
@@ -34,8 +34,9 @@ export const dateIn = (days, now = new Date()) => laDateString(new Date(now.getT
 // A row's ⋯ menu. People and companies act through Scout's verbs; a task's Done / Reassign / Snooze open the task
 // where its own controls are (rulings R4-R5: no Scout write on a task).
 const RECORD_MENU = [{ id: 'assign', label: 'Assign', sub: 'members' }, { id: 'add_task', label: 'Task' }, { id: 'contacted', label: 'Mark contacted' }, { id: 'not_fit', label: 'Not a fit' }, { id: 'draft', label: 'Draft email' }, { id: 'snooze', label: 'Snooze', sub: 'dates' }, { id: 'copy', label: 'Copy for Claude' }];
+const PERSON_MENU = RECORD_MENU.flatMap(m => (m.id === 'draft' ? [m, { id: 'bundle', label: 'Copy draft bundle' }] : [m]));
 const TASK_MENU = [{ id: 'task:done', label: 'Done', open: true }, { id: 'task:reassign', label: 'Reassign', open: true }, { id: 'task:snooze', label: 'Snooze', open: true }, { id: 'open', label: 'Open', open: true }];
-export const menuFor = item => ({ person: RECORD_MENU, company: RECORD_MENU, task: TASK_MENU })[rowKind(item)] || [];
+export const menuFor = item => ({ person: PERSON_MENU, company: RECORD_MENU, task: TASK_MENU })[rowKind(item)] || [];
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const nounOf = rows => { const kinds = new Set(rows.map(r => r.kind)); return kinds.size === 1 && kinds.has('person') ? ['person', 'people'] : [...kinds].every(k => ['partner', 'employer', 'target'].includes(k)) ? ['company', 'companies'] : ['record', 'records']; };
@@ -67,3 +68,6 @@ export const undoneAction = turn => ({ ...turn, actions: (turn.actions || []).ma
 export const countPill = (s, noun) => `${s.count}${s.total > s.count ? ` of ${s.total}` : ''}${noun ? ` ${noun}` : ''}`;
 export const sectionNoun = s => { const kinds = new Set(s.rows.map(rowKind)); return kinds.size !== 1 ? '' : kinds.has('person') ? (s.count === 1 ? 'person' : 'people') : kinds.has('task') ? 'open' : kinds.has('company') ? (s.count === 1 ? 'company' : 'companies') : ''; };
 export const copiedLine = r => `✓ Copied · ${r.records} record${r.records === 1 ? '' : 's'} · ${Number(r.chars).toLocaleString('en-US')} chars`;
+export const bundleLine = (name, chars) => `✓ Copied the draft bundle for ${name} · ${Number(chars).toLocaleString('en-US')} chars — paste it into Claude`;
+// A task's menu opens the task where its own controls are; the line says what to do there.
+export const TASK_LINE = { open: 'Opened the task in Actions', 'task:done': 'Opened the task in Actions — mark it done there', 'task:reassign': 'Opened the task in Actions — reassign it there', 'task:snooze': 'Opened the task in Actions — snooze it there' };

@@ -40,6 +40,7 @@ export default function ComposePanel({ businessId, row, onClose, onToast }) {
         <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-label="Close" onClick={onClose}>✕</button>
       </div>
       <p style={{ margin: 0, fontSize: 12, color: SA.muted }}>One Claude call from the Brief only. Nothing is sent from here{state.cost != null ? ` · this draft cost $${state.cost.toFixed(4)}` : ''}{state.cap ? ` · ${state.cap.used}/${state.cap.max} today` : ''}.</p>
+      {row.to && <p data-compose-to style={{ margin: 0, fontSize: 13, color: SA.text }}>For <b>{row.to}</b> at {row.name}. The draft is written to the company; address it to {row.to} in your mail app.</p>}
       {state.error && <ErrorNote message={state.error} />}
       {state.loading && <span style={{ fontSize: 13, color: SA.muted }}>Writing…</span>}
       {state.draft && (

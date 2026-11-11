@@ -218,18 +218,32 @@ const snooze = {
   },
 };
 
-// R3: exactly what the two buttons do today, opened by Scout - a company opens the Write email panel (its one draft
-// call counts under the Write email cap; the panel's reply carries the cost), a person copies the draft bundle (0 AI).
+// Draft email opens the Write email panel for the record's company (its one draft call counts under the Write email
+// cap; the panel's reply carries the cost). The panel takes no recipient (the draft is written to the company from its
+// Brief and never holds an address), so a person row opens their company's panel and the line names who to address.
+// The clipboard bundle (0 AI) is its own verb: Copy draft bundle.
 const draft = {
   id: 'draft', label: 'Draft email', lead: /^(?:draft|write)\b/, accepts: ['people', ...COMPANY_ENTITIES],
   async plan(sb, ctx, targets, args) {
     const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
     if (list.length !== 1) return { cant: { reason: list.length ? 'I open one draft at a time - name one record.' : 'Tell me who the draft is for.', nearest: 'draft' } };
     const { company, person } = await resolve(sb, ctx.businessId, list[0]);
-    if (!company) return { cant: { reason: `${list[0].title} has ${NO_RECORD} - add the company to the pipeline first.` } };
-    return person
-      ? { open: { copy: 'bundle', type: company.type, id: company.id, person: list[0].title }, line: `Draft bundle for ${list[0].title} copied - paste it into Claude. Scout never sends.` }
-      : { open: { panel: 'compose', type: company.type, id: company.id, name: company.name }, line: `Opened Write email for ${company.name} - one draft call under the Write email cap. Scout never sends.` };
+    if (!company) return { cant: { reason: `${list[0].title} has ${NO_RECORD}, so there is no Write email panel to open - add the company to the pipeline first.`, nearest: person ? 'bundle' : null } };
+    return { open: { panel: 'compose', type: company.type, id: company.id, name: company.name, to: person ? list[0].title : null }, line: person ? `Opened Write email for ${company.name} · address it to ${list[0].title}` : `Opened Write email for ${company.name} — nothing sent` };
+  },
+};
+
+// The draft bundle for the clipboard: the company's copy-bundle, or the person's own pack when no company record
+// holds them. The client fetches it, appends the playbook prompt and writes the copied line with the real length.
+const bundle = {
+  id: 'bundle', label: 'Copy draft bundle', pill: false, lead: /^copy (?:the |a )?draft bundle\b/, accepts: ['people', ...COMPANY_ENTITIES],
+  async plan(sb, ctx, targets, args) {
+    const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
+    if (list.length !== 1) return { cant: { reason: list.length ? 'I copy one draft bundle at a time - name one record.' : 'Tell me who the draft bundle is for.', nearest: 'bundle' } };
+    const { company, person } = await resolve(sb, ctx.businessId, list[0]);
+    if (company) return { open: { copy: 'bundle', type: company.type, id: company.id, person: person ? list[0].title : company.name }, line: null };
+    if (person) return { open: { copy: 'bundle', type: 'target', records: [{ entity: 'people', id: list[0].id }], person: list[0].title }, line: null };
+    return { cant: { reason: `${list[0].title} has ${NO_RECORD}.` } };
   },
 };
 
@@ -247,7 +261,7 @@ const addTask = {
     text = cleanText(text.replace(/\s+/g, ' ').trim(), 200);
     if (!text || /^(?:for |on )?(?:this|that|it|them|those|these|him|her)$/i.test(text)) text = list[0] ? `Follow up with ${list[0].title}` : '';
     if (!text) return { cant: { reason: 'Tell me what the task is, like "add a task to call MetLife Thursday".', nearest: 'add_task' } };
-    return { open: { quick_capture: { text: text[0].toUpperCase() + text.slice(1), due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null } }, line: 'Opened - save it there' };
+    return { open: { quick_capture: { text: text[0].toUpperCase() + text.slice(1), due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null } }, line: 'Opened quick capture — save it there' };
   },
 };
 
@@ -263,7 +277,7 @@ const copy = {
   },
 };
 
-export const salesVerbs = [assign, notFit, contacted, draft, snooze, addTask, copy];
+export const salesVerbs = [assign, notFit, contacted, draft, bundle, snooze, addTask, copy];
 
 const PACK_TYPE = { ...KIND, people: 'person' };
 export async function salesPack(sb, ctx, { q, records }) {

@@ -35,6 +35,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const [menu, setMenu] = useState(null);
   const [members, setMembers] = useState([]);
   const [compose, setCompose] = useState(null);
+  const [composeToast, setComposeToast] = useState('');
   const [inlineKey, setInlineKey] = useState(null);
   const [retry, setRetry] = useState(0);
   const sheet = mode === 'sheet';
@@ -90,7 +91,16 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     setTurns(ts => { const next = ts.map(t => (t.at === turn.at ? turn : t)); saveThread(meId, next); return next; });
   }, [meId]);
   const openRef = useRef(null);
-  const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, onTurn, onOpenItem: item => openRef.current?.(item), onCompose: setCompose });
+  const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, onTurn, onOpenItem: item => openRef.current?.(item, true), onCompose: setCompose });
+  // The result line of an action sits under the answer's last section: bring it into view, the popover scrolls inside itself.
+  const actRef = useRef(null);
+  const actKey = actions.act ? `${actions.act.kind}:${actions.act.text || ''}` : '';
+  useEffect(() => { if (actKey) actRef.current?.scrollIntoView({ block: 'nearest' }); }, [actKey]);
+  useEffect(() => {
+    if (!composeToast) return undefined;
+    const t = setTimeout(() => setComposeToast(''), 4000);
+    return () => clearTimeout(t);
+  }, [composeToast]);
   useEffect(() => { setMembers([]); }, [scope]);
   // the members of the answer's workspace: owner names on task rows, the Assign ▸ list (with each member's colour)
   const salesScope = scope !== 'all' && !!businesses.find(b => b.id === scope)?.features?.goals_sales;
@@ -113,10 +123,12 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     }
   }, [text, scope, turns, meId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openItem = useCallback(item => {
+  // stay = opened from a row's ⋯ menu: the panel stays up so the action's line is read (a click outside closes it).
+  const openItem = useCallback((item, stay = false) => {
     if (!item?.open) return;
     onOpen(item);
     if (item.open.inline) { setInlineKey(`${item.entity}:${item.id}`); return; }
+    if (stay) return;
     setOpen(false); inputRef.current?.blur(); onDone?.();
   }, [onOpen, onDone]);
   openRef.current = openItem;
@@ -154,13 +166,14 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
 
   const showPanel = open || sheet;
   const a = actions.act;
-  const actBlock = !a ? null
+  const actBody = !a ? null
     : a.kind === 'card' ? <ConfirmCard card={a.card} onConfirm={actions.confirm} onCancel={actions.cancel} />
     : a.kind === 'working' ? <ActWorking card={a.card} ticked={a.ticked} />
     : a.kind === 'done' ? <DoneLine result={a.result} secondsLeft={a.left} undone={a.undone} onUndo={actions.undo} onRetry={actions.retry} />
     : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} />
-    : a.kind === 'planning' ? <ActNote kind="planning">Reading the command…</ActNote>
+    : a.kind === 'planning' ? <ActNote kind="planning">{a.label}</ActNote>
     : <ActNote kind={a.kind}>{a.text}</ActNote>;
+  const actBlock = actBody && <div ref={actRef} data-scout-actblock>{actBody}</div>;
   let panel = null, listShown = false;
   if (showPanel && empty) panel = <EdgePanel kind="empty" />;
   else if (showPanel && view === 'working') panel = <WorkingPanel q={asked.q} elapsed={tick} />;
@@ -200,7 +213,8 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
         {view === 'working' && <span className="scout-think" aria-hidden="true" />}
       </div>
       {panel && <div className={`scout-pop ui-theme-dark${answerish ? ' scout-pop--answer' : ''}`} data-scout-pop>{panel}</div>}
-      {compose && <ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={() => {}} />}
+      {compose && <ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={t => setComposeToast(t.text)} />}
+      {composeToast && <div className="scout-toast ui-theme-dark" role="status" data-scout-toast>{composeToast}</div>}
     </div>
   );
 }

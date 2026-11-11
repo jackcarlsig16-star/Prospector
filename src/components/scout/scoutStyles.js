@@ -169,6 +169,7 @@ const SCOUT_CSS = `
 .scout-confirm__foot { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
 .scout-warn { font-size:12px; color:#F2B544; }
 .scout-act { display:flex; flex-direction:column; gap:6px; font-size:12.5px; min-width:0; }
+.scout-toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:4004; max-width:calc(100vw - 32px); padding:8px 14px; border-radius:8px; background:var(--ui-surface); color:var(--ui-text); border:1px solid ${edge(45)}; font-size:12.5px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
 .scout-done-line { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:#3DD68C; font-size:12.5px; }
 .scout-undo { min-height:28px; }
 .scout-fail { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; color:#FF7878; font-size:12.5px; }
