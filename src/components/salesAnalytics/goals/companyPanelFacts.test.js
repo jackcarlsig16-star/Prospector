@@ -43,12 +43,12 @@ test('Edit row: the Stage select lists now + forward only; the matrix picks the 
   expect(forwardStages({ type: 'employer', stage: 'contacted' }).map(s => s.id)).not.toContain('target');
   expect(forwardStages({ type: 'target', stage: 'researching' }).map(s => s.id)).toEqual(['researching']);
   // company-window-v4 F1: + employees (a reach partner: reach), an employer's type.
-  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'employees']);
-  expect(editControls({ type: 'partner', category: '3. PEOs' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'employees', 'reach']);
+  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'source', 'employees']);
+  expect(editControls({ type: 'partner', category: '3. PEOs' })).toEqual(['stage', 'owner', 'team', 'source', 'employees', 'reach']);
   // FIX headcount-auto-v1 REV2 H7: employers and targets gain "Set domain"; a partner's domains live in Partner domains.
-  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'domain', 'employees', 'type']);
+  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'source', 'domain', 'employees', 'type']);
   expect(editControls({ type: 'target' })).toEqual(['stage', 'owner', 'team', 'source', 'domain', 'employees']);
-  expect(editControls({ type: 'visitor' })).toEqual(['priority']);
+  expect(editControls({ type: 'visitor' })).toEqual([]);
   expect(editControls({ type: 'apollo' })).toEqual([]);
   expect([showsNotNow({ type: 'partner' }), showsNotNow({ type: 'employer' }), showsNotNow({ type: 'target' }), showsNotNow({ type: 'visitor' }), showsNotNow({ type: 'apollo' })]).toEqual([true, true, true, false, false]);
 });

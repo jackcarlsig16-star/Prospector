@@ -3,12 +3,9 @@ import { SA } from '../theme';
 import { ErrorNote } from './goalsUi';
 import { memberColor } from '../../../constants/memberColors';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
-import { PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
-import { NOT_A_FIT, priorityValue } from './priorityActions';
 import { stageOptions } from './companyPanelModel';
 import { forwardStages, editControls, researchNumbers, readinessOf } from './companyPanelFacts';
 import { ORG_TYPE_ENUM, ORG_TYPE_LABELS } from '../pipelineStages';
-import { priorityColor } from '../palette';
 import { SourceForm } from './LeadSource';
 import useCompanyEdits, { nextStepWritable } from './companyEdits';
 import { IconMore } from '../../../ui/icons';
@@ -20,7 +17,7 @@ import { IconMore } from '../../../ui/icons';
 // fact: a companySteps step still open (no owner, no size) draws its fact red dashed with "unassigned" / "unknown" in
 // red and the step's "Needed before …" title. Viewers get plain facts. The ⋯ menu holds Jump to stage (confirm on the
 // way back), Source, Website (Set domain) and Copy link; their forms open under the facts.
-const FACT_CONTROL = { Owner: 'owner', Team: 'team', Priority: 'priority', Employees: 'employees', Reach: 'reach', Type: 'type', Source: 'source' };
+const FACT_CONTROL = { Owner: 'owner', Team: 'team', Employees: 'employees', Reach: 'reach', Type: 'type', Source: 'source' };
 export const editableFacts = row => {
   const c = editControls(row);
   return [...Object.keys(FACT_CONTROL).filter(l => c.includes(FACT_CONTROL[l])), ...(nextStepWritable(row) ? ['Next step'] : [])];
@@ -147,7 +144,6 @@ export default function CompanyFacts({ businessId, row, record, detail, steps, f
   const control = label => {
     if (label === 'Owner') return <Options label="Owner" value={row.owner_user_id || ''} busy={busy('owner')} onPick={async v => done(await edits.changeOwner(v))} options={[...people.map(m => ({ value: m.user_id, label: m.name, dot: colorOf(m) })), { value: '', label: 'Unassigned' }]} />;
     if (label === 'Team') return <Options label="Team" value={row.owner_team || ''} busy={busy('team')} onPick={async v => done(await edits.changeTeam(v))} options={[...OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] })), { value: '', label: 'None' }]} />;
-    if (label === 'Priority') return <Options label="Priority" value={priorityValue(row)} busy={busy('priority')} onPick={async v => done(await edits.changePriority(v))} options={[...PRIORITIES.map(p => ({ value: String(p), label: `P${p} · ${PRIORITY_WORD[p]}`, dot: priorityColor(p) })), { value: NOT_A_FIT, label: 'Not a fit' }, { value: '', label: '—' }]} />;
     if (label === 'Type') return <Options label="Type" value={record?.org_type || row.org_type || ''} busy={busy('type')} onPick={async v => done(await edits.changeType(v))} options={ORG_TYPE_ENUM.map(t => ({ value: t, label: ORG_TYPE_LABELS[t] }))} />;
     if (label === 'Employees') return <NumberForm label="Employees" fields={[['employees', 'Employees']]} record={record} found={found} busy={busy('numbers')} onSave={saveNumbers} />;
     if (label === 'Reach') return <NumberForm label="Reach" fields={[['reach_employees', 'Covers (employees)'], ['reach_clients', 'Clients']]} record={record} found={found} busy={busy('numbers')} onSave={saveNumbers} />;
@@ -174,7 +170,7 @@ export default function CompanyFacts({ businessId, row, record, detail, steps, f
           const dot = label === 'Owner' && !nd ? ownerDot : null;
           return ed ? (
             <span key={label} style={{ position: 'relative' }}>
-              <button type="button" data-fact={label} data-fact-button data-need={nd ? 'true' : undefined} aria-haspopup={['Owner', 'Team', 'Priority', 'Type'].includes(label) ? 'listbox' : 'dialog'} aria-expanded={openFact === label || (label === 'Source' && panel === 'source')} title={title} onClick={() => click(label)}
+              <button type="button" data-fact={label} data-fact-button data-need={nd ? 'true' : undefined} aria-haspopup={['Owner', 'Team', 'Type'].includes(label) ? 'listbox' : 'dialog'} aria-expanded={openFact === label || (label === 'Source' && panel === 'source')} title={title} onClick={() => click(label)}
                 className="ui-fact-btn" style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '4px 8px', margin: '0 -8px', borderRadius: 8, border: '1px solid transparent', boxSizing: 'border-box', ...(nd ? NEED : {}), ...(openFact === label ? { boxShadow: `0 0 0 1px ${SA.border}`, background: SA.surface2 } : {}) }}>
                 <FactValue label={label} value={value} muted={muted} sub={sub} editable dot={dot} need={nd} />
               </button>

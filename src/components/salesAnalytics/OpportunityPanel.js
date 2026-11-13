@@ -6,7 +6,7 @@ import OwnerPill from './OwnerPill';
 import SidePanel from './SidePanel';
 import CopyForClaude from './CopyForClaude';
 import { savePayload } from './opportunityPayload';
-import { CHANNELS, CHANNEL_LABEL, PRIORITIES, PRIORITY_WORD } from '../../constants/salesChannels';
+import { CHANNELS, CHANNEL_LABEL, PRIORITY_WORD } from '../../constants/salesChannels';
 import { priorityColor } from './palette';
 
 const TEXT_FIELDS = [
@@ -109,17 +109,14 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
             </select>
           )}
         </Field>
-        <Field label="Priority">
-          {readOnly ? text(draft.priority ? `P${draft.priority}` : '') : (
+        {draft.priority && (
+          <Field label="Priority">
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            {draft.priority && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(draft.priority) }} />}
-            <select style={fieldStyle} value={draft.priority ?? ''} onChange={e => set('priority', e.target.value)}>
-              <option value="">—</option>
-              {PRIORITIES.map(p => <option key={p} value={p}>P{p} · {PRIORITY_WORD[p]}</option>)}
-            </select>
+              <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(draft.priority) }} />
+              {text(`P${draft.priority} · ${PRIORITY_WORD[draft.priority]}`)}
             </span>
-          )}
-        </Field>
+          </Field>
+        )}
       </div>
       {draft.stage === 'lost' && (
         <Field label="Lost reason">

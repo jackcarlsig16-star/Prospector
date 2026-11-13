@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { goalsApi } from './goalsApi';
 import { updateOpportunity } from '../pipelineApi';
-import { priorityText, writePriority, undoValue } from './priorityActions';
 import { isBackward, stageLabel } from './companyPanelModel';
 import { boardStage } from '../../../constants/pipelineBoard';
 import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 
 // company-panel-v2 L5 / company-panel-v3 F - the window's edits, each saved at once with a 10 s Undo: Stage (partner
 // stages only through applyPartnerSignal with expect; a backward move asks to confirm and sends allow_backward), Owner,
-// Team, Priority, the website (Set domain) and - v3 D1 - Next step: partners write sales_goals.next_step (PATCH /land),
+// Team, the website (Set domain) and - v3 D1 - Next step: partners write sales_goals.next_step (PATCH /land),
 // employers sales_opportunities.next_action; targets have no column (read-only).
 export const nextStepWritable = row => row.type === 'partner' || row.type === 'employer';
 
@@ -56,12 +55,6 @@ export default function useCompanyEdits({ businessId, row, members, onPatch, onC
     onChanged();
     onToast({ text: `${row.name}: team ${team || 'none'}`, undo: async () => { await write(before); onChanged(); } });
   });
-  const changePriority = value => act('priority', async () => {
-    const before = undoValue(row);
-    await writePriority(businessId, row, value);
-    onChanged();
-    onToast({ text: `${row.name}: ${priorityText(value)}`, undo: async () => { await writePriority(businessId, row, before); onChanged(); } });
-  });
   // FIX headcount-auto-v1 REV2 H7: Set domain (source 'manual') - the headcount lookup needs it; empty clears it.
   const saveDomain = domain => act('domain', async () => {
     const r = await goalsApi.editCompanyFields(businessId, row.type, row.id, { domain: domain.trim() || null });
@@ -89,5 +82,5 @@ export default function useCompanyEdits({ businessId, row, members, onPatch, onC
     onChanged();
     onToast({ text: `${row.name}: next step ${value ? 'saved' : 'cleared'}`, undo: async () => { await write(before ?? null); onPatch({ next_step: before ?? null }); onChanged(); } });
   });
-  return { busy, error, setError, changeStage, changeOwner, changeTeam, changePriority, changeType, saveNumbers, saveDomain, saveNextStep };
+  return { busy, error, setError, changeStage, changeOwner, changeTeam, changeType, saveNumbers, saveDomain, saveNextStep };
 }

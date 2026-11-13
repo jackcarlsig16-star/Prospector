@@ -6,6 +6,7 @@ import { boardStage, compareBoardRows, BOARD_COLOR_IDS, SHEET_FILLS } from '../.
 import { PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
 import { STAGE_ENUM } from './pipelineStages.js';
 import { salesGate } from '../lib/requireAuth.js';
+import { starOf } from './pinState.js';
 
 test('every partner stage maps to the spec color', () => {
   const want = {
@@ -52,15 +53,15 @@ test('targets: proposed light, researching gray, accepted/rejected off the board
 
 const state = () => ({
   partners: [
-    { id: 'p1', name: 'Gallagher', pipeline_status: 'meeting_set', category: '3. Brokers', tier: '1', hot: true, owner_user_id: 'u1', owner_team: 'homelover', record_id: 'HLU-0001', next_step: 'Send deck', last_touch_at: '2026-10-10T00:00:00Z' },
-    { id: 'p2', name: 'OneDigital', pipeline_status: 'replied', category: '3. Brokers', tier: '2', hot: false, owner_user_id: null, owner_team: 'upside' },
-    { id: 'p3', name: 'Acme Partners', pipeline_status: 'live', category: '1. Current Partners (active)', tier: 'active', hot: false },
+    { id: 'p1', name: 'Gallagher', pipeline_status: 'meeting_set', category: '3. Brokers', tier: '1', pinned_until: '2099-01-01T00:00:00+00:00', owner_user_id: 'u1', owner_team: 'homelover', record_id: 'HLU-0001', next_step: 'Send deck', last_touch_at: '2026-10-10T00:00:00Z' },
+    { id: 'p2', name: 'OneDigital', pipeline_status: 'replied', category: '3. Brokers', tier: '2', owner_user_id: null, owner_team: 'upside' },
+    { id: 'p3', name: 'Acme Partners', pipeline_status: 'live', category: '1. Current Partners (active)', tier: 'active' },
   ],
   opportunities: [
-    { id: 'o1', organization: 'Solidcore', org_type: 'employer', stage: 'meeting', owner: 'Jack', owner_team: 'both', tier: '2', next_action: 'Call', next_action_date: '2026-10-20', is_top: true, apollo_account_id: 'A1' },
-    { id: 'o2', organization: 'Big Union', org_type: 'membership', stage: 'contacted', owner: 'Cyrus', owner_team: null, tier: null, is_top: false },
-    { id: 'o3', organization: 'Channel Co', org_type: 'channel_partner', stage: 'responded', is_top: false, apollo_account_id: 'A3' },
-    { id: 'o4', organization: 'Early Bird', org_type: 'employer', stage: 'meeting', tier: '2', next_action_date: '2026-10-17', is_top: false },
+    { id: 'o1', organization: 'Solidcore', org_type: 'employer', stage: 'meeting', owner: 'Jack', owner_team: 'both', tier: '2', next_action: 'Call', next_action_date: '2026-10-20', pinned_until: '2099-01-01T00:00:00+00:00', apollo_account_id: 'A1' },
+    { id: 'o2', organization: 'Big Union', org_type: 'membership', stage: 'contacted', owner: 'Cyrus', owner_team: null, tier: null },
+    { id: 'o3', organization: 'Channel Co', org_type: 'channel_partner', stage: 'responded', apollo_account_id: 'A3' },
+    { id: 'o4', organization: 'Early Bird', org_type: 'employer', stage: 'meeting', tier: '2', next_action_date: '2026-10-17' },
   ],
   targets: [
     { id: 't1', name: 'New Target', status: 'proposed', owner_team: 'upside' },
@@ -83,7 +84,7 @@ test('board rows: partners + employer/membership opportunities + open targets, s
   assert.deepEqual(g, {
     type: 'partner', id: 'p1', name: 'Gallagher', stage: 'meeting_set', stage_label: 'Meeting set', color: 'yellow',
     owner_team: 'homelover', owner: 'Jack', tier: '1', next_step: 'Send deck', next_step_due: null,
-    last_touch_at: '2026-10-10T00:00:00Z', top: true, record_id: 'HLU-0001',
+    last_touch_at: '2026-10-10T00:00:00Z', top: true, pin_expired: false, pinned_until: '2099-01-01T00:00:00+00:00', record_id: 'HLU-0001',
     channel: 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
     category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null, work: null, channels: ['all', 'partners'],
     // company-workflow-v1: the size columns + the owner person.
@@ -120,7 +121,7 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!json.includes('@'), 'no email');
   assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(json), 'no phone');
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
-  const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'priority', 'priority_set_at', 'priority_set_by',
+  const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'pin_expired', 'pinned_until', 'priority', 'priority_set_at', 'priority_set_by',
     'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work',
     'fit_level', 'fit_score', 'fit_source', 'deprioritized', 'due', 'due_date', 'first_seen', 'new_today'].sort();
   // FIX headcount-auto-v1 REV2 H7: employers and targets carry domain / domain_source for the Set domain control.
@@ -310,4 +311,11 @@ test('export sheet: visitor and signal rows never go out', async () => {
   const names = [];
   ws.eachRow((row, n) => { if (n > 1) names.push(row.getCell(2).value); });
   assert.ok(!names.includes('Acme Widgets') && !names.includes('Zeta Labs'));
+});
+
+test('the star reads the pin: a live pin is top; a pin that ran out is pin_expired, never top; no pin is neither', () => {
+  const at = Date.parse('2026-11-13T00:00:00Z');
+  assert.deepEqual(starOf({ pinned_until: '2026-12-01T00:00:00+00:00' }, at), { top: true, pin_expired: false, pinned_until: '2026-12-01T00:00:00+00:00' });
+  assert.deepEqual(starOf({ pinned_until: '2026-11-01T00:00:00+00:00', hot: true, is_top: true }, at), { top: false, pin_expired: true, pinned_until: '2026-11-01T00:00:00+00:00' });
+  assert.deepEqual(starOf({ pinned_until: null, hot: true }, at), { top: false, pin_expired: false, pinned_until: null });
 });

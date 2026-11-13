@@ -25,6 +25,10 @@ export function pinState(row, now = Date.now()) {
   return { until: row.pinned_until, at: row.pinned_at || null, by: row.pinned_by || null, reason: row.pin_reason || null, level, days_left: Math.max(0, Math.ceil((ms(row.pinned_until) - now) / DAY)), held: level > 1 };
 }
 
+// What a row's star reads. top = a live pin (filled); pin_expired = a pin that ran out and was never unpinned
+// (hollow, with Renew); pinned_until rides along as the writer's expect.
+export const starOf = (row, now = Date.now()) => ({ top: isPinned(row, now), pin_expired: !!row?.pinned_until && !isPinned(row, now), pinned_until: row?.pinned_until || null });
+
 // What the score's clamp reads (intentScore's override: { priority, not_a_fit, set_at }; it expires set_at + days).
 // A dated priority with no pin at all still clamps as before (partner forms can still set one).
 export function pinOverride(row, now = Date.now(), days = PIN_DAYS) {

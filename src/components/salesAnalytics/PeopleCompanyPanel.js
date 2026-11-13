@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { goalsApi } from './goals/goalsApi';
 import CompanyPanel from './goals/CompanyPanel';
+import { toggleStar } from './goals/pinStar';
 import { companyRowFor } from './peopleModel';
 
 // sales-ia-v2 P5 - "Open company" from a People row: the P4 company panel on
@@ -28,9 +29,8 @@ export default function PeopleCompanyPanel({ businessId, person, canEdit, member
   const reload = useCallback(() => load().then(setRows).catch(e => onToast({ text: e.message })), [load, onToast]);
   if (!row) return null;
   const star = async () => {
-    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
-    await goalsApi.pinCompany(businessId, row.type, row.id, { action: row.top ? 'unpin' : 'pin' });
-    setRows(rs => rs.map(x => (x.id === row.id ? { ...x, top: !row.top } : x)));
+    const patch = await toggleStar(businessId, row);
+    setRows(rs => rs.map(x => (x.id === row.id ? { ...x, ...patch } : x)));
   };
   return (
     <CompanyPanel businessId={businessId} row={row} canEdit={canEdit} members={members} meId={meId}

@@ -15,8 +15,8 @@ import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle
 // signals-v1 Stage 5 (D12) - the daily visitor report from Prospector's own
 // pulls (last 7 LA days), "Export for Brad" (.xlsx, P1-P3, Upside first) and
 // the skip list. sales-ia-v2: opened from Pipeline > Companies > Website
-// visitors; a visitor's priority (and Not a fit) is the Priority dropdown on
-// that table, so this report has no row buttons. Members and Viewers both
+// visitors; a visitor's priority is read-only on that table (Deprioritize is in
+// the company window), so this report has no row buttons. Members and Viewers both
 // read and export; only Members edit the skip list.
 // Company data only - no emails, phones or people's names reach this view.
 const PRIORITY_COLOR = PRIORITY_COLORS; // FIX priority-colors-v1: the same four hues as every other priority display

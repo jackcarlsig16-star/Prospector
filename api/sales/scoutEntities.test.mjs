@@ -173,7 +173,7 @@ test('A2: the 12 phrasings route as the spec says (the first three -> people_vis
     'hot targets Brad referred', 'what do my notes say about Hilton', 'show me my open tasks', 'who is warm at Cloudflare', 'whos replied', 'anyone from Hilton on the site',
   ].map(route), ['people_visiting', 'people_visiting', 'people_visiting', 'visitors', 'visitors', 'people', 'ranked', 'brief+notes', 'todos', 'brief+people', 'people', 'brief']); // scout-v3 D1: "who is warm" asks for people
   assert.ok(salesIntents.every(i => typeof i.example === 'string' && i.example.length > 5));
-  assert.deepEqual(salesIntents.filter(i => i.suggest).map(i => i.example), ['who visited yesterday', 'hottest people on the site this week', 'notes about Hilton']);
+  assert.deepEqual(salesIntents.filter(i => i.suggest).map(i => i.example), ['my top targets', 'who visited yesterday', 'hottest people on the site this week', 'notes about Hilton']);
   const person = (key, name, co, heat, heat_band, extra = {}) => ({ key, name, title: 'VP', company: co ? { name: co, stage: 'contacted' } : null, source: 'Apollo sequence', emails: { sent: 1, opened: 1, clicked: 0, replied: 0 }, heat, heat_band, last_email: null, visits: null, identified_at: null, buyer: false, ...extra });
   const rows = [
     person('prospect:a', 'Ann Hot', 'Cloudflare', 46, 'hot', { visits: { visits_7d: 1, last_visit: '2026-11-07', seen_to: '2026-11-08' } }),

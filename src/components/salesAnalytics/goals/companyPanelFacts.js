@@ -129,16 +129,16 @@ export function readinessOf(steps) {
 // to stage (confirm) is the only way back.
 export const forwardStages = row => stageOptions(row).filter(s => s.dir === 'now' || s.dir === 'forward');
 
-// L5 per the matrix, company-window-v4 F1: partner / employer owner · team · priority · source · employees (a reach
+// L5 per the matrix, company-window-v4 F1: partner / employer owner · team · source · employees (a reach
 // partner: reach too) · type (an employer's org type - the only writable type; a target's kind and a partner's category
-// have no PATCH); target owner · team · source · employees; visitor Priority only; Apollo-only nothing. 'stage' stays
+// have no PATCH); target owner · team · source · employees; visitor and Apollo-only nothing. Priority is read-only
+// everywhere (the pin is the control). 'stage' stays
 // for the ⋯ › Jump to stage menu.
 export function editControls(row) {
   // FIX headcount-auto-v1 REV2 H7: employers / targets get "Website" (Set domain) - a partner's domains live in Partner domains.
-  if (row.type === 'partner') return ['stage', 'owner', 'team', 'priority', 'source', 'employees', ...(showsReach(row, row) ? ['reach'] : [])];
-  if (row.type === 'employer') return ['stage', 'owner', 'team', 'priority', 'source', 'domain', 'employees', 'type'];
+  if (row.type === 'partner') return ['stage', 'owner', 'team', 'source', 'employees', ...(showsReach(row, row) ? ['reach'] : [])];
+  if (row.type === 'employer') return ['stage', 'owner', 'team', 'source', 'domain', 'employees', 'type'];
   if (row.type === 'target') return ['stage', 'owner', 'team', 'source', 'domain', 'employees'];
-  if (row.type === 'visitor') return ['priority'];
   return [];
 }
 

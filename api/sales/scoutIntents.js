@@ -102,7 +102,7 @@ const topItem = x => ({
 });
 
 export const salesIntents = [
-  { id: 'top_targets', example: "Cyrus's top 5 targets", title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
+  { id: 'top_targets', example: 'my top targets', suggest: true, title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
     async run(sb, { businessId, auth, ask, now }) {
       const q = String(ask.q || '').toLowerCase();
       const members = await sb.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(r => r.data || []);

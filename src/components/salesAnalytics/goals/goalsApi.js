@@ -138,8 +138,6 @@ export const goalsApi = {
   visitSkip: id => call(id, '/visits/skip'),
   addVisitSkip: (id, body) => call(id, '/visits/skip', { method: 'POST', body }),
   removeVisitSkip: (id, skipId) => call(id, `/visits/skip/${skipId}`, { method: 'DELETE' }),
-  // sales-ia-v2 P3 - a visitor's P1-P4 / Not a fit; { priority: null } = back to the pull's own score.
-  setVisitPriority: (id, body) => call(id, '/visits/priority', { method: 'POST', body }),
   // visitor-to-record-v1 - auto-create a company from a website-visit signal, Apollo's Visited People export (CSV text), the People search.
   autoCreateSignal: (id, sid) => call(id, `/signals/${sid}/auto-create`, { method: 'POST', body: {} }),
   uploadVisitedPeople: (id, text, { preview = false } = {}) => call(id, '/visits/people-csv', { method: 'POST', body: { text, ...(preview ? { preview: true } : {}) } }),

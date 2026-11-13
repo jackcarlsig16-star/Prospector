@@ -23,6 +23,7 @@ import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } f
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 import { rematchVisits } from './visitMatch.js';
 import { splitSnoozed } from './snoozed.js';
+import { starOf } from './pinState.js';
 import { isSnoozed as todoSnoozed } from '../../src/constants/todoSnooze.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
@@ -74,14 +75,14 @@ const pick = (row, cols) => Object.fromEntries(cols.split(', ').map(c => [c, row
 // The record behind a row, as the panel header reads it. null = gone.
 async function loadRecord(supabase, businessId, type, id) {
   if (type === 'partner') {
-    const g = must(await supabase.from('sales_goals').select(`id, name, pipeline_status, category, tier, hot, owner_user_id, owner_team, co_owner_name, no_double_touch, next_step, next_meeting_at, last_touch_at, channel, priority, priority_set_by, priority_set_at, notes, record_id, ${SIZE_COLS}, ${REACH_COLS}`)
+    const g = must(await supabase.from('sales_goals').select(`id, name, pipeline_status, category, tier, pinned_until, owner_user_id, owner_team, co_owner_name, no_double_touch, next_step, next_meeting_at, last_touch_at, channel, priority, priority_set_by, priority_set_at, notes, record_id, ${SIZE_COLS}, ${REACH_COLS}`)
       .eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
-    return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, top: !!g.hot, owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes, ...pick(g, SIZE_COLS), ...pick(g, REACH_COLS) };
+    return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, ...starOf(g), owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes, ...pick(g, SIZE_COLS), ...pick(g, REACH_COLS) };
   }
   if (type === 'employer') {
-    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, is_top, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, expected_close, expected_launch, ${CLIENT_COLS.join(', ')}, ${SIZE_COLS}`)
+    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, pinned_until, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, expected_close, expected_launch, ${CLIENT_COLS.join(', ')}, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).is('archived_at', null).maybeSingle());
-    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, top: !!o.is_top, next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS),
+    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, ...starOf(o), next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS),
       // homelover-clients-v1: the client card + Make client sheet read these.
       client: { ...pick(o, CLIENT_COLS.join(', ')), expected_close: o.expected_close, launch_date: o.expected_launch, apollo_account_id: o.apollo_account_id } };
   }

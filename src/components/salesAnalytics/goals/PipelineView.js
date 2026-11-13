@@ -28,8 +28,9 @@ import { FRAME_TOOLS_ID } from '../salesFrame';
 import { numStyle, ErrorNote } from './goalsUi';
 import { ownerChip } from './flowModel';
 import { TEAM_LABEL } from '../../../constants/ownership';
-import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
-import { NOT_A_FIT, priorityValue, priorityText, writePriority, undoValue } from './priorityActions';
+import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITY_WORD } from '../../../constants/salesChannels';
+import { NOT_A_FIT, priorityValue } from './priorityActions';
+import { toggleStar, starLabel, EXPIRED_TITLE, RENEW_TITLE } from './pinStar';
 import { PRIORITY_TYPES } from './companyPanelModel';
 import {
   EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf, readWindowParam, windowParam,
@@ -48,8 +49,8 @@ import {
 // Any row but a Scout signal opens CompanyPanel (P4: the same
 // side panel + action bar for partner / employer / target / Apollo-only /
 // visitor); "Open full card" from there goes to the record's own screen.
-// Priority is a dropdown with "Not a fit" and a 10 s Undo (every priority
-// and stage change, hide and remove gets one).
+// Priority is read-only (the star is the pin, the one hand-set lift); every
+// stage change, hide and remove gets a 10 s Undo.
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
 const TIER_RANK = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
 const UNDO_MS = 10000; // REVISABLE (spec)
@@ -173,25 +174,12 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const patchRow = (r, patch) => setRows(rs => rs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
   const starRow = async r => {
-    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
-    await goalsApi.pinCompany(businessId, r.type, r.id, { action: r.top ? 'unpin' : 'pin' });
-    setRows(rs => rs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
+    const patch = await toggleStar(businessId, r);
+    setRows(rs => rs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
   };
   const star = async r => {
     setBusyId(r.id);
     try { await starRow(r); } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
-  };
-
-  // P3: one dropdown for every type that has a priority (priorityActions.js
-  // does the write; the panel's dropdown shares it).
-  const changePriority = async (r, value) => {
-    const before = undoValue(r);
-    setBusyId(rowKey(r));
-    try {
-      await writePriority(businessId, r, value);
-      await load();
-      setToast({ text: `${r.name}: ${priorityText(value)}`, undo: async () => { await writePriority(businessId, r, before); await load(); } });
-    } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
   };
 
   const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
@@ -287,29 +275,15 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const starCell = r => {
     if (r.type !== 'partner' && r.type !== 'employer') return null;
     return canEdit
-      ? <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" disabled={busyId === r.id} aria-pressed={r.top} aria-label={`${r.top ? 'Unstar' : 'Star'} ${r.name}`} onClick={() => star(r)}
-        style={{ color: r.top ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</button>
-      : <span aria-label={r.top ? 'Top' : undefined} style={{ fontSize: 15, color: r.top ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</span>;
+      ? <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" disabled={busyId === r.id} aria-pressed={r.top} aria-label={starLabel(r)} data-pin-expired={r.pin_expired || undefined} title={r.pin_expired ? RENEW_TITLE : undefined} onClick={() => star(r)}
+        style={{ color: r.top || r.pin_expired ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</button>
+      : <span aria-label={r.top ? 'Top' : r.pin_expired ? EXPIRED_TITLE : undefined} data-pin-expired={r.pin_expired || undefined} title={r.pin_expired ? EXPIRED_TITLE : undefined} style={{ fontSize: 15, color: r.top || r.pin_expired ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</span>;
   };
   const priorityCell = r => {
     if (!PRIORITY_TYPES.includes(r.type)) return <Dim />;
     const label = prioritySetLabel(r);
     const value = priorityValue(r);
-    // FIX priority-colors-v1: the level's hue on the chip (Viewers); companies-v2 C4: Members get the same select drawn as
-    // an outline pill in that hue, with a caret.
-    if (!canEdit) return value ? <Tag color={value === NOT_A_FIT ? SA.borderStrong : priorityColor(value)} title={label}><span style={numStyle}>{value === NOT_A_FIT ? 'Not a fit' : `P${value}`}</span></Tag> : <Dim />;
-    return (
-      <span className="ui-pill-field" title={label || undefined}>
-        <select className="ui-pill-select" aria-label={`Priority for ${r.name}`} data-priority={r.type} data-priority-level={value && value !== NOT_A_FIT ? `P${value}` : undefined} value={value} disabled={busyId === rowKey(r)}
-          onChange={e => changePriority(r, e.target.value)} style={value && value !== NOT_A_FIT ? { '--pill-color': priorityColor(value) } : undefined}>
-          <option value="">—</option>
-          {PRIORITIES.map(p => <option key={p} value={String(p)}>P{p} · {PRIORITY_WORD[p]}</option>)}
-          <option value={NOT_A_FIT}>Not a fit</option>
-        </select>
-        <Icons.IconCaret size={10} className="ui-pill-select__caret" />
-        {label.includes(' · set by ') && <span style={{ fontSize: 11, color: SA.muted, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label.split(' · set by ')[1]}</span>}
-      </span>
-    );
+    return value ? <Tag color={value === NOT_A_FIT ? SA.borderStrong : priorityColor(value)} title={label}><span style={numStyle}>{value === NOT_A_FIT ? 'Not a fit' : `P${value}`}</span></Tag> : <Dim />;
   };
   // homelover-flow-v1 F11: NEW (first seen on the site today) beside the name; F4: a deprioritized row says why; Tidy's "No date set" rides as a row hint.
   const nameCell = r => (

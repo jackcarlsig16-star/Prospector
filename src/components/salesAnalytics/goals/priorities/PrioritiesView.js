@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SA } from '../../theme';
 import { goalsApi } from '../goalsApi';
+import { toggleStar } from '../pinStar';
 import { SOURCE_THEME_CSS } from '../../palette';
 import useMediaQuery from '../../../../utils/useMediaQuery';
 import { FRAME_TOOLS_ID } from '../../salesFrame';
@@ -213,9 +214,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     finally { setSharing(false); }
   };
   const starRow = async r => {
-    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
-    await goalsApi.pinCompany(businessId, r.type, r.id, { action: r.top ? 'unpin' : 'pin' });
-    setBoard(bs => bs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
+    const patch = await toggleStar(businessId, r);
+    setBoard(bs => bs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
   };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 

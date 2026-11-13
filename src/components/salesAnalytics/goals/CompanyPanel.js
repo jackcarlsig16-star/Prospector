@@ -9,6 +9,7 @@ import CompanyActions from './CompanyActions';
 import CompanyFacts, { MoreMenu } from './CompanyFacts';
 import { companyWindowUrl } from '../salesNav';
 import { IconStar, IconExternal, IconClose } from '../../../ui/icons';
+import { EXPIRED_TITLE, RENEW_TITLE } from './pinStar';
 import InterestBand from './InterestBand';
 import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
 import CompanyDrawers from './CompanyDrawers';
@@ -163,9 +164,10 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       {live ? <KindStageChip row={row} /> : <TypeChip row={row} style={{ height: 24 }} />}
       {live && <LiveChip since={liveSince(detail?.stage_history)} />}
       {canEdit && (row.type === 'partner' || row.type === 'employer') && (
-        <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />Top</button>
+        <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} data-pin-expired={row.pin_expired || undefined} title={row.pin_expired ? RENEW_TITLE : undefined} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top || row.pin_expired ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />{row.pin_expired ? 'Renew' : 'Top'}</button>
       )}
       {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
+      {!canEdit && row.pin_expired && <span data-pin-expired title={EXPIRED_TITLE} style={{ color: SA.warn, fontSize: 13 }}>☆ {EXPIRED_TITLE}</span>}
       {ownerChip}
       {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} compact score={score} onRecomputed={changed} />}
       {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}

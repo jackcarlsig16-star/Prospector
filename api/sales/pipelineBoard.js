@@ -10,6 +10,7 @@ import { normName } from './intakeMatch.js';
 import { openFlagRows } from './huddleFlags.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { dueFor } from './fitLevel.js';
+import { starOf } from './pinState.js';
 import { BOARD_COLORS, BOARD_COLOR_IDS, BOARD_TYPES, SHEET_FILLS, boardStage, compareBoardRows, matchesBoardFilters } from '../../src/constants/pipelineBoard.js';
 
 // pipeline-board-v1 - GET goals/pipeline-board: one row per company across
@@ -110,7 +111,7 @@ export function buildBoard({
       type: 'partner', id: g.id, name: g.name, ...boardStage('partner', g),
       owner_team: g.owner_team || null, owner: memberNames.get(g.owner_user_id) || null, tier: g.tier || null,
       next_step: g.next_step || null, next_step_due: g.next_meeting_at || null, last_touch_at: g.last_touch_at || null,
-      top: !!g.hot, record_id: g.record_id || null, channel: g.channel || 'unknown', priority: g.priority ?? null, ...setBy(g.priority_set_by, g.priority_set_at),
+      ...starOf(g, now), record_id: g.record_id || null, channel: g.channel || 'unknown', priority: g.priority ?? null, ...setBy(g.priority_set_by, g.priority_set_at),
       covered_lives: null, ...size(g), reach_employees: g.reach_employees ?? null, reach_clients: g.reach_clients ?? null, owner_user_id: g.owner_user_id || null,
       // pipeline-quick-panel-v1: the quick panel's header; not sheet columns.
       category: g.category || null, co_owner_name: g.co_owner_name || null, no_double_touch: !!g.no_double_touch,
@@ -123,7 +124,7 @@ export function buildBoard({
       type: 'employer', id: o.id, name: o.organization, ...boardStage('employer', o),
       owner_team: o.owner_team || null, owner: o.owner || null, tier: o.tier || null,
       next_step: o.next_action || null, next_step_due: o.next_action_date || null, last_touch_at: touches.get(o.id) || null,
-      top: !!o.is_top, record_id: o.record_id || null, channel: o.channel || 'unknown', priority: o.priority ?? null, ...setBy(o.priority_set_by, o.priority_set_at),
+      ...starOf(o, now), record_id: o.record_id || null, channel: o.channel || 'unknown', priority: o.priority ?? null, ...setBy(o.priority_set_by, o.priority_set_at),
       covered_lives: o.covered_lives ?? null, ...size(o), domain: o.domain ?? null, domain_source: o.domain_source ?? null, reach_employees: null, reach_clients: null, owner_user_id: o.owner_user_id || null,
     });
     extra.set(`employer:${o.id}`, { created_at: o.created_at, apollo: !!o.apollo_account_id });
@@ -133,7 +134,7 @@ export function buildBoard({
     if (!stage) continue;
     rows.push({
       type: 'target', id: t.id, name: t.name, ...stage, owner_team: t.owner_team || null, owner: memberNames.get(t.owner_user_id) || null, tier: null,
-      next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: t.record_id || null,
+      next_step: null, next_step_due: null, last_touch_at: null, ...starOf(null), record_id: t.record_id || null,
       channel: t.channel || 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
       ...size(t), domain: t.domain ?? null, domain_source: t.domain_source ?? null, reach_employees: null, reach_clients: null, owner_user_id: t.owner_user_id || null,
     });
@@ -150,7 +151,7 @@ export function buildBoard({
       rows.push({
         type: 'apollo', id: s.account_id, name: s.name || 'Unnamed company', ...boardStage('apollo', s),
         owner_team: null, owner: null, tier: null, next_step: null, next_step_due: null,
-        last_touch_at: s.first_sequenced_at || null, top: false, record_id: null,
+        last_touch_at: s.first_sequenced_at || null, ...starOf(null), record_id: null,
         channel: 'apollo_outbound', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
         employees: s.employees ?? null, employees_source: s.employees != null ? 'manual' : null, reach_employees: null, reach_clients: null, owner_user_id: null,
       });
@@ -186,7 +187,7 @@ export function buildBoard({
     const v = effectiveVisit(raw, o);
     rows.push({
       type: 'visitor', id: v.company_key, name: v.company_name || v.company_key, stage: 'visited', stage_label: 'Website visit', color: 'light',
-      owner_team: null, owner: null, tier: null, next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: null,
+      owner_team: null, owner: null, tier: null, next_step: null, next_step_due: null, last_touch_at: null, ...starOf(null), record_id: null,
       channel: 'website_visit', priority: pInt(v.priority), priority_set_by: o ? memberNames.get(o.set_by) || null : null, priority_set_at: o?.set_at || null,
       not_a_fit: !!o?.not_a_fit, priority_rule: v.priority_rule || null, covered_lives: null, ...NO_SIZE,
       visited: { last_visit: v.last_visit || v.pulled_on, visits_7d: v.visits_7d ?? null, pulled_on: v.pulled_on, priority: pInt(v.priority) },
@@ -202,7 +203,7 @@ export function buildBoard({
     if (names.has(s.company_key)) continue;
     rows.push({
       type: 'signal', id: s.id, name: s.company_name, stage: s.status, stage_label: s.status === 'new' ? 'New signal' : s.status === 'dismissed' ? 'Signal dismissed' : 'Signal accepted', color: 'light',
-      owner_team: s.upside_joint ? 'both' : null, owner: null, tier: null, next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: null,
+      owner_team: s.upside_joint ? 'both' : null, owner: null, tier: null, next_step: null, next_step_due: null, last_touch_at: null, ...starOf(null), record_id: null,
       channel: 'scout', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null, visited: null, ...NO_SIZE,
     });
   }
@@ -233,9 +234,9 @@ async function loadBoard(businessId, filters) {
   const weekAgo = addDays(laDateString(new Date(now)), -7);
   const all = (table, cols, narrow = x => x) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)));
   const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout, scoreRows] = await Promise.all([
-    all('sales_goals', 'id, name, category, tier, pipeline_status, hot, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
+    all('sales_goals', 'id, name, category, tier, pipeline_status, pinned_until, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
       x => x.eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
+    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, pinned_until, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
       x => x.is('archived_at', null).order('id')),
     all('sales_targets', 'id, name, status, owner_team, owner_user_id, record_id, channel, created_at, employees, employees_source, domain, domain_source', x => x.in('status', ['proposed', 'researching']).order('id')),
     filters.includeApollo ? all('sales_sequenced_accounts', 'account_id, name, first_sequenced_at, employees', x => x.order('account_id')) : [],

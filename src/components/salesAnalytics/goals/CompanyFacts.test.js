@@ -27,13 +27,14 @@ afterEach(() => jest.clearAllMocks());
 
 test('editable facts follow editControls (+ Next step on partners / employers); Stage is no fact; Last touch never edits; a Viewer gets plain facts', () => {
   expect(factsFor(PARTNER, {}, undefined).map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Reach', 'Type', 'Source', 'Last touch', 'Next step']);
-  expect(editableFacts(PARTNER)).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Reach', 'Source', 'Next step']);
-  expect(editableFacts(EMPLOYER)).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Type', 'Source', 'Next step']);
+  expect(editableFacts(PARTNER)).toEqual(['Owner', 'Team', 'Employees', 'Reach', 'Source', 'Next step']);
+  expect(editableFacts(EMPLOYER)).toEqual(['Owner', 'Team', 'Employees', 'Type', 'Source', 'Next step']);
   expect(editableFacts(TARGET)).toEqual(['Owner', 'Team', 'Employees', 'Source']);
-  expect(editableFacts(VISITOR)).toEqual(['Priority']);
+  expect(editableFacts(VISITOR)).toEqual([]);
   expect(editableFacts({ type: 'apollo' })).toEqual([]);
   setup(PARTNER);
-  for (const l of ['Owner', 'Team', 'Priority', 'Employees', 'Reach', 'Source', 'Next step']) expect(fact(l).tagName).toBe('BUTTON');
+  for (const l of ['Owner', 'Team', 'Employees', 'Reach', 'Source', 'Next step']) expect(fact(l).tagName).toBe('BUTTON');
+  expect(fact('Priority').tagName).not.toBe('BUTTON');
   expect(fact('Stage')).toBeNull();
   expect(fact('Last touch').tagName).toBe('DIV');
   expect(fact('Type').tagName).toBe('DIV'); // a partner's category has no PATCH
@@ -64,7 +65,7 @@ test('F1 Owner: one click = the listbox (members with color dots + Unassigned, t
   expect(goalsApi.editCompanyFields).toHaveBeenLastCalledWith('b1', 'employer', 'e1', { owner_user_id: null });
 });
 
-test('F1 Team · Priority · Type: listboxes with the same writes and Undo (team through updateOpportunity, priority with its dot, type = org_type)', async () => {
+test('F1 Team · Type: listboxes (Priority is a plain fact) with the same writes and Undo (team through updateOpportunity, priority with its dot, type = org_type)', async () => {
   updateOpportunity.mockResolvedValue({});
   const { onToast, onPatch } = setup(EMPLOYER);
   fireEvent.click(fact('Team'));
@@ -73,11 +74,7 @@ test('F1 Team · Priority · Type: listboxes with the same writes and Undo (team
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'e1', { owner_team: 'upside' }));
   await onToast.mock.calls[0][0].undo();
   expect(updateOpportunity).toHaveBeenLastCalledWith('b1', 'e1', { owner_team: null });
-  fireEvent.click(fact('Priority'));
-  const pri = screen.getByRole('listbox', { name: 'Priority' });
-  expect(within(pri).getAllByRole('option').map(o => o.textContent)).toEqual(['P1 · Strong', 'P2 · Good', 'P3 · Low', 'P4 · Low', 'Not a fit', '—']);
-  expect(within(pri).getByRole('option', { name: 'P2 · Good' })).toHaveAttribute('aria-selected', 'true');
-  expect(within(pri).getByRole('option', { name: 'P1 · Strong' }).querySelector('i')).toBeTruthy();
+  expect(fact('Priority').tagName).not.toBe('BUTTON');
   fireEvent.click(fact('Type'));
   const type = screen.getByRole('listbox', { name: 'Type' });
   expect(within(type).getAllByRole('option').map(o => o.textContent)).toEqual(['Employer', 'Membership org', 'Channel partner']);

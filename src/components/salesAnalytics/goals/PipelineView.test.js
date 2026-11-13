@@ -8,7 +8,7 @@ import { OPEN_TASKS } from './goalsApi';
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), pinCompany: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), pinCompany: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(),
   members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), undoTodoEvent: jest.fn(() => Promise.resolve({})), todoEvents: jest.fn(() => Promise.resolve([])), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
   addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
@@ -239,7 +239,7 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   const beta = screen.getByText('Beta Co').closest('tr');
   expect(cells(beta).length).toBe(20); // company-workflow-v1: + Employees, Reach, Clients; homelover-flow-v1: + Reached
   expect([0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(i => cells(beta)[i])).toEqual(['☆', 'Beta Co', 'Employer', '—', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—', '—', '—', '—', '—']);
-  expect(within(beta).getByLabelText('Priority for Beta Co').value).toBe('');
+  expect(within(beta).queryByLabelText('Priority for Beta Co')).toBeNull();
   expect(beta.querySelector('td.ui-table__sticky').title).toBe('Beta Co · R-2');
   expect(screen.getByRole('columnheader', { name: /^Company/ })).toHaveAttribute('aria-sort', 'none');
   const order = () => [...document.querySelectorAll('tr[data-row] td.ui-table__sticky')].map(td => td.textContent);
@@ -354,15 +354,30 @@ test('page actions: TABLE (Columns) · SHEET (Export · Update, full old text as
   expect(screen.queryByLabelText('Priority for Solidcore')).toBeNull();
 });
 
-test('priority cell: the same select drawn as an outline pill in the level\'s hue, with a caret', async () => {
+test('priority cell: read-only for Members too - the level\'s tag, no select', async () => {
   goalsApi.pipelineBoard.mockResolvedValue([row('Hot Co', 'employer', 'green', { priority: 1 }), row('Blank Co', 'employer', 'light')]);
   setup();
-  const hot = await screen.findByLabelText('Priority for Hot Co');
-  expect(hot).toHaveClass('ui-pill-select');
-  expect(hot.style.getPropertyValue('--pill-color')).toBe('var(--sa-prio-p1)');
-  expect(hot.nextElementSibling).toHaveClass('ui-pill-select__caret');
-  expect(hot.selectedOptions[0].textContent).toBe('P1 · Strong');
-  expect(screen.getByLabelText('Priority for Blank Co').style.getPropertyValue('--pill-color')).toBe('');
+  const hot = (await screen.findByText('Hot Co')).closest('tr');
+  expect(within(hot).getByText('P1')).toBeTruthy();
+  expect(screen.queryByLabelText(/^Priority for /)).toBeNull();
+  expect(document.querySelector('select[data-priority]')).toBeNull();
+});
+
+test('expired pin: a hollow star that renews, never filled', async () => {
+  const OLD = row('Old Pin', 'employer', 'yellow', { top: false, pin_expired: true, pinned_until: '2026-10-01T00:00:00+00:00' });
+  goalsApi.pipelineBoard.mockResolvedValue([OLD]);
+  goalsApi.pinCompany.mockResolvedValue({ pin: { until: '2026-12-13T00:00:00+00:00' }, event: { id: 'ev1' }, undo: { kind: 'flow', id: 'ev1' } });
+  setup();
+  const renew = await screen.findByRole('button', { name: 'Renew pin for Old Pin' });
+  expect([renew.textContent, renew.getAttribute('aria-pressed'), renew.title, renew.hasAttribute('data-pin-expired')]).toEqual(['☆', 'false', 'Pin ran out - renew for 30 days', true]);
+  fireEvent.click(screen.getByRole('button', { name: 'Old Pin' }));
+  const inPanel = within(screen.getByRole('dialog', { name: 'Old Pin' })).getByRole('button', { name: 'Renew' });
+  expect([inPanel.getAttribute('aria-pressed'), inPanel.title]).toEqual(['false', 'Pin ran out - renew for 30 days']);
+  fireEvent.click(inPanel);
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'employer', 'Old Pin', { action: 'renew' }));
+  expect(await within(screen.getByRole('dialog', { name: 'Old Pin' })).findByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
+  const filled = await screen.findByRole('button', { name: 'Unstar Old Pin' });
+  expect([filled.textContent, filled.hasAttribute('data-pin-expired')]).toEqual(['★', false]);
 });
 
 test('Viewer: stars are read-only; employer and partner open the read-only panel (no action bar, no ★ / note / Next)', async () => {
@@ -670,45 +685,29 @@ test('Type column: pills with the partner type; sorting Type groups partners by 
   expect(screen.getByRole('columnheader', { name: /^Type/ })).toHaveAttribute('aria-sort', 'ascending');
 });
 
-// sales-ia-v2 P3 - one Priority dropdown (P1-P4 + Not a fit) with a 10 s Undo.
-test('priority: partner and employer write their record; who set it shows; Undo puts the old value back', async () => {
+test('priority is read-only on a partner and an employer: who set it stays on the tag; nothing writes', async () => {
   goalsApi.pipelineBoard.mockResolvedValue([
     row('Gallagher', 'partner', 'yellow', { priority: 2, priority_set_by: 'Jack Carlson', priority_set_at: '2026-10-20T17:00:00Z' }),
     row('Solidcore', 'employer', 'yellow'),
   ]);
   setup();
-  const g = await screen.findByLabelText('Priority for Gallagher');
-  expect(g.value).toBe('2');
-  expect(g.closest('span').title).toBe('P2 · set by Jack Oct 20');
-  expect(g.closest('span').textContent).toContain('Jack Oct 20');
-  fireEvent.change(screen.getByLabelText('Priority for Solidcore'), { target: { value: '1' } });
-  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { priority: 1 }));
-  expect((await screen.findByRole('status')).textContent).toContain('Solidcore: P1');
-  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(updateOpportunity).toHaveBeenLastCalledWith('b1', 'Solidcore', { priority: null }));
-  fireEvent.change(g, { target: { value: 'not_a_fit' } });
-  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenCalledWith('b1', 'Gallagher', { priority: 4 }));
-  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'note', note: 'Not a fit (set to P4 from Pipeline)' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenLastCalledWith('b1', 'Gallagher', { priority: 2 }));
+  const g = (await screen.findByText('Gallagher')).closest('tr');
+  expect(within(g).getByTitle('P2 · set by Jack Oct 20').textContent).toBe('P2');
+  expect(screen.queryByLabelText(/^Priority for /)).toBeNull();
+  expect(updateOpportunity).not.toHaveBeenCalled();
+  expect(goalsApi.updatePartner).not.toHaveBeenCalled();
 });
 
-test('priority on a visitor: P2 overrides the pull; Undo goes back to the pull score; Not a fit; targets have none', async () => {
-  goalsApi.setVisitPriority.mockResolvedValue({});
+test('priority on a visitor: the pull\'s score as a read-only tag; targets have none', async () => {
   goalsApi.pipelineBoard.mockResolvedValue([row('Acme Widgets', 'visitor', 'light', { id: 'acme widgets', priority: 1, priority_rule: 'US 500+' }), row('New Target', 'target', 'light')]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: /^Website visitors/ }));
-  const sel = await screen.findByLabelText('Priority for Acme Widgets');
-  expect(sel.closest('span').title).toBe('P1 · scored by the visitor pull');
-  fireEvent.change(sel, { target: { value: '2' } });
-  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenCalledWith('b1', { company_key: 'acme widgets', priority: 2 }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenLastCalledWith('b1', { company_key: 'acme widgets', priority: null }));
-  fireEvent.change(screen.getByLabelText('Priority for Acme Widgets'), { target: { value: 'not_a_fit' } });
-  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenLastCalledWith('b1', { company_key: 'acme widgets', not_a_fit: true }));
+  const v = (await screen.findByText('Acme Widgets')).closest('tr');
+  expect(within(v).getByTitle('P1 · scored by the visitor pull').textContent).toBe('P1');
+  expect(screen.queryByLabelText(/^Priority for /)).toBeNull();
   fireEvent.click(channelBtn('Targets'));
-  expect(await screen.findByText('New Target')).toBeTruthy();
-  expect(screen.queryByLabelText('Priority for New Target')).toBeNull();
+  const t = (await screen.findByText('New Target')).closest('tr');
+  expect(within(t).queryByText(/^P[1-4]$/)).toBeNull();
 });
 
 test('Viewer: priority is text, no dropdown', async () => {
@@ -799,7 +798,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
 });
 
-test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; the band shows the signal only - the one Add to pipeline is the Actions row\'s (company-workflow-v1 W2)', async () => {
+test('visitor: facts are Priority · Source · Last visit; no editable fact; the band shows the signal only - the one Add to pipeline is the Actions row\'s (company-workflow-v1 W2)', async () => {
   goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO, VISITOR]));
   const VISIT = { id: 'v1', kind: 'visit', count: 6, step: null, at: '2026-10-20', person: null, text: '6 site visits this week · /pricing' };
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, interest: { items: [VISIT], strongest: VISIT, newest_id: 'v1', dismissed: false, show: true }, record: { type, id, name: id, stage: 'visited', channel: 'website_visit' } }));
@@ -815,8 +814,8 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   expect(factText('Acme Visit', 'Source')).toBe('Website');
   expect(factText('Acme Visit', 'Last visit')).toBe('Oct 20');
   expect(factText('Acme Visit', 'Owner')).toBeNull();
-  fireEvent.click(panel.getByRole('button', { name: /^Priority/ })); // company-panel-v3: the one editable fact on a visitor
-  expect(panel.getByRole('listbox', { name: 'Priority' })).toBeTruthy(); // company-window-v4 F1: the popover is the list, no select
+  expect(factText('Acme Visit', 'Priority')).toBeTruthy();
+  expect(panel.queryByRole('button', { name: /^Priority/ })).toBeNull();
   expect(panel.queryByRole('button', { name: /^Stage/ })).toBeNull();
 });
 
