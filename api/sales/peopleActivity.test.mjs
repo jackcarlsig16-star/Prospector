@@ -74,7 +74,7 @@ test('buildPeopleTable: counts from the summary (by key, or by Apollo id for a m
   assert.deepEqual([dee.emails.sent, dee.heat, dee.heat_band, dee.last_email.what, dee.last_touch_at, dee.has_email], [2, null, null, 'opened', '2026-11-04T10:00:00Z', true], 'heat pending reads null; the partner touch is the last touch');
   const eve = t.rows.find(r => r.name === 'Eve Hand');
   assert.deepEqual([eve.source, eve.emails.sent, eve.heat, eve.buyer, eve.visits.visits_7d], ['Typed', 0, null, true, 6]);
-  assert.deepEqual(t.counts, { opened: 2, clicked: 1, replied: 1, sent: 3, identified: 1, visited_7d: 2, buyer: 2, hot: 1, needs_touch: 3 }, 'visited 7 d = the two at Acme (Quarry was seen Oct 23); needs a touch = Bo (Sep 20), Bo @ Harbor and Eve (never)');
+  assert.deepEqual(t.counts, { opened: 2, clicked: 1, replied: 1, sent: 3, identified: 1, visited_7d: 2, buyer: 2, hot: 1, needs_touch: 3, unassigned: 5 }, 'visited 7 d = the two at Acme (Quarry was seen Oct 23); needs a touch = Bo (Sep 20), Bo @ Harbor and Eve (never)');
   assert.ok(!/@|hidden|harbor\.example/.test(JSON.stringify(t)), 'no address, no email host');
 });
 

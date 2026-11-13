@@ -89,6 +89,8 @@ test('partner body: to-dos, waiting, matched visits, decisions, terms, people wi
   assert.deepEqual(d.terms, ['(10/15) Terms: 20% rev share']);
   // D4: the manual contact and the linked prospect of the same name are one row (contact id, prospect's contact_id + signal); the bot-only person follows.
   assert.deepEqual(d.people.map(p => [p.name, p.title, p.linkedin_url, p.source, p.contact_id, p.signal?.text ?? null]), [['Pat Lee', 'VP', 'https://linkedin.com/in/pat', 'manual', 'c-pat', 'clicked Step 1'], ['Robin Scanner', 'IT', null, 'apollo', 'c-bot', null]]);
+  // person-owner-v1 O3: each person row carries the key Assign posts and the person's own owner (null = Unassigned).
+  assert.ok(d.people.every(p => /^(contact|prospect):/.test(p.person_key) && 'owner_user_id' in p), JSON.stringify(d.people.map(p => [p.person_key, p.owner_user_id])));
   assert.deepEqual(d.recent.map(e => e.event), ['touch', 'note']);
   assert.equal(d.record.last_touch, null);
   assert.deepEqual(d.record.site, { domain: 'gallagher.example', confirmed: true });

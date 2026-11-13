@@ -231,7 +231,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           {row.type === 'partner' && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
             onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
           {!isRecord && detail.research && <IntelCard {...cardProps} need={researchNeed} />}
-          <CompanyDrawers businessId={businessId} row={row} detail={detail} canEdit={canEdit} lookup={lookup} flow={[...flow, ...todoLines]} files={files} version={version} onForm={setForm} onChanged={changed} onToast={onToast}
+          <CompanyDrawers businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} lookup={lookup} flow={[...flow, ...todoLines]} files={files} version={version} onForm={setForm} onChanged={changed} onToast={onToast}
             onOpenPeople={onOpenPeople} onMakeClient={() => setClientSheet({})} initialSection={initialSection} />
           {sourced && <SourceHistoryCard data={source} links={links} />}
           <ExtraCards row={row} detail={detail} />
@@ -247,7 +247,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {detail.research && <IntelCard {...cardProps} need={researchNeed} />}
-            <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div>
+            <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} members={members} /></div>
             {sourced && <SourceHistoryCard data={source} links={links} />}
             <ExtraCards row={row} detail={detail} />
           </div>

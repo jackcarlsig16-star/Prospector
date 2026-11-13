@@ -154,6 +154,9 @@ export const goalsApi = {
   savePeopleView: (id, body) => call(id, '/people/views', { method: 'POST', body }),
   deletePeopleView: (id, viewId) => call(id, `/people/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
   // V2a follow-up - a parked visitor (no record yet) gets their company filed as an employer target (Members).
+  // person-owner-v1 O2 - a person's owner (null = Unassigned); expect = the owner the screen showed (409 on a mismatch).
+  assignPerson: (id, personKey, body) => call(id, `/people/${encodeURIComponent(personKey)}/assign`, { method: 'POST', body }),
+  undoPersonEvent: (id, eventId) => call(id, `/people/events/${eventId}/undo`, { method: 'POST', body: {} }),
   addPersonRecord: (id, personId) => call(id, `/people/${personId}/add-record`, { method: 'POST', body: {} }),
   // FIX pipeline-quick-fixes-v1 A - "+ Add ▾": a person on a record (or parked under a new company name), a target by name.
   addPerson: (id, body) => call(id, '/people', { method: 'POST', body }),

@@ -105,6 +105,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
     identified: shown.filter(r => r.identified_at).length, visited_7d: shown.filter(r => r.visits && r.visits.visits_7d > 0 && r.visits.seen_to >= sevenDays).length,
     buyer: shown.filter(r => r.buyer).length, hot: shown.filter(r => r.heat_band === 'hot').length,
     needs_touch: shown.filter(r => !r.last_touch_at || r.last_touch_at < needsSince).length,
+    unassigned: shown.filter(r => !r.owner_user_id).length,
   };
   shown.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.last_email?.at || '').localeCompare(String(a.last_email?.at || '')) || String(a.name).localeCompare(String(b.name)));
   const text = JSON.stringify(shown);
@@ -215,7 +216,7 @@ export async function personDetailRoute(req, res) {
 }
 
 // ---- P7 "Share view": saved filters keyed kind 'people' in sales_settings.saved_views, beside the Map's and the Explorer's.
-export const VIEW_CHIPS = ['opened', 'clicked', 'replied', 'sent', 'identified', 'visited_7d', 'buyer', 'hot', 'needs_touch', 'mine'];
+export const VIEW_CHIPS = ['opened', 'clicked', 'replied', 'sent', 'identified', 'visited_7d', 'buyer', 'hot', 'needs_touch', 'mine', 'unassigned'];
 export function cleanViewState(s = {}) {
   const chips = (Array.isArray(s.chips) ? s.chips : []).map(String).filter(c => VIEW_CHIPS.includes(c));
   const str = (v, max) => (typeof v === 'string' ? cleanText(v, max) : '');

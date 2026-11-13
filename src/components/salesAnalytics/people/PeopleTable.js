@@ -18,6 +18,7 @@ import { SOURCE_GLYPH_BY_WORD } from '../../../constants/peopleSource';
 import HeatPill, { HEAT_COLOR, BAND_WORD, delta7 } from './HeatPill';
 import HeatPopover from './HeatPopover';
 import PersonDetail from './PersonDetail';
+import AssignButton, { OwnerMark, assignPerson, ownerOf } from './AssignPerson';
 
 // people-v2 Stage 2 - Pipeline › People: ONE table of everyone we know (prospects, identified visitors, partner contacts)
 // with their email activity and their company's visits, from GET goals/people/activity (P5: the materialised summary)
@@ -30,8 +31,9 @@ import PersonDetail from './PersonDetail';
 // number's bracket) and the table shows it as the one pill (D1) under Hot / Warm / Cold group headers in heat order,
 // Cold collapsed; Identified is a date column and the buyer title a tag on the name (D2); Source is glyph + word; the
 // footnote is gone - the Heat header's ⓘ opens the popover (D3); the header is two lines, the selects right of the
-// Size row (D4); the Δ7 glyph after the number once 7 days of history exist (H5). Widths sum to 1,082 of the card's
-// 1,100 px at 1440 - no sideways scroll (N2).
+// Size row (D4); the Δ7 glyph after the number once 7 days of history exist (H5). person-owner-v1 O3: the Owner column
+// (the PERSON's owner; a Member's cell is the Assign control) - 11 columns, widths sum to 1,098 of the card's 1,100 px
+// at 1440, no sideways scroll (N2).
 const UNDO_MS = 10000;
 const LA = 'America/Los_Angeles';
 const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: LA }) : null);
@@ -60,12 +62,14 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const [sharing, setSharing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reload, setReload] = useState(0);
+  // person-owner-v1 O3: an assign shows at once (key -> owner) until the reload brings the row itself.
+  const [owners, setOwners] = useState({});
   const [coldOpen, setColdOpen] = useState(false);
   // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
   const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
   const meId = me?.profile?.id || null;
   const [snoozedOnly, setSnoozedOnly] = useState(false);
-  const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
+  const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setOwners({}); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
   useEffect(() => { load(); }, [load, reload]);
   useEffect(() => {
     goalsApi.members(businessId).then(setMembers).catch(() => setMembers([]));
@@ -79,7 +83,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   }, [toast]);
   useEffect(() => onScoutOpen(p => { const k = openKeyOf('person', p.open); if (k) { setFilters(EMPTY_FILTERS); setScoutKey(k); } }), []);
   const ctx = useMemo(() => ({ meId, now: Date.now() }), [meId, data]); // eslint-disable-line react-hooks/exhaustive-deps
-  const all = useMemo(() => data?.rows || [], [data]);
+  const all = useMemo(() => (data?.rows || []).map(r => (r.key in owners ? { ...r, owner_user_id: owners[r.key] } : r)), [data, owners]);
   const rows = useMemo(() => applyFilters(all, filters, ctx), [all, filters, ctx]);
   const counts = useMemo(() => chipCounts(all, ctx), [all, ctx]);
   const sizes = useMemo(() => sizeChipCounts(all), [all]);
@@ -95,6 +99,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const colorOf = uid => { const i = members.findIndex(m => m.user_id === uid); return i >= 0 ? members[i].color || memberColor(i) : null; };
   const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, ...(section ? { section } : {}) } })); };
   const changed = () => setReload(n => n + 1);
+  const setLocalOwner = (key, userId) => setOwners(o => { const n = { ...o }; if (userId === undefined) delete n[key]; else n[key] = userId; return n; });
+  const assign = (r, to) => assignPerson({ businessId, personKey: r.key, name: r.name, from: r.owner_user_id || null, to, members, onLocal: userId => setLocalOwner(r.key, userId), onToast: setToast, onChanged: changed });
   const [adding, setAdding] = useState(null);
   const addAsTarget = async r => {
     setAdding(r.key);
@@ -144,6 +150,10 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
         {hasRecord(r) && (r.company.stage || colorOf(r.company.owner_user_id)) && <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 10.5 }}>{r.company.stage && <span className="ui-group-label" style={{ fontSize: 10.5 }}>{String(r.company.stage).replace(/_/g, ' ')}</span>}{r.company.owner_user_id && colorOf(r.company.owner_user_id) && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: colorOf(r.company.owner_user_id), display: 'inline-block' }} />}</span>}
       </span>
     : <Dim />);
+  const ownerCell = r => (canEdit
+    ? <AssignButton members={members} ownerUserId={r.owner_user_id || null} name={r.name} onPick={to => assign(r, to)} className="ui-link ui-link--cell" style={{ display: 'inline-flex', maxWidth: '100%', minWidth: 0, textAlign: 'left' }}><OwnerMark members={members} userId={r.owner_user_id} /></AssignButton>
+    : <OwnerMark members={members} userId={r.owner_user_id} />);
+  const ownerName = r => (r.owner_user_id ? ownerOf(members, r.owner_user_id)?.name || 'Former member' : null);
   const sourceText = r => r.sources.join(' + ');
   const sourceCell = r => <span data-source={r.source} title={sourceText(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ color: SA.muted, fontSize: 11 }}>{SOURCE_GLYPH_BY_WORD[r.source] || ''}</span>{r.source}{r.sources.length > 1 ? <span style={{ color: SA.muted }}> +{r.sources.length - 1}</span> : null}</span>;
   const sizeTitle = r => (r.company?.employees == null ? (r.company?.id ? 'Headcount unknown - type it in the company window (Employees)' : 'No company record - no headcount') : `${headcountText(r.company.employees)} employees · ${HEADCOUNT_SOURCE_WORD[r.company.employees_source] || 'source unknown'}`);
@@ -173,12 +183,13 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     { id: 'company', label: 'Company', width: 140, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
     { id: 'size', label: srHead('Size', '(company)'), width: 74, sortValue: r => headcountSortValue(r.company?.employees), render: sizeCell, title: sizeTitle },
     { id: 'source', label: 'Source', width: 84, sortValue: r => r.source, render: sourceCell },
-    { id: 'emails', label: srHead('Emails', '(human opens)'), width: 132, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
-    { id: 'last_email', label: 'Last email', width: 104, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
+    { id: 'owner', label: 'Owner', width: 64, sortValue: ownerName, render: ownerCell, title: r => (r.owner_user_id ? `Owner: ${ownerName(r)}` : 'Unassigned') },
+    { id: 'emails', label: srHead('Emails', '(human opens)'), width: 112, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
+    { id: 'last_email', label: 'Last email', width: 96, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
     { id: 'heat', label: 'Heat', width: 104, sortValue: r => r.heat ?? -1, render: heatCell, title: heatTitle, headerExtra: <HeatPopover rule={data?.heat_rule} historySince={data?.history_since} /> },
-    { id: 'visits', label: srHead('Visits', '(company, 7 d)'), width: 108, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
-    { id: 'identified', label: 'Identified', width: 76, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} style={numStyle}>{mdy(r.identified_at)}</span> : <Dim />), title: r => (r.identified_at ? `Apollo named this person on the site · ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
-    { id: 'last_touch', label: srHead('Touch', '(last, any channel)'), width: 70, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
+    { id: 'visits', label: srHead('Visits', '(company, 7 d)'), width: 104, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
+    { id: 'identified', label: 'Identified', width: 70, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} style={numStyle}>{mdy(r.identified_at)}</span> : <Dim />), title: r => (r.identified_at ? `Apollo named this person on the site · ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
+    { id: 'last_touch', label: srHead('Touch', '(last, any channel)'), width: 60, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
   ];
   const sortLabel = sort && columns.find(c => c.id === sort.id)?.id;
   const bands = bandGroups(rows, sort);
@@ -191,20 +202,24 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       emptyText: band === 'hot' ? 'Nobody is hot right now.' : undefined,
     }))
     : [{ id: 'people', header: <>Sorted by {sortLabel.replace(/_/g, ' ')} <span className="ui-table__count">{rows.length}</span></>, rows, emptyText: 'No people match these filters.' }];
-  const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} rule={data?.heat_rule} />;
+  const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} members={members} onAssign={to => assign(r, to)} phone={phone} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} rule={data?.heat_rule} />;
   const compactRow = r => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>{nameCell(r)}{heatCell(r)}</span>
       <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{hasRecord(r) && r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''} · <span data-card-size title={sizeTitle(r)}>{r.company?.employees == null ? 'size unknown' : `${headcountText(r.company.employees)} ${HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] || ''}`.trim()}</span></span>
       <span style={{ fontSize: 12, display: 'flex', gap: 10, flexWrap: 'wrap', ...numStyle }}><span title="sent">✉ {r.emails.sent}</span><span title="human opens">👁 {r.emails.opened}</span><span title="clicked">🖱 {r.emails.clicked}</span><span title="replied">↩ {r.emails.replied}</span><span style={{ color: SA.muted }}>{r.visits ? `${r.visits.visits_7d} visits 7 d` : 'no visits'}</span></span>
-      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><span className="ui-chip ui-chip--dense">{sourceCell(r)}</span>{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}</span>
+      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><span className="ui-chip ui-chip--dense">{sourceCell(r)}</span>{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}
+        {canEdit
+          ? <AssignButton sheet members={members} ownerUserId={r.owner_user_id || null} name={r.name} onPick={to => assign(r, to)} className="ui-chip ui-chip--dense" style={{ cursor: 'pointer', minHeight: 24 }}><OwnerMark members={members} userId={r.owner_user_id} />{!r.owner_user_id && <span style={{ marginLeft: 4 }}>Assign</span>}</AssignButton>
+          : <span className="ui-chip ui-chip--dense" data-card-owner><OwnerMark members={members} userId={r.owner_user_id} /></span>}
+      </span>
     </div>
   );
   const chipRow = (
     <div data-people-chips role="group" aria-label="Filter chips" style={{ display: 'flex', gap: 6, ...(phone ? { overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } : { flexWrap: 'wrap' }) }}>
       <h2 className={phone ? 'ui-sr-only' : 'ui-group-label'} style={{ margin: 0, flex: 'none' }}>Filter</h2>
       {(data?.snoozed > 0 || snoozedOnly) && <ToggleChip data-snoozed-chip pressed={snoozedOnly} count={`(${data?.snoozed ?? 0})`} onClick={() => setSnoozedOnly(v => !v)} title="People snoozed until a date are hidden from this list until that day">Snoozed</ToggleChip>}
-      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} style={id === 'hot' ? { color: HEAT_COLOR.hot, borderColor: HEAT_COLOR.hot } : undefined} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
+      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} style={id === 'hot' ? { color: HEAT_COLOR.hot, borderColor: HEAT_COLOR.hot } : undefined} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : id === 'mine' ? 'People you own (the person, not their company)' : id === 'unassigned' ? 'People with no owner' : undefined}>{label}</ToggleChip>)}
     </div>
   );
   const sizeChips = (

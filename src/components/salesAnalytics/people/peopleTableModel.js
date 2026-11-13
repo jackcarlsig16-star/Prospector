@@ -4,7 +4,7 @@
 // here, it arrives from the route.
 import { headcountCsv, headcountSourceWord, sizeCounts, inSizeFilter, sizeLabels } from '../../../constants/headcount';
 
-export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine']];
+export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine'], ['unassigned', 'Unassigned']];
 export const WINDOW_OPTIONS = [['all', 'All time'], ['7', '7 d'], ['30', '30 d'], ['90', '90 d']];
 export const SOURCE_OPTIONS = ['Apollo', 'Website', 'Partner', 'Typed', 'Upload'];
 export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3) - the route's rule
@@ -39,7 +39,9 @@ export function chipMatches(r, chip, ctx = {}) {
     case 'buyer': return !!r.buyer;
     case 'hot': return r.heat_band === 'hot';
     case 'needs_touch': return !r.last_touch_at || Date.parse(r.last_touch_at) < now - NEEDS_TOUCH_DAYS * DAY;
-    case 'mine': return !!ctx.meId && (r.company?.owner_user_id === ctx.meId || r.owner_user_id === ctx.meId);
+    // person-owner-v1 O3 / O7: mine = the PERSON's owner, never re-derived from the company.
+    case 'mine': return !!ctx.meId && r.owner_user_id === ctx.meId;
+    case 'unassigned': return !r.owner_user_id;
     default: return true;
   }
 }
@@ -48,7 +50,7 @@ export function matchesFilters(r, f, ctx = {}) {
   if (f.chips.some(c => !chipMatches(r, c, ctx))) return false;
   if (f.source && r.source !== f.source && !r.sources.includes(f.source)) return false;
   if (f.stage && (r.company?.stage || '') !== f.stage) return false;
-  if (f.owner && (f.owner === 'unassigned' ? !!r.company?.owner_user_id : r.company?.owner_user_id !== f.owner)) return false;
+  if (f.owner && (f.owner === 'unassigned' ? !!r.owner_user_id : r.owner_user_id !== f.owner)) return false;
   if (f.company && !(r.company && r.company.type === f.company.type && r.company.id === f.company.id)) return false;
   if (!inSizeFilter(r.company?.employees, f.sizes)) return false;
   if (f.q) { const n = f.q.trim().toLowerCase(); if (n && !`${r.name || ''} ${r.title || ''} ${r.company?.name || ''}`.toLowerCase().includes(n)) return false; }

@@ -5,7 +5,7 @@ import PeopleTable from './PeopleTable';
 import { goalsApi } from '../goals/goalsApi';
 import { updateProspect } from '../huddleApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn(), addPersonRecord: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn(), addPersonRecord: jest.fn(), assignPerson: jest.fn(), undoPersonEvent: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn() }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 const mockPhone = { on: false };
@@ -18,12 +18,12 @@ jest.mock('../../../utils/useMediaQuery', () => () => mockPhone.on);
 // heat-v2 Stage 2: the band groups (Hot / Warm / Cold, Cold collapsed), the one pill with the Δ7 glyph, the buyer tag on
 // the name, the Identified date column, Source glyph + word, the Heat header's ⓘ popover (no footnote, no "Huddle"),
 // the two-line header, widths ≤ 1,100 px, the pinned card's sparkline.
-const row = (name, over = {}) => ({ key: `prospect:${name.replace(/\s/g, '')}`, sources: ['Apollo'], source: 'Apollo', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner: 'jack',
+const row = (name, over = {}) => ({ key: `prospect:${name.replace(/\s/g, '')}`, sources: ['Apollo'], source: 'Apollo', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner_user_id: 'u1',
   emails: { sent: 1, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: { at: '2026-11-03T12:00:00Z', what: 'sent', reply_class: null }, heat: 5, heat_band: 'cold', heat_7d_ago: null, visits: null, identified_at: null, buyer: false, has_email: true, last_touch_at: '2026-11-03T12:00:00Z', ...over });
 const ROWS = [
   row('Crystal Pringle', { emails: { sent: 2, opened: 4, clicked: 0, replied: 1, bot_opens: 0 }, last_email: { at: '2026-11-03T12:00:00Z', what: 'replied', reply_class: 'follow_up_question' }, heat: 108, heat_band: 'hot', heat_7d_ago: 90, buyer: true, visits: { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' } }),
-  row('Cristina Torres', { owner: 'cyrus', emails: { sent: 3, opened: 8, clicked: 4, replied: 0, bot_opens: 1 }, last_email: { at: '2026-10-19T12:00:00Z', what: 'clicked', reply_class: null }, heat: 28, heat_band: 'warm', heat_7d_ago: 31, company: { type: 'employer', id: 'o2', name: 'Equinox', stage: 'target', owner_user_id: 'u2' } }),
-  row('Bo Ops', { key: 'person:sp1', sources: ['Website'], source: 'Website', identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner: null, status: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, has_email: false, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
+  row('Cristina Torres', { owner_user_id: 'u2', emails: { sent: 3, opened: 8, clicked: 4, replied: 0, bot_opens: 1 }, last_email: { at: '2026-10-19T12:00:00Z', what: 'clicked', reply_class: null }, heat: 28, heat_band: 'warm', heat_7d_ago: 31, company: { type: 'employer', id: 'o2', name: 'Equinox', stage: 'target', owner_user_id: 'u2' } }),
+  row('Bo Ops', { key: 'person:sp1', sources: ['Website'], source: 'Website', identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner_user_id: null, status: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, has_email: false, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
 ];
 const RULE = { hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } };
 const DATA = { rows: ROWS, n: 3, total: 3, counts: {}, window: { id: 'all', label: 'all time', since: null, until: '2026-11-06' }, heat_rule: RULE, history_since: '2026-11-10', computed_at: '2026-11-06T13:00:00Z', heat_pending: 1 };
@@ -47,11 +47,12 @@ const expandCold = t => fireEvent.click(within(t).getByRole('button', { name: /^
 // todo-events-v1: CRA resets mock implementations before each test - the to-do event reads resolve empty unless a test says otherwise
 beforeEach(() => { goalsApi.todoEvents.mockResolvedValue([]); goalsApi.undoTodoEvent.mockResolvedValue({}); });
 
-test('the table: 10 word headers in the mockup order with widths summing to 1,082 px; Hot / Warm / Cold groups in heat order with Cold collapsed; the one pill (word + number, Δ7 when it moved 10+); the buyer tag on the name; Identified = a date; Source = glyph + word; no footnote and no "Huddle" anywhere', async () => {
+test('the table: 11 word headers (Owner after Source) with widths summing to 1,098 px (<= 1,100); Hot / Warm / Cold groups in heat order with Cold collapsed; the one pill (word + number, Δ7 when it moved 10+); the buyer tag on the name; Identified = a date; Source = glyph + word; no footnote and no "Huddle" anywhere', async () => {
   const t = await table();
-  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Size (company)', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Visits (company, 7 d)', 'Identified', 'Touch (last, any channel)']);
+  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Size (company)', 'Source', 'Owner', 'Emails (human opens)', 'Last email', 'Heat', 'Visits (company, 7 d)', 'Identified', 'Touch (last, any channel)']);
   const widths = [...t.querySelectorAll('colgroup col')].map(c => parseInt(c.style.width, 10));
-  expect(widths).toEqual([190, 140, 74, 84, 132, 104, 104, 108, 76, 70]);
+  expect(widths).toEqual([190, 140, 74, 84, 64, 112, 96, 104, 104, 70, 60]);
+  expect(widths.reduce((a, b) => a + b, 0)).toBe(1098);
   expect(widths.reduce((a, b) => a + b, 0)).toBeLessThanOrEqual(1100);
   expect(groupHeads(t)).toEqual(['Hot1 · score ≥ 40', 'Warm1 · score 10–39', 'Cold1 · score < 10 · collapsed']);
   expect(names(t)).toEqual(['Crystal Pringle', 'Cristina Torres'], 'Cold is collapsed by default');
@@ -68,7 +69,7 @@ test('the table: 10 word headers in the mockup order with widths summing to 1,08
   expect(t.querySelectorAll('[data-buyer]')).toHaveLength(1);
   expect([...t.querySelectorAll('[data-source]')].map(el => el.textContent)).toEqual(['➤Apollo', '➤Apollo', '🌐Website']);
   expect(t.querySelector('tr[data-row][data-key="person_sp1"] [data-identified]').textContent).toBe('Nov 2');
-  expect(crystal.querySelectorAll('td')[8].textContent).toBe('—', 'not a visitor-identified person');
+  expect(crystal.querySelectorAll('td')[9].textContent).toBe('—', 'not a visitor-identified person');
   expect(crystal.querySelectorAll('td')[1].textContent).toBe('Acme Healthcontacted');
   expect(document.querySelector('[data-heat-footnote]')).toBeNull();
   expect(document.body.textContent).not.toMatch(/Huddle/);
@@ -171,7 +172,7 @@ test('select vs open: a row click pins the detail (timeline + company visits + n
   expect(spark.dataset.heatSparkline).toBe('2');
   expect(spark).toHaveAttribute('aria-label', 'Heat over the last 30 days: Nov 5 90 hot, Nov 6 108 hot');
   expect(spark.querySelectorAll('circle')).toHaveLength(2);
-  expect(within(within(detail).getByRole('group', { name: 'Quick menu' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Open company', 'Draft email', 'Log call', 'Add to-do', 'Mark contacted', 'Not a fit']);
+  expect(within(within(detail).getByRole('group', { name: 'Quick menu' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Open company', 'Assign ▸', 'Draft email', 'Log call', 'Add to-do', 'Mark contacted', 'Not a fit']);
   fireEvent.keyDown(t, { key: 'Escape' });
   await waitFor(() => expect(t.querySelector('[data-person-detail]')).toBeNull());
 });
@@ -234,7 +235,7 @@ test('CSV: the filtered rows, structured fields only, never an address; Share vi
   await waitFor(() => expect(texts).toHaveLength(1));
   expect(texts[0].split('\r\n')[0]).toMatch(/^Person,Title,Company,Owner,Company stage,Company size,Size source,Source,Sent,Opened \(human\),Clicked,Replied,/);
   expect(texts[0].split('\r\n')).toHaveLength(2);
-  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,Unassigned,contacted,unknown,,Apollo,2,4,0,1,/);
+  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,Jack,contacted,unknown,,Apollo,2,4,0,1,/);
   expect(texts[0]).toMatch(/,108,hot,/);
   expect(texts[0]).not.toMatch(/@/);
   fireEvent.click(screen.getByRole('button', { name: 'Share view' }));
@@ -322,4 +323,107 @@ test('visitor-people-filing V3: a person without a company record shows "Add as 
   render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
   const v = await screen.findByRole('table', { name: 'People' });
   expect(v.querySelector('[data-add-target]')).toBeNull();
+});
+
+// person-owner-v1 Stage 2 (O3)
+const ownerCells = t => [...t.querySelectorAll('tr[data-row]')].map(tr => `${tr.querySelector('[data-person-name]').textContent}: ${tr.querySelector('[data-owner]').textContent}`);
+const deferred = () => { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; };
+
+test('Owner column: the dot + first name, "—" for Unassigned; the header sorts; the Mine and Unassigned chips count the person owner and the Unassigned count = the route; the Owner select offers Unassigned', async () => {
+  goalsApi.peopleActivity.mockResolvedValue({ ...DATA, counts: { unassigned: 1 } });
+  const t = await table();
+  expandCold(t);
+  expect(ownerCells(t)).toEqual(['Crystal Pringle: Jack', 'Cristina Torres: Cyrus', 'Bo Ops: —']);
+  expect([...t.querySelectorAll('tr[data-row] [data-owner-dot]')].map(d => d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)']);
+  const chips = within(screen.getByRole('group', { name: 'Filter chips' }));
+  expect(chips.getByRole('button', { name: /^Mine/ })).toHaveTextContent('Mine(1)');
+  expect(chips.getByRole('button', { name: /^Unassigned/ })).toHaveTextContent(`Unassigned(${(await goalsApi.peopleActivity.mock.results[0].value).counts.unassigned})`);
+  fireEvent.click(chips.getByRole('button', { name: /^Unassigned/ }));
+  expect(names(t)).toEqual(['Bo Ops']);
+  fireEvent.click(chips.getByRole('button', { name: /^Unassigned/ }));
+  expect([...screen.getByLabelText('Owner').options].map(o => o.textContent)).toEqual(['All', 'Jack Carlson', 'Cyrus Test', 'Unassigned']);
+  fireEvent.click(within(t).getByRole('columnheader', { name: /^Owner/ }).querySelector('button') || within(t).getByRole('columnheader', { name: /^Owner/ }));
+  expect(ownerCells(t).slice(0, 2)).toEqual(['Cristina Torres: Cyrus', 'Crystal Pringle: Jack']);
+});
+
+test('Assign from the row: the menu lists the members with their colour dots, then Unassigned; a pick shows at once (optimistic), posts expect = the owner shown, and the 10-s Undo takes it back by the event', async () => {
+  const t = await table();
+  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
+  const menu = screen.getByRole('menu', { name: 'Assign Cristina Torres' });
+  expect(within(menu).getAllByRole('menuitemradio').map(b => `${b.textContent.replace('✓', '')}:${b.getAttribute('aria-checked')}`)).toEqual(['Jack:false', 'Cyrus:true', 'Unassigned:false']);
+  expect([...menu.querySelectorAll('[data-owner-dot]')].map(d => d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)']);
+  expect(t.querySelector('[data-person-detail]')).toBeNull();
+  const d = deferred();
+  goalsApi.assignPerson.mockReturnValue(d.promise);
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Jack/ }));
+  expect(screen.queryByRole('menu')).toBeNull();
+  expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CristinaTorres', { owner_user_id: 'u1', expect: { owner_user_id: 'u2' } });
+  expect(ownerCells(t)[1]).toBe('Cristina Torres: Jack');
+  const loads = goalsApi.peopleActivity.mock.calls.length;
+  d.resolve({ person: { key: 'prospect:CristinaTorres', owner_user_id: 'u1' }, event: { id: 'e1' } });
+  expect(await screen.findByText('Cristina Torres assigned to Jack')).toBeInTheDocument();
+  await waitFor(() => expect(goalsApi.peopleActivity.mock.calls.length).toBeGreaterThan(loads));
+  goalsApi.undoPersonEvent.mockResolvedValue({});
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.undoPersonEvent).toHaveBeenCalledWith('b1', 'e1'));
+  fireEvent.click(within(t).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e2' } });
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Unassigned/ }));
+  expect(goalsApi.assignPerson).toHaveBeenLastCalledWith('b1', 'prospect:CrystalPringle', { owner_user_id: null, expect: { owner_user_id: 'u1' } });
+  expect(await screen.findByText('Crystal Pringle is unassigned')).toBeInTheDocument();
+});
+
+test('Assign: a 409 reloads and says the owner changed; another failure puts the old owner back with the message', async () => {
+  const t = await table();
+  const loads = goalsApi.peopleActivity.mock.calls.length;
+  goalsApi.assignPerson.mockRejectedValue(Object.assign(new Error('The owner changed since you opened this - reloaded'), { status: 409 }));
+  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Jack/ }));
+  expect(await screen.findByText('Cristina Torres: the owner changed since you opened this - reloaded')).toBeInTheDocument();
+  await waitFor(() => expect(goalsApi.peopleActivity.mock.calls.length).toBeGreaterThan(loads));
+  await waitFor(() => expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus'));
+  const after = goalsApi.peopleActivity.mock.calls.length;
+  goalsApi.assignPerson.mockRejectedValue(Object.assign(new Error('Members only'), { status: 403 }));
+  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Jack/ }));
+  expect(await screen.findByText('Members only')).toBeInTheDocument();
+  expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus');
+  expect(goalsApi.peopleActivity.mock.calls.length).toBe(after);
+});
+
+test('Assign from the pinned card posts the same write; a Viewer sees the owners and no Assign anywhere', async () => {
+  const { unmount } = render(<PeopleTable businessId="b1" canEdit me={ME} />);
+  const t = await screen.findByRole('table', { name: 'People' });
+  fireEvent.click(t.querySelector('tr[data-row] td:nth-child(3)'));
+  const detail = await waitFor(() => { const el = t.querySelector('[data-person-detail]'); if (!el) throw new Error('no detail'); return el; });
+  goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e3' } });
+  fireEvent.click(within(within(detail).getByRole('group', { name: 'Quick menu' })).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  fireEvent.click(within(screen.getByRole('menu', { name: 'Assign Crystal Pringle' })).getByRole('menuitemradio', { name: /^Cyrus/ }));
+  expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CrystalPringle', { owner_user_id: 'u2', expect: { owner_user_id: 'u1' } });
+  expect(await screen.findByText('Crystal Pringle assigned to Cyrus')).toBeInTheDocument();
+  unmount();
+  render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
+  const v = await screen.findByRole('table', { name: 'People' });
+  expect(ownerCells(v)).toEqual(['Crystal Pringle: Jack', 'Cristina Torres: Cyrus']);
+  expect(v.querySelector('[data-assign]')).toBeNull();
+});
+
+test('390: each card shows its owner; the owner chip opens the Assign sheet (members with dots, Unassigned) and a pick posts the write; a Viewer card has no Assign', async () => {
+  mockPhone.on = true;
+  const { unmount } = render(<PeopleTable businessId="b1" canEdit me={ME} />);
+  const list = await screen.findByRole('list', { name: 'People' });
+  expect([...list.querySelectorAll('[data-row] [data-owner]')].map(el => el.textContent)).toEqual(['Jack', 'Cyrus']);
+  fireEvent.click(within(list).getByRole('button', { name: 'Assign Cristina Torres' }));
+  const sheet = screen.getByRole('menu', { name: 'Assign Cristina Torres' });
+  expect(sheet.getAttribute('data-assign-menu')).toBe('sheet');
+  expect(within(sheet).getAllByRole('menuitemradio').map(b => b.textContent.replace('✓', ''))).toEqual(['Jack', 'Cyrus', 'Unassigned']);
+  goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e4' } });
+  fireEvent.click(within(sheet).getByRole('menuitemradio', { name: /^Jack/ }));
+  expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CristinaTorres', { owner_user_id: 'u1', expect: { owner_user_id: 'u2' } });
+  expect(await screen.findByText('Cristina Torres assigned to Jack')).toBeInTheDocument();
+  unmount();
+  render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
+  const v = await screen.findByRole('list', { name: 'People' });
+  expect(v.querySelector('[data-assign]')).toBeNull();
+  expect(v.querySelectorAll('[data-card-owner]')).toHaveLength(2);
 });

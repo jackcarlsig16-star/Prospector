@@ -41,7 +41,7 @@ export function drawerRows(row, detail, { files = null, flow = [], lookup = () =
   ].filter(Boolean);
 }
 
-export default function CompanyDrawers({ businessId, row, detail, canEdit, lookup, flow = [], files = null, version = 0, onForm, onChanged, onToast, onOpenPeople, onMakeClient, initialSection = null }) {
+export default function CompanyDrawers({ businessId, row, detail, canEdit, members = [], lookup, flow = [], files = null, version = 0, onForm, onChanged, onToast, onOpenPeople, onMakeClient, initialSection = null }) {
   const key = `${row.type}-${row.id}`;
   const live = !!detail.interest?.show;
   const initial = () => ({ ...readDrawers(key), ...(live ? { signals: true } : {}), ...(initialSection === 'people' ? { people: true } : {}) });
@@ -57,7 +57,7 @@ export default function CompanyDrawers({ businessId, row, detail, canEdit, looku
   const rows = drawerRows(row, detail, { files, flow, lookup, canEdit, onForm, onOpenPeople, onMakeClient, onUpload: () => toggle('files', true) });
   const body = id => {
     if (id === 'signals') return <SignalsCard {...cardProps} onOpenPeople={onOpenPeople} />;
-    if (id === 'people') return <PeopleCard {...cardProps} />;
+    if (id === 'people') return <PeopleCard {...cardProps} members={members} />;
     if (id === 'todos') return <TodosCard {...cardProps} />;
     if (id === 'waiting') return <WaitingCard {...cardProps} />;
     if (id === 'notes') return <NotesCard {...cardProps} lookup={lookup} flow={flow} />;

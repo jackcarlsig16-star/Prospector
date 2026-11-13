@@ -40,7 +40,7 @@ export const ADD_FROM = ['visitor', 'apollo'];
 export const ADD_TO = ['target', 'partner', 'employer'];
 const RECORD_TYPES = ['partner', 'employer', 'target'];
 const REF_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
-const PROSPECT_COLS = 'contact_id, name, title, company, linkedin_url, status, owner, goal_id, opportunity_id, snooze_until';
+const PROSPECT_COLS = 'contact_id, name, title, company, linkedin_url, status, owner, owner_user_id, goal_id, opportunity_id, snooze_until';
 const VISIT_WEEK_DAYS = 7;
 const NOT_NOW_DAYS = 7;
 const DISMISS_DAYS = 90;
@@ -176,22 +176,23 @@ async function emailFor(supabase, businessId, contactIds, now) {
 // lead-upload-v1 S5 - people filed from a lead list (sales_people) on an employer or target, deduped against the
 // rows already there by name; the upload's source rides along as a tag and the list's "why" as the note.
 async function uploadedPeople(supabase, businessId, col, id) {
-  const rows = must(await supabase.from('sales_people').select('id, name, title, linkedin_url, note, source_kind').eq('business_id', businessId).eq(col, id).order('name').limit(100));
-  return rows.map(r => ({ id: r.id, contact_id: null, name: cleanText(r.name, 120), title: r.title ? cleanText(r.title, 160) : null, linkedin_url: r.linkedin_url || null, source: 'upload', source_kind: r.source_kind || null, note: r.note ? cleanText(r.note, 500) : null, status: null, signal: null }));
+  const rows = must(await supabase.from('sales_people').select('id, name, title, linkedin_url, note, source_kind, owner_user_id, archived_at').eq('business_id', businessId).eq(col, id).order('name').limit(100));
+  return rows.map(r => ({ id: r.id, person_key: r.archived_at ? null : `person:${r.id}`, owner_user_id: r.owner_user_id || null, contact_id: null, name: cleanText(r.name, 120), title: r.title ? cleanText(r.title, 160) : null, linkedin_url: r.linkedin_url || null, source: 'upload', source_kind: r.source_kind || null, note: r.note ? cleanText(r.note, 500) : null, status: null, signal: null }));
 }
 function withUploaded(rows, uploaded) {
   const seen = new Set(rows.map(r => normName(r.name)));
   return [...rows, ...uploaded.filter(u => !seen.has(normName(u.name)))];
 }
 
-const personOut = p => ({ id: `p:${p.contact_id}`, contact_id: p.contact_id, name: cleanText(p.name, 120) || 'Unnamed', title: p.title ? cleanText(p.title, 160) : null, linkedin_url: p.linkedin_url || null, source: 'apollo', status: p.status || null, signal: null });
+// person_key + owner_user_id (person-owner-v1): what the People card's Assign posts; a name typed in notes has neither.
+const personOut = p => ({ id: `p:${p.contact_id}`, person_key: `prospect:${p.contact_id}`, owner_user_id: p.owner_user_id || null, contact_id: p.contact_id, name: cleanText(p.name, 120) || 'Unnamed', title: p.title ? cleanText(p.title, 160) : null, linkedin_url: p.linkedin_url || null, source: 'apollo', status: p.status || null, signal: null });
 const peopleSort = (a, b) => (a.signal && b.signal ? byStrength(a.signal, b.signal) : a.signal ? -1 : b.signal ? 1 : a.name.localeCompare(b.name));
 
 async function peopleFor(supabase, businessId, record, prospects, signals) {
   const withSignal = rows => rows.map(p => { const s = p.contact_id ? signals.get(p.contact_id)?.strongest : null; return { ...p, signal: s ? { kind: s.kind, count: s.count, step: s.step, at: s.at, text: signalText(s) } : null }; });
   if (record.type === 'partner') {
-    const contacts = must(await supabase.from('partner_contacts').select('id, name, title, linkedin_url, source, apollo_contact_id').eq('business_id', businessId).eq('goal_id', record.id).order('name').limit(50));
-    const rows = contacts.map(c => ({ id: c.id, contact_id: c.apollo_contact_id || null, name: cleanText(c.name, 120), title: c.title ? cleanText(c.title, 160) : null, linkedin_url: c.linkedin_url || null, source: c.source, status: null, signal: null }));
+    const contacts = must(await supabase.from('partner_contacts').select('id, name, title, linkedin_url, source, apollo_contact_id, owner_user_id').eq('business_id', businessId).eq('goal_id', record.id).order('name').limit(50));
+    const rows = contacts.map(c => ({ id: c.id, person_key: `contact:${c.id}`, owner_user_id: c.owner_user_id || null, contact_id: c.apollo_contact_id || null, name: cleanText(c.name, 120), title: c.title ? cleanText(c.title, 160) : null, linkedin_url: c.linkedin_url || null, source: c.source, status: null, signal: null }));
     const byName = new Map(rows.map(r => [normName(r.name), r]));
     for (const p of prospects.map(personOut)) {
       const hit = byName.get(normName(p.name));

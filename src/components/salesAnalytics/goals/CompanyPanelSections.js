@@ -10,6 +10,7 @@ import Tag from '../../../ui/Tag';
 import Drawer from '../../../ui/Drawer';
 import { Link } from '../../../ui/Button';
 import { SOURCE_LABEL } from '../../../constants/leadSources';
+import AssignButton, { OwnerMark, assignPerson } from '../people/AssignPerson';
 
 // company-panel-v2 L6 - the body cards. Each is a card with a label, a count
 // pill and at most one link-button. LEFT: Signals & visits · Open to-dos ·
@@ -164,8 +165,12 @@ export function IntelCard({ businessId, row, detail, canEdit, live = false, need
   );
 }
 
-export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged, onToast, bare = false }) {
+export function PeopleCard({ businessId, row, detail, canEdit, members = [], onForm, onChanged, onToast, bare = false }) {
   const [q, setQ] = useState('');
+  // person-owner-v1 O3: the row's Assign, shown at once (person key -> owner) until the window reloads.
+  const [owners, setOwners] = useState({});
+  const ownerNow = p => (p.person_key in owners ? owners[p.person_key] : p.owner_user_id || null);
+  const assign = (p, to) => assignPerson({ businessId, personKey: p.person_key, name: p.name, from: ownerNow(p), to, members, onToast, onChanged, onLocal: userId => setOwners(o => { const n = { ...o }; if (userId === undefined) delete n[p.person_key]; else n[p.person_key] = userId; return n; }) });
   const people = filterPeople(detail.people, q);
   const filter = detail.people.length > 5 ? <input type="search" aria-label="Filter people" placeholder="Filter" value={q} onChange={e => setQ(e.target.value)} className="ui-input" style={{ width: 120, minHeight: 26, height: 26, padding: '0 8px', fontSize: 12 }} /> : null;
   const unlink = async p => {
@@ -190,6 +195,9 @@ export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged
             {p.source === 'upload' && p.source_kind === 'web_visit' && /reveal to see full name/.test(p.note || '') && <Tag title="Apollo hides the last name until a reveal">reveal to see full name</Tag>}
             {p.source === 'upload' && p.source_kind && p.source_kind !== 'web_visit' && <Tag>{SOURCE_LABEL[p.source_kind] || p.source_kind}</Tag>}
           </span>
+          {p.person_key && (canEdit
+            ? <AssignButton members={members} ownerUserId={ownerNow(p)} name={p.name} onPick={to => assign(p, to)} className="ui-link" style={{ fontSize: 12, flex: 'none', display: 'inline-flex' }}><OwnerMark members={members} userId={ownerNow(p)} /></AssignButton>
+            : <span style={{ fontSize: 12, flex: 'none' }}><OwnerMark members={members} userId={ownerNow(p)} /></span>)}
           {p.linkedin_url ? <Link href={p.linkedin_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>LinkedIn ↗</Link> : <Link href={linkedinSearchUrl(p.name, row.name)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SA.muted }}>Find on LinkedIn</Link>}
           {canUnlink && p.contact_id && <Mini onClick={() => unlink(p)} title="Clears the link; no sync sets it again">Not this company</Mini>}
         </div>

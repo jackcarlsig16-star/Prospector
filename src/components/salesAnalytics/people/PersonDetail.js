@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SA } from '../theme';
 import { goalsApi } from '../goals/goalsApi';
+import AssignButton from './AssignPerson';
 import { numStyle, ErrorNote } from '../goals/goalsUi';
 import { playbookPrompt, mondayOf } from '../goals/companyPanelModel';
 import { markContacted } from '../goals/companyReach';
@@ -24,7 +25,7 @@ const mdy = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDa
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: LA });
 const field = { height: 30, fontSize: 13, padding: '0 8px' };
 
-export default function PersonDetail({ businessId, row, canEdit, meId, onToast, onChanged, onOpenCompany, rule = null }) {
+export default function PersonDetail({ businessId, row, canEdit, meId, members = [], onAssign, phone = false, onToast, onChanged, onOpenCompany, rule = null }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -63,6 +64,7 @@ export default function PersonDetail({ businessId, row, canEdit, meId, onToast, 
       <div role="group" aria-label="Quick menu" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" disabled={!row.company?.id} disabledReason="No company record yet" onClick={() => onOpenCompany(row.company)}>Open company</Button>
         {canEdit && <>
+          <AssignButton sheet={phone} members={members} ownerUserId={row.owner_user_id || null} name={row.name} onPick={onAssign} className="ui-btn ui-btn--secondary ui-btn--sm">Assign ▸</AssignButton>
           <Button size="sm" disabled={!rec || busy === 'draft'} disabledReason={noRecord} title="Copies the email bundle for Claude - Prospector never sends" onClick={draft}>{busy === 'draft' ? 'Copying…' : 'Draft email'}</Button>
           <Button size="sm" disabled={!rec || busy === 'call'} disabledReason={noRecord} title="A call touch on the company (Undo 10 s)" onClick={() => touch('call', 'call')}>Log call</Button>
           <Button size="sm" disabled={!rec} disabledReason={noRecord} aria-expanded={!!todo} onClick={() => setTodo(t => (t ? null : { text: '', due: '' }))}>Add to-do</Button>

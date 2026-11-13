@@ -13,7 +13,7 @@ const ROWS = [
 const ctx = { meId: 'u1', now: NOW };
 const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson' }, { user_id: 'u9', name: 'Cyrus Test' }];
 
-test('chips: each rule alone; Mine = my company or the person own owner (owner_user_id); needs a touch = none in 14 d; visited 7 d needs a pull window ending this week', () => {
+test('chips: each rule alone; Mine = the person own owner only (never the company owner); Unassigned = no person owner; needs a touch = none in 14 d; visited 7 d needs a pull window ending this week', () => {
   expect(ROWS.map(r => chipMatches(r, 'opened', ctx))).toEqual([true, false, true]);
   expect(ROWS.map(r => chipMatches(r, 'clicked', ctx))).toEqual([true, false, false]);
   expect(ROWS.map(r => chipMatches(r, 'replied', ctx))).toEqual([true, false, false]);
@@ -25,7 +25,9 @@ test('chips: each rule alone; Mine = my company or the person own owner (owner_u
   expect(ROWS.map(r => chipMatches(r, 'needs_touch', ctx))).toEqual([false, true, true]);
   expect(ROWS.map(r => chipMatches(r, 'mine', ctx))).toEqual([true, false, false]);
   expect(chipMatches(ROWS[2], 'mine', { meId: 'u9', now: NOW })).toBe(true);
-  expect(chipCounts(ROWS, ctx)).toEqual({ opened: 2, clicked: 1, replied: 1, sent: 2, identified: 1, visited_7d: 1, buyer: 1, hot: 1, needs_touch: 2, mine: 1 });
+  expect(chipMatches(ROWS[2], 'mine', { meId: 'u2', now: NOW })).toBe(false); // u2 owns Cy's company, not Cy
+  expect(ROWS.map(r => chipMatches(r, 'unassigned', ctx))).toEqual([false, true, false]);
+  expect(chipCounts(ROWS, ctx)).toEqual({ opened: 2, clicked: 1, replied: 1, sent: 2, identified: 1, visited_7d: 1, buyer: 1, hot: 1, needs_touch: 2, mine: 1, unassigned: 1 });
 });
 
 test('filters: chips AND together; source / stage / owner / company / search; the active list and its removals; the count', () => {
@@ -34,7 +36,8 @@ test('filters: chips AND together; source / stage / owner / company / search; th
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, source: 'Website' }, ctx).map(r => r.name)).toEqual(['Bo']);
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, stage: 'replied' }, ctx).map(r => r.name)).toEqual(['Cy']);
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, owner: 'unassigned' }, ctx).map(r => r.name)).toEqual(['Bo']);
-  expect(applyFilters(ROWS, { ...EMPTY_FILTERS, owner: 'u2' }, ctx).map(r => r.name)).toEqual(['Cy']);
+  expect(applyFilters(ROWS, { ...EMPTY_FILTERS, owner: 'u2' }, ctx).map(r => r.name)).toEqual([]); // the company's owner is not the person's
+  expect(applyFilters(ROWS, { ...EMPTY_FILTERS, owner: 'u9' }, ctx).map(r => r.name)).toEqual(['Cy']);
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, company: { type: 'employer', id: 'o1' } }, ctx).map(r => r.name)).toEqual(['Ana']);
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, q: 'quarry' }, ctx).map(r => r.name)).toEqual(['Bo']);
   expect(applyFilters(ROWS, { ...EMPTY_FILTERS, q: 'vp people' }, ctx)).toHaveLength(3);
