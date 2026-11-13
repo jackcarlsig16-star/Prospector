@@ -6,7 +6,9 @@ import { normName } from './intakeMatch.js';
 // deleted). V5: parked people (sales_people company_type 'parked', company name only) whose company name matches a record
 // that was just created / promoted / added move onto it - except the ones parked because their company is on the visit
 // skip list (V4), which wait for a person's "Add". Every move pushes its own undo onto the caller's list.
-export const VISITOR_ROLE = 'Identified website visitor'; // partner_contacts.role_in_notes marker (source allows apollo | manual | outlook only)
+// partner_contacts.role_in_notes marker (source allows apollo | manual | outlook only). The column's CHECK lists its
+// values: this one was added by 20261113_partner_visitor_marker.sql after the old text was refused on Nov 13.
+export const VISITOR_ROLE = 'identified_visitor';
 export const SKIP_NOTE = 'Company is on the visit skip list';
 const must = r => { if (r.error) throw Object.assign(new Error(r.error.message), { status: 500 }); return r.data; };
 

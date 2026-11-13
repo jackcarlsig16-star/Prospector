@@ -119,3 +119,10 @@ test('Stage 2 ruling: the Sources funnel counts a promoted company once - an acc
   assert.deepEqual(r.body.companies.map(c => `${c.type}:${c.name}`).sort(), ['employer:Zz Promoted Employer', 'partner:Upside', 'partner:Zz Promoted Partner', 'target:Zz Accepted Alone']);
   assert.equal(r.body.by_rep.find(g => g.label.startsWith('Brad')).referred, 3, 'each referred company once');
 });
+
+test('the partner-visitor marker is a value the partner_contacts.role_in_notes CHECK allows (the latest migration that sets the check)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const sql = readFileSync(new URL('../../supabase/migrations/20261113_partner_visitor_marker.sql', import.meta.url), 'utf8');
+  const allowed = sql.match(/CHECK \(role_in_notes IS NULL OR role_in_notes IN \(([^)]*)\)\)/)[1].split(',').map(v => v.trim().replace(/'/g, ''));
+  assert.ok(allowed.includes(VISITOR_ROLE), `${VISITOR_ROLE} not in ${allowed.join(' | ')}`);
+});

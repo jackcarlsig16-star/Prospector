@@ -86,8 +86,10 @@ if (PULL) {
   console.log(fresh.data.map(p => noAt(p.name)).join(' · '));
   console.log(`Seth Whitworth among them: ${fresh.data.some(p => p.name === 'Seth Whitworth')}`);
   console.log(`every new row: source_kind web_visit ${fresh.data.every(p => p.source_kind === 'web_visit')} · an Apollo id ${fresh.data.every(p => p.apollo_person_id)} · no "@" in any field ${!/@/.test(JSON.stringify(fresh.data))} · on a record ${fresh.data.filter(p => p.target_id || p.opportunity_id).length} · company name only ${fresh.data.filter(p => p.company_type === 'parked').length}`);
-  const partnerNew = await svc.from('partner_contacts').select('name', { count: 'exact' }).eq('business_id', HL).gte('created_at', started);
-  console.log(`new partner_contacts (visitors filed on a partner): ${partnerNew.count ?? 0}`);
+  const partnerNew = await svc.from('partner_contacts').select('name, goal_id, role_in_notes, source').eq('business_id', HL).gte('first_seen', started);
+  if (partnerNew.error) throw new Error(partnerNew.error.message);
+  for (const c of partnerNew.data) { const g = (await svc.from('sales_goals').select('name').eq('id', c.goal_id).maybeSingle()).data; console.log(`visitor filed on a PARTNER: ${noAt(c.name)} -> ${noAt(g?.name)} · marker ${c.role_in_notes} · source ${c.source}`); }
+  console.log(`new partner_contacts (visitors filed on a partner): ${partnerNew.data.length}`);
   // The pull schedules its score recompute in the background; give it a bounded moment before the process ends.
   await new Promise(res => setTimeout(res, 20000));
   const after = await snapshot();
