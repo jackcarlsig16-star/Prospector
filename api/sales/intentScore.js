@@ -34,6 +34,18 @@ export const DEFAULT_WEIGHTS = {
   recency: { ok_days: 30, mid_days: 60, mid: -5, far: -10 },
 };
 export const COMPONENTS = ['visits', 'pages', 'apollo_intent', 'people', 'fit', 'research', 'source', 'engagement', 'stage', 'recency'];
+// top-targets-v1 Q2 / Q6 - the ten components read as five named bars (no new component, weights untouched): HEAT ·
+// FIT · IMPACT ("what it's worth and how close": source + stage) · RECENCY · PIN. pin = the score minus the components'
+// sum - the clamp's lift (a pinned 60 reads "40 + 20"), negative when a hand-set band holds a company under its own
+// score, and whatever a ceiling took off a closed one; 0 when nothing clamps. The five always sum to the score.
+export const GROUPS = { heat: ['visits', 'pages', 'apollo_intent', 'people', 'engagement'], fit: ['fit', 'research'], impact: ['source', 'stage'], recency: ['recency'] };
+export const GROUP_ORDER = ['heat', 'fit', 'impact', 'recency', 'pin'];
+export function groupScore(components = {}, score = 0) {
+  const sum = keys => keys.reduce((n, k) => n + (Number(components[k]?.points) || 0), 0);
+  const g = Object.fromEntries(Object.entries(GROUPS).map(([name, keys]) => [name, sum(keys)]));
+  return { ...g, pin: score - (g.heat + g.fit + g.impact + g.recency) };
+}
+
 // Legend / toggle order (S3, FIXED). source_label of a scored row is one of these.
 export const SOURCE_ORDER = ['upside', 'partner_referral', 'person_referral', 'campaign', 'website', 'inbound', 'homelover_outreach', 'scout', 'other'];
 export const UPSIDE_TEAMS = ['upside', 'both'];

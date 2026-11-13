@@ -3,7 +3,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from './laDate.js';
 import { cleanText } from './scrubText.js';
-import { DEFAULT_WEIGHTS, SOURCE_ORDER, trendOf, COMPONENTS } from './intentScore.js';
+import { DEFAULT_WEIGHTS, SOURCE_ORDER, trendOf, COMPONENTS, groupScore } from './intentScore.js';
 import { recomputeScores, mergeWeights, isStale, NEEDS_TOUCH_MIN, TOUCH_WINDOWS } from './intentScoreRun.js';
 import { sourceLabelOf } from './companyBrief.js';
 import { breakdownLines } from './intentScore.js';
@@ -74,7 +74,7 @@ export function publicRow(s, prev, now = Date.now()) {
   const upside = meta.owner_team === 'upside' || meta.owner_team === 'both';
   return {
     type: s.company_type, id: s.company_id, key: `${s.company_type}-${s.company_id}`, name: meta.name || null,
-    score: s.score, band: s.band, components: comp, source_kind: s.source_kind, source_label: s.source_label, source_partner_id: s.source_partner_id || null,
+    score: s.score, band: s.band, components: comp, groups: groupScore(comp, s.score), source_kind: s.source_kind, source_label: s.source_label, source_partner_id: s.source_partner_id || null,
     owner_user_id: meta.owner_user_id || null, owner: meta.owner || null, owner_team: meta.owner_team || null, co_owner_name: meta.co_owner_name || null,
     no_double_touch: !!meta.no_double_touch, upside_owned: upside, touch_locked: upside && !!meta.no_double_touch,
     closed: !!s.closed, live: !!s.flagged_out, duplicate_of: s.duplicate_of || null, override: s.override || null,

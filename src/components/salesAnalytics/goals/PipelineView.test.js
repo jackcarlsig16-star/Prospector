@@ -8,7 +8,7 @@ import { OPEN_TASKS } from './goalsApi';
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), pinCompany: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
   members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), undoTodoEvent: jest.fn(() => Promise.resolve({})), todoEvents: jest.fn(() => Promise.resolve([])), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
   addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
@@ -254,25 +254,29 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   expect(screen.getByText('Beta Co').closest('tr').style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-warn)');
 });
 
-test('★ a partner goes through the hot signal, an employer through is_top; the star fills', async () => {
+test('★ the star is the pin for a partner and an employer alike (one route); the star fills', async () => {
+  goalsApi.pinCompany.mockResolvedValue({ pin: {}, event: { id: 'ev1' }, undo: { kind: 'flow', id: 'ev1' } });
   setup();
   await screen.findByText('Solidcore');
   fireEvent.click(screen.getByRole('button', { name: 'Star OneDigital' }));
-  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'hot', hot: true }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'OneDigital', { action: 'pin' }));
   fireEvent.click(screen.getByRole('button', { name: 'Star Solidcore' }));
-  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { is_top: true }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'employer', 'Solidcore', { action: 'pin' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Unstar Solidcore' })).toHaveAttribute('aria-pressed', 'true'));
   fireEvent.click(screen.getByRole('button', { name: 'Unstar Gallagher' }));
-  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { action: 'unpin' }));
+  expect(updateOpportunity).not.toHaveBeenCalled();
+  expect(goalsApi.partnerSignal).not.toHaveBeenCalled();
 });
 
-test('soft cap: starring a 26th asks to unstar one first and writes nothing', async () => {
+test('no cap (top-targets-v1 Q4): a 26th star pins like any other', async () => {
+  goalsApi.pinCompany.mockResolvedValue({ pin: {}, event: { id: 'ev1' }, undo: { kind: 'partner', id: 'ev1' } });
   const full = Array.from({ length: 25 }, (_, i) => row(`P${i}`, 'partner', 'gray', { top: true }));
   goalsApi.pipelineBoard.mockResolvedValue([...full, row('Extra', 'partner', 'gray')]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Star Extra' }));
-  expect((await screen.findByRole('status')).textContent).toMatch(/Top is full \(25\): unstar one first/);
-  expect(goalsApi.partnerSignal).not.toHaveBeenCalled();
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Extra', { action: 'pin' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Unstar Extra' })).toHaveAttribute('aria-pressed', 'true'));
 });
 
 test('click-through: every row but a signal opens the company panel; Open full card goes to the record (partner card, Tasks, Companies week, employer panel)', async () => {
@@ -407,8 +411,9 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   await waitFor(() => expect(panel.queryByLabelText('Note')).toBeNull());
   expect(goalsApi.companyDetail).toHaveBeenCalledTimes(2);
   expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
+  goalsApi.pinCompany.mockResolvedValue({ pin: null, event: { id: 'ev9' }, undo: { kind: 'partner', id: 'ev9' } });
   fireEvent.click(panel.getByRole('button', { name: 'Top' }));
-  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { action: 'unpin' }));
   await waitFor(() => expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'false'));
   fireEvent.click(panel.getByRole('button', { name: 'To-do' }));
   fireEvent.change(panel.getByLabelText('To-do'), { target: { value: 'Call Pat about the pilot' } });

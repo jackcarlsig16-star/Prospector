@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SA } from '../../theme';
 import { goalsApi } from '../goalsApi';
-import { updateOpportunity } from '../../pipelineApi';
 import { SOURCE_THEME_CSS } from '../../palette';
 import useMediaQuery from '../../../../utils/useMediaQuery';
 import { FRAME_TOOLS_ID } from '../../salesFrame';
@@ -11,7 +10,6 @@ import Button from '../../../../ui/Button';
 import { ToggleChip } from '../../../../ui/Chip';
 import CompanyPanel from '../CompanyPanel';
 import { numStyle, ErrorNote } from '../goalsUi';
-import { TOP_CAP } from '../../../../constants/pipelineBoard';
 import DotsChart from './DotsChart';
 import FilterBar from './FilterBar';
 import ChartToolbar from './ChartToolbar';
@@ -215,9 +213,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     finally { setSharing(false); }
   };
   const starRow = async r => {
-    if (!r.top && board.filter(x => x.top).length >= TOP_CAP) throw new Error(`Top is full (${TOP_CAP}): unstar one first.`);
-    if (r.type === 'partner') await goalsApi.partnerSignal(businessId, r.id, { type: 'hot', hot: !r.top });
-    else await updateOpportunity(businessId, r.id, { is_top: !r.top });
+    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
+    await goalsApi.pinCompany(businessId, r.type, r.id, { action: r.top ? 'unpin' : 'pin' });
     setBoard(bs => bs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
   };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));

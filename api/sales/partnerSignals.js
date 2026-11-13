@@ -1,3 +1,5 @@
+import { hasPii } from './scrubText.js';
+import { isPinned, pinPatch, PIN_REASON_MAX } from './pinState.js';
 import { laDateString } from './laDate.js';
 import { addDays, isDate, laStartOfDayMs } from './goalsShared.js';
 import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove, stepOf } from '../../src/constants/partnerPipeline.js';
@@ -48,6 +50,7 @@ export const UNDO_WINDOW_MS = 2 * 60e3; // client shows 5s; the slack covers slo
 const NOTE_MAX = 2000;
 const CONTACTS_MAX = 10, CONTACT_NAME_MAX = 80;
 
+const PIN_KEYS = ['pinned_until', 'pinned_at', 'pinned_by', 'pin_reason', 'priority', 'priority_set_at', 'priority_set_by'];
 export class SignalError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
@@ -101,7 +104,7 @@ function planTouch(goal, signal, now) {
   };
 }
 
-export function plan(goal, signal, now, { skipTouchStamp = false } = {}) {
+export function plan(goal, signal, now, { skipTouchStamp = false, byUser = null } = {}) {
   const today = laDateString(now);
   if (['status', 'deprioritize', 'touch'].includes(signal?.type) && signal.expect !== undefined && (goal.pipeline_status || 'not_started') !== signal.expect) {
     throw new SignalError(CHANGED, 409);
@@ -140,10 +143,18 @@ export function plan(goal, signal, now, { skipTouchStamp = false } = {}) {
       const meta = { ...('owner_user_id' in patch ? { to_owner: patch.owner_user_id } : {}), ...(Object.keys(ownership).length ? { ownership } : {}) };
       return { patch, event: { event: 'assign', meta } };
     }
-    case 'hot':
+    // top-targets-v1 Q1: hot = pinned. Hot on pins the partner for 30 days (pinState.js), hot off unpins; a partner
+    // already hot can be renewed (renew: true) or pinned again once its pin ran out.
+    case 'hot': {
       if (typeof signal.hot !== 'boolean') throw new SignalError('hot must be true or false');
-      if (signal.hot === goal.hot) throw new SignalError(`already ${signal.hot ? 'hot' : 'not hot'}`, 409);
-      return { patch: { hot: signal.hot }, event: { event: 'hot', meta: { hot: signal.hot } } };
+      const at = new Date(now).getTime(), pinned = isPinned(goal, at);
+      if (signal.hot === !!goal.hot && !(signal.hot && (signal.renew === true || !pinned))) throw new SignalError(`already ${signal.hot ? 'hot' : 'not hot'}`, 409);
+      const reason = signal.reason == null || signal.reason === '' ? null : signal.reason;
+      if (reason !== null && (typeof reason !== 'string' || reason.length > PIN_REASON_MAX || hasPii(reason))) throw new SignalError(`reason must be text of at most ${PIN_REASON_MAX} characters, with no email address or phone number`);
+      const action = !signal.hot ? 'unpin' : signal.renew === true && pinned ? 'renew' : 'pin';
+      const patch = pinPatch(goal, { type: 'partner', action, reason, userId: byUser, now: at });
+      return { patch, event: { event: 'hot', meta: { hot: signal.hot, pin: action, set: patch } } };
+    }
     case 'snooze': {
       const days = signal.days ?? 7;
       if (!Number.isInteger(days) || days < 1 || days > 90) throw new SignalError('days must be a whole number from 1 to 90');
@@ -205,7 +216,7 @@ async function write(supabase, goal, patch, event) {
 // reads them from the body, so a browser can't label its own click "from Apollo".
 export async function applyPartnerSignal(supabase, { businessId, goalId, signal, byUser = null, now = new Date(), source = 'manual', meta = {}, skipTouchStamp = false }) {
   const goal = await partnerOrThrow(supabase, businessId, goalId);
-  const { patch, event } = plan(goal, signal, now, { skipTouchStamp });
+  const { patch, event } = plan(goal, signal, now, { skipTouchStamp, byUser });
   const prev = Object.fromEntries(Object.keys(patch).map(k => [k, goal[k] ?? null]));
   return write(supabase, goal, patch, { ...event, source, meta: { ...meta, ...(event.meta || {}), prev }, by_user: byUser });
 }
@@ -240,6 +251,7 @@ function eventResult(ev, key) {
   if (key === 'owner_user_id') return ev.meta?.to_owner ?? null;
   if (['owner_team', 'co_owner_name', 'no_double_touch'].includes(key)) return ev.meta?.ownership?.[key];
   if (key === 'hot') return ev.meta?.hot;
+  if (PIN_KEYS.includes(key)) return ev.meta?.set?.[key];
   if (key === 'snoozed_until') return ev.meta?.until;
   return undefined;
 }

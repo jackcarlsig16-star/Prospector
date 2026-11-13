@@ -898,6 +898,8 @@ app.post('/api/sales/:businessId/goals/company/:type/:id/not-now', salesModuleRo
 app.post('/api/sales/:businessId/goals/company/:type/:id/deprioritize', salesModuleRoute('./api/sales/fitActions.js', 'deprioritizeRoute', 'goals/company/:type/:id/deprioritize POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/bring-back', salesModuleRoute('./api/sales/fitActions.js', 'bringBackRoute', 'goals/company/:type/:id/bring-back POST'));
 app.patch('/api/sales/:businessId/goals/company/:type/:id/fit', salesModuleRoute('./api/sales/fitActions.js', 'setFitRoute', 'goals/company/:type/:id/fit PATCH'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/pin', salesModuleRoute('./api/sales/pinWrite.js', 'pinRoute', 'goals/company/:type/:id/pin POST'));
+app.get('/api/sales/:businessId/goals/top-targets', salesModuleRoute('./api/sales/topTargets.js', 'topTargetsRoute', 'goals/top-targets'));
 app.post('/api/sales/:businessId/goals/company/employer/:id/they-replied', salesModuleRoute('./api/sales/replyRules.js', 'theyRepliedRoute', 'goals/company/employer/:id/they-replied POST'));
 app.get('/api/sales/:businessId/goals/company/employer/:id/reply-suggestion', salesModuleRoute('./api/sales/replyRules.js', 'replySuggestionRoute', 'goals/company/employer/:id/reply-suggestion'));
 app.get('/api/sales/:businessId/goals/fit/:type/:id', salesModuleRoute('./api/sales/fitRadar.js', 'fitOfRoute', 'goals/fit/:type/:id'));

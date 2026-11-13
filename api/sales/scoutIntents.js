@@ -21,6 +21,7 @@ export const salesReads = {
   listClients: lazy('./clients.js', 'listClients'),
   loadFunnel: lazy('./funnelRoutes.js', 'loadFunnel'),
   personDetail: lazy('./peopleActivityRoutes.js', 'personDetail'),
+  topTargets: lazy('./topTargets.js', 'topTargets'),
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets', 'accounts']);
 const day = v => (v ? String(v).slice(0, 10) : null);
@@ -90,7 +91,35 @@ export const personRow = p => ({ kind: 'person', key: p.key, name: p.name, title
 const personItem = p => ({ company: p.company?.name || null, row: personRow(p), entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d${p.visits.last_visit ? ` · last ${day(p.visits.last_visit)}` : ''}` : null, p.identified_at ? `identified on the site ${p.identified_at}` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') });
 
 // Each intent declares one example phrasing (A5): the fallback answer offers three, the `suggest` ones first.
+// top-targets-v1 T5: "my top targets" / "Cyrus's top 5" / "why is Hilton a top target" read the ONE ranking
+// (goals/top-targets: pins first, then score) - never the ranked intent's band words.
+export const TOP_TARGETS_RULE = 'Top targets = the open companies in one order: pinned ones first (newest pin first), then intent score. Each row says why (size · visits this week · source · stage · pin reason) and its five bars: heat, fit, impact (source + stage), recency, pin.';
+export const isTopTargets = ask => /\btop\s+(?:\d+\s+)?targets?\b/.test(String(ask.q || '').toLowerCase()) || /\b[a-z]+['’]s\s+top\s+\d+\b/.test(String(ask.q || '').toLowerCase());
+const topItem = x => ({
+  company: x.name, row: { kind: 'company', type: x.type, id: x.id, name: x.name, score: x.score ?? null, band: x.band || null, owner: x.owner || null, stage: x.stage || null },
+  entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: null,
+  text: [x.name, x.type, `top target #${x.rank}`, `score ${x.score} ${x.band}`, `why: ${x.why}`, `bars: heat ${x.groups.heat} · fit ${x.groups.fit} · impact ${x.groups.impact} · recency ${x.groups.recency} · pin ${x.groups.pin}`, x.pin ? `${x.pin.held ? `held at P${x.pin.level}` : 'pinned'} · ${x.pin.days_left} d left` : null, x.owner ? `owner ${x.owner}` : 'unassigned'].filter(Boolean).join(' · '),
+});
+
 export const salesIntents = [
+  { id: 'top_targets', example: "Cyrus's top 5 targets", title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
+    async run(sb, { businessId, auth, ask, now }) {
+      const q = String(ask.q || '').toLowerCase();
+      const members = await sb.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(r => r.data || []);
+      const named = members.find(m => { const first = String(m.profile?.display_name || m.name || '').trim().split(/\s+/)[0].toLowerCase(); return first && new RegExp(`\\b${first.replace(/[^a-z]/g, '')}(?:['’]s)?\\b`).test(q); });
+      const owner = named ? named.user_id : ask.mine ? auth.user.id : '';
+      // "why is Hilton a top target": the one company's row, wherever it ranks in the whole book
+      if (ask.company.length && !named) {
+        const r = await salesReads.topTargets(sb, businessId, { limit: 200 }, { now });
+        const want = ask.company.map(c => normName(c));
+        const hits = r.body.rows.filter(x => want.some(w => normName(x.name) === w || normName(x.name).includes(w)));
+        return { read: `goals/top-targets {} · ${r.body.total} ranked · ${hits.length} named`, items: hits.slice(0, 3).map(topItem) };
+      }
+      const limit = ask.limit || Number(/\btop\s+(\d{1,2})\b/.exec(q)?.[1]) || 10;
+      const query = { ...(owner ? { owner } : {}), limit };
+      const r = await salesReads.topTargets(sb, businessId, query, { now, meId: auth.user.id });
+      return { read: `goals/top-targets ${JSON.stringify(query)} · ${r.body.n} of ${r.body.total} · ${r.body.pinned} pinned`, items: r.body.rows.map(topItem) };
+    } },
   // scout-v3 D9: a named company - or a named PERSON when no company carries the name - is a brief. A pronoun's
   // carried companies ("... my tasks for them") never re-open the brief. brief = the one record, for the brief header.
   { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', context: true, rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,

@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { goalsApi } from './goals/goalsApi';
-import { updateOpportunity } from './pipelineApi';
 import CompanyPanel from './goals/CompanyPanel';
 import { companyRowFor } from './peopleModel';
-import { TOP_CAP } from '../../constants/pipelineBoard';
 
 // sales-ia-v2 P5 - "Open company" from a People row: the P4 company panel on
 // the Pipeline row behind the person's company (the linked opportunity, else
@@ -30,9 +28,8 @@ export default function PeopleCompanyPanel({ businessId, person, canEdit, member
   const reload = useCallback(() => load().then(setRows).catch(e => onToast({ text: e.message })), [load, onToast]);
   if (!row) return null;
   const star = async () => {
-    if (!row.top && rows.filter(r => r.top).length >= TOP_CAP) throw new Error(`Top is full (${TOP_CAP}): unstar one first.`);
-    if (row.type === 'partner') await goalsApi.partnerSignal(businessId, row.id, { type: 'hot', hot: !row.top });
-    else await updateOpportunity(businessId, row.id, { is_top: !row.top });
+    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
+    await goalsApi.pinCompany(businessId, row.type, row.id, { action: row.top ? 'unpin' : 'pin' });
     setRows(rs => rs.map(x => (x.id === row.id ? { ...x, top: !row.top } : x)));
   };
   return (

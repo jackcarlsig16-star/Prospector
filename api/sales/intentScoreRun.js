@@ -1,3 +1,4 @@
+import { pinOverride } from './pinState.js';
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { normName } from './intakeMatch.js';
@@ -54,9 +55,9 @@ async function fitRows(supabase, businessId) {
 export async function gatherInputs(supabase, businessId, { now = Date.now() } = {}) {
   const all = (t, cols, build = x => x) => selectAllPages(() => build(supabase.from(t).select(cols).eq('business_id', businessId)).order('id'));
   const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors, fitByKey] = await Promise.all([
-    all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, category, last_touch_at, priority, priority_set_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
-    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, priority, priority_set_at, archived_at, updated_at, created_at, notes'),
-    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, updated_at, created_at, decided_at, promoted_goal_id'),
+    all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, category, last_touch_at, priority, priority_set_at, pinned_until, pinned_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
+    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, priority, priority_set_at, pinned_until, pinned_at, archived_at, updated_at, created_at, notes'),
+    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, pinned_until, pinned_at, updated_at, created_at, decided_at, promoted_goal_id'),
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, first_visit, last_visit, pulled_on, seen_from'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
@@ -145,7 +146,8 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     const viaUpside = r.source_kind === 'partner_referral' && (upsideIds.has(r.source_partner_id) || UPSIDE_TEAMS.includes(r.owner_team || ''));
     const heat = heatBy.get(key) || heatBy.get(`name:${nameKey}`) || null;
     const touch = latestTouch([...(touchesBy.get(key) || []), ...(touchesBy.get(`name:${nameKey}`) || []), r.last_touch_at ? { at: r.last_touch_at, who: null, channel: 'touch' } : null]);
-    const override = overrideByKey.get(nameKey) || (r.priority != null && r.priority_set_at ? { priority: Number(r.priority), not_a_fit: false, set_at: r.priority_set_at } : null);
+    // top-targets-v1 Q1: the record's pin is the clamp (a visitor override typed by company name still wins).
+    const override = overrideByKey.get(nameKey) || pinOverride(r, now, weights.override_days);
     const research = researchBy.get(key) || null;
     const fitRow = fitByKey?.get(key) || null;
     return {

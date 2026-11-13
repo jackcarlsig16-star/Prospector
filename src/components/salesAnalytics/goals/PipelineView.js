@@ -26,7 +26,6 @@ import { openTasks } from '../tasks/LinkedTasks';
 import { laWeekStart } from '../periods';
 import { FRAME_TOOLS_ID } from '../salesFrame';
 import { numStyle, ErrorNote } from './goalsUi';
-import { TOP_CAP } from '../../../constants/pipelineBoard';
 import { ownerChip } from './flowModel';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
@@ -167,7 +166,6 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const owners = useMemo(() => ownersOf(all), [all]);
   const stages = useMemo(() => stagesOf(all), [all]);
   const view = useMemo(() => companiesView(all, channel, filters), [all, channel, filters]);
-  const topAll = all.filter(r => r.top).length;
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
   const toggleGroup = id => setCollapsed(c => { const n = c.includes(id) ? c.filter(x => x !== id) : [...c, id]; writeCollapsed(n); return n; });
@@ -175,9 +173,8 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const patchRow = (r, patch) => setRows(rs => rs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
   const starRow = async r => {
-    if (!r.top && topAll >= TOP_CAP) throw new Error(`Top is full (${TOP_CAP}): unstar one first.`);
-    if (r.type === 'partner') await goalsApi.partnerSignal(businessId, r.id, { type: 'hot', hot: !r.top });
-    else await updateOpportunity(businessId, r.id, { is_top: !r.top });
+    // top-targets-v1 Q1 / Q4: the star IS the pin (30 days, an event row + Undo on the server); no cap.
+    await goalsApi.pinCompany(businessId, r.type, r.id, { action: r.top ? 'unpin' : 'pin' });
     setRows(rs => rs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
   };
   const star = async r => {
@@ -332,7 +329,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     return <span data-channel-cell={r.channel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: SA.soft }}>{Icon && <Icon size={14} />}{CHANNEL_LABEL[r.channel]}</span>;
   };
   const allColumns = [
-    { id: 'top', label: `Top ${TOP_CAP}`, width: 38, fixed: true, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
+    { id: 'top', label: 'Pinned', width: 38, fixed: true, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
     { id: 'name', label: 'Company', width: 220, sticky: true, fixed: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.record_id ? ` · ${r.record_id}` : ''}` },
     { id: 'type', label: 'Type', width: 116, sortValue: typeSortValue, render: typeCell },
     { id: 'channel', label: 'Channel', width: 112, sortValue: r => CHANNEL_LABEL[r.channel] || null, render: channelCell, title: r => CHANNEL_LABEL[r.channel] },

@@ -7,7 +7,8 @@ import { cleanText } from './scrubText.js';
 // Every row holds prev (what each changed column held) and meta.set (what it was set to), so Undo restores the exact
 // prior values and refuses when something changed since (same rule as partner undo). Rows are never deleted: an Undo
 // stamps undone_at and adds an 'undo' row. Partner stage / owner moves never go through here (applyPartnerSignal).
-export const FLOW_KINDS = ['deprioritize', 'bring_back', 'fit_set', 'assign', 'reply_move', 'meeting_move', 'they_replied', 'undo'];
+// 'pin' / 'pin_renew' / 'unpin' (top-targets-v1) need 20261114_top_targets_v1_flow_kinds.sql: the table's CHECK lists the kinds.
+export const FLOW_KINDS = ['deprioritize', 'bring_back', 'fit_set', 'assign', 'reply_move', 'meeting_move', 'they_replied', 'pin', 'pin_renew', 'unpin', 'undo'];
 export const UNDO_WINDOW_MS = 2 * 60e3; // the client shows 10 s; the slack covers slow networks
 export const AUTO_UNDO_WINDOW_MS = 7 * 864e5; // an automatic move (by_user null) stays undoable for 7 days (F7)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

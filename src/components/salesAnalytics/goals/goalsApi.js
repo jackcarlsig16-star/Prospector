@@ -154,6 +154,10 @@ export const goalsApi = {
   savePeopleView: (id, body) => call(id, '/people/views', { method: 'POST', body }),
   deletePeopleView: (id, viewId) => call(id, `/people/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
   // V2a follow-up - a parked visitor (no record yet) gets their company filed as an employer target (Members).
+  // top-targets-v1 Q1 - Pin / Renew / Unpin a partner, employer or target (expect = the pinned_until the screen showed);
+  // the reply's undo says which Undo route takes it back. topTargets = the one ranking (pins first, then score).
+  pinCompany: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/pin`, { method: 'POST', body }),
+  topTargets: (id, params = {}) => call(id, `/top-targets?${new URLSearchParams(params)}`),
   // person-owner-v1 O2 - a person's owner (null = Unassigned); expect = the owner the screen showed (409 on a mismatch).
   assignPerson: (id, personKey, body) => call(id, `/people/${encodeURIComponent(personKey)}/assign`, { method: 'POST', body }),
   undoPersonEvent: (id, eventId) => call(id, `/people/events/${eventId}/undo`, { method: 'POST', body: {} }),
