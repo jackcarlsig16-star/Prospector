@@ -119,7 +119,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
   }, [menu]);
   const changed = useCallback(() => { setVersion(v => v + 1); onChanged(); }, [onChanged]);
-  const star = async () => { setStarBusy(true); try { await onStar(); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
+  const star = async action => { setStarBusy(true); try { await onStar(typeof action === 'string' ? action : undefined); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
 
   const lookup = memberLookup(members);
   const facts = factsFor(row, detail?.record, sourced && source ? source.source : undefined);
@@ -165,6 +165,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       {live && <LiveChip since={liveSince(detail?.stage_history)} />}
       {canEdit && (row.type === 'partner' || row.type === 'employer') && (
         <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} data-pin-expired={row.pin_expired || undefined} title={row.pin_expired ? RENEW_TITLE : undefined} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top || row.pin_expired ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />{row.pin_expired ? 'Renew' : 'Top'}</button>
+      )}
+      {canEdit && row.pin_expired && (row.type === 'partner' || row.type === 'employer') && (
+        <button type="button" className="ui-btn ui-btn--tertiary" disabled={starBusy} onClick={() => star('unpin')} style={{ height: 28, padding: '0 8px', fontSize: 12 }}>Unpin</button>
       )}
       {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
       {!canEdit && row.pin_expired && <span data-pin-expired title={EXPIRED_TITLE} style={{ color: SA.warn, fontSize: 13 }}>☆ {EXPIRED_TITLE}</span>}

@@ -30,18 +30,19 @@ export function pinState(row, now = Date.now()) {
 export const starOf = (row, now = Date.now()) => ({ top: isPinned(row, now), pin_expired: !!row?.pinned_until && !isPinned(row, now), pinned_until: row?.pinned_until || null });
 
 // What the score's clamp reads (intentScore's override: { priority, not_a_fit, set_at }; it expires set_at + days).
-// A dated priority with no pin at all still clamps as before (partner forms can still set one).
+// Only a live pin clamps: a dated priority with no pin lifts nothing.
 export function pinOverride(row, now = Date.now(), days = PIN_DAYS) {
-  if (isPinned(row, now)) return { priority: pinLevel(row), not_a_fit: false, set_at: new Date(ms(row.pinned_until) - days * DAY).toISOString() };
-  if (!row?.pinned_until && row?.priority != null && row?.priority_set_at) return { priority: Number(row.priority), not_a_fit: false, set_at: row.priority_set_at };
-  return null;
+  if (!isPinned(row, now)) return null;
+  return { priority: pinLevel(row), not_a_fit: false, set_at: new Date(ms(row.pinned_until) - days * DAY).toISOString() };
 }
 
-// The columns one action sets. type: partner | employer | target. The star / hot columns follow the pin.
+// The columns one action sets. type: partner | employer | target. Renew keeps the reason unless a new one is sent
+// (also on a pin that ran out); 'reason' edits the line and leaves the dates. The star / hot columns follow the pin.
 export function pinPatch(row, { type, action, reason = null, userId = null, now = Date.now() }) {
   const until = pgStamp(now + PIN_DAYS * DAY);
   const flag = type === 'employer' ? 'is_top' : type === 'partner' ? 'hot' : null;
   if (action === 'pin') return { pinned_until: until, pinned_at: pgStamp(now), pinned_by: userId, pin_reason: reason, ...(flag ? { [flag]: true } : {}) };
+  if (action === 'reason') return { pin_reason: reason };
   if (action === 'renew') return { pinned_until: until, ...(reason ? { pin_reason: reason } : {}) };
   const wasThePin = row?.priority != null && row?.priority_set_at && ms(row.priority_set_at) === ms(row.pinned_at);
   return {

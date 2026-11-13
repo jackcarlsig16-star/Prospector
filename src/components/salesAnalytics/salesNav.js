@@ -8,7 +8,7 @@
 // homelover-team-emails-v1: Settings = workspace settings (owner edits, everyone else reads); Team emails first.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions'], ['settings', 'Settings']];
 export const SUB_VIEWS = {
-  pipeline: [['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
+  pipeline: [['top-targets', 'Top targets'], ['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
   dashboard: [['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources']],
   settings: [['team-emails', 'Team emails']],
 };

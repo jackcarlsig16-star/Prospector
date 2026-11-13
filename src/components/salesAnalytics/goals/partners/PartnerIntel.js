@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SA, saSans } from '../../theme';
-import { labelStyle, subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
+import { labelStyle, subStyle, Btn, ErrorNote } from '../goalsUi';
 
 // Apollo stays read-only: the link only opens Apollo's sequences page.
 const APOLLO_SEQUENCES = 'https://app.apollo.io/#/sequences';
@@ -17,10 +17,10 @@ function Field({ label, children, color }) {
 
 // partner-360-v1 - the sheet's research and the stored first email. The
 // Intel drawer around it is the toggle (partner-details-drawers-v1).
-export default function PartnerIntel({ partner, canEdit, onUpdate }) {
+export default function PartnerIntel({ partner }) {
+  const [error, setError] = useState('');
   const [showEmail, setShowEmail] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState('');
   const watch = [partner.do_not_say, partner.watch_outs].filter(Boolean).join('\n');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -42,16 +42,9 @@ export default function PartnerIntel({ partner, canEdit, onUpdate }) {
         <Field label="1st email sent" color={SA.muted}>{partner.first_email_at}</Field>
         <Field label="Sources" color={SA.muted}>{partner.sources}</Field>
       </div>
-      {(canEdit || partner.first_email) && (
+      {partner.first_email && (
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          {canEdit && <>
-            <label style={labelStyle} htmlFor={`wf-prio-${partner.id}`}>Priority</label>
-            <select id={`wf-prio-${partner.id}`} value={partner.priority ?? ''} style={{ ...inputStyle, height: 36, width: 'auto' }}
-              onChange={async e => { setError(''); try { await onUpdate(partner.id, { priority: e.target.value ? Number(e.target.value) : null }); } catch (err) { setError(err.message); } }}>
-              <option value="1">P1 · this week</option><option value="2">P2 · 30 days</option><option value="3">P3 · 60–90 days</option><option value="">Unprioritized</option>
-            </select>
-          </>}
-          {partner.first_email && <Btn style={{ height: 36 }} aria-expanded={showEmail} onClick={() => setShowEmail(s => !s)}>{showEmail ? 'Hide first email' : 'Open first email'}</Btn>}
+          <Btn style={{ height: 36 }} aria-expanded={showEmail} onClick={() => setShowEmail(s => !s)}>{showEmail ? 'Hide first email' : 'Open first email'}</Btn>
         </div>
       )}
       {showEmail && (

@@ -24,7 +24,8 @@ test('exact hit: "Already in Prospector" with Open, button says Add anyway, firs
   fireEvent.click(screen.getByRole('button', { name: 'Open' }));
   expect(onOpenPartner).toHaveBeenCalledWith('p-gal');
   await act(async () => { fireEvent.click(btn); });
-  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Gallagher Inc', priority: 1 }));
+  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Gallagher Inc' }));
+  expect(screen.queryByLabelText('Priority')).toBeNull(); // top-targets-v1: a new partner gets no priority - the pin is the one lift
   expect(onDone).toHaveBeenCalled();
 });
 
@@ -36,13 +37,13 @@ test('partial hit: a Similar line, Add still saves on the first click; archived 
   await screen.findByText(/Similar: Brown & Brown \(partner · archived\) · ZeroBounce \(target · not a fit\) · Fit \(pipeline\) · Solid \(Apollo\)/);
   expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Add' })); });
-  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Brown Insurance', priority: 1 }));
+  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Brown Insurance' }));
 });
 
 test('a failed dupe check never blocks the save', async () => {
   const { input, onCreate } = setup(async () => { throw new Error('offline'); });
   fireEvent.change(input, { target: { value: 'Fundrise' } });
   await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
-  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Fundrise', priority: 1 }));
+  await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Fundrise' }));
   expect(screen.queryByText('Already in Prospector:')).toBeNull();
 });

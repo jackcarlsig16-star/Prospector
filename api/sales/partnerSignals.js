@@ -144,14 +144,16 @@ export function plan(goal, signal, now, { skipTouchStamp = false, byUser = null 
       return { patch, event: { event: 'assign', meta } };
     }
     // top-targets-v1 Q1: hot = pinned. Hot on pins the partner for 30 days (pinState.js), hot off unpins; a partner
-    // already hot can be renewed (renew: true) or pinned again once its pin ran out.
+    // already hot can be renewed (renew: true, also after its pin ran out - the reason stays), have its reason edited
+    // (edit: true) or be pinned again once its pin ran out.
     case 'hot': {
       if (typeof signal.hot !== 'boolean') throw new SignalError('hot must be true or false');
       const at = new Date(now).getTime(), pinned = isPinned(goal, at);
-      if (signal.hot === !!goal.hot && !(signal.hot && (signal.renew === true || !pinned))) throw new SignalError(`already ${signal.hot ? 'hot' : 'not hot'}`, 409);
+      if (signal.hot === !!goal.hot && !(signal.hot && (signal.renew === true || signal.edit === true || !pinned))) throw new SignalError(`already ${signal.hot ? 'hot' : 'not hot'}`, 409);
       const reason = signal.reason == null || signal.reason === '' ? null : signal.reason;
       if (reason !== null && (typeof reason !== 'string' || reason.length > PIN_REASON_MAX || hasPii(reason))) throw new SignalError(`reason must be text of at most ${PIN_REASON_MAX} characters, with no email address or phone number`);
-      const action = !signal.hot ? 'unpin' : signal.renew === true && pinned ? 'renew' : 'pin';
+      if (signal.edit === true && !pinned) throw new SignalError('not pinned', 409);
+      const action = !signal.hot ? 'unpin' : signal.edit === true ? 'reason' : signal.renew === true && goal.pinned_until ? 'renew' : 'pin';
       const patch = pinPatch(goal, { type: 'partner', action, reason, userId: byUser, now: at });
       return { patch, event: { event: 'hot', meta: { hot: signal.hot, pin: action, set: patch } } };
     }

@@ -13,6 +13,7 @@ import { undoFlow } from './flowEvents.js';
 import { applyPartnerSignal, undoPartnerSignal } from './partnerSignals.js';
 import { scoreCompany, groupScore, GROUP_ORDER, DEFAULT_WEIGHTS, COMPONENTS } from './intentScore.js';
 import { topTargets, whyLine, sizeWord, sourceWord, pinFirst, parseTopQuery } from './topTargets.js';
+import { pinnedKeys } from './scoresRoutes.js';
 import { salesIntents, isTopTargets, TOP_TARGETS_RULE } from './scoutIntents.js';
 
 const NOW = Date.parse('2026-11-13T20:00:00Z');
@@ -29,7 +30,7 @@ const seed = () => ({
   ],
   sales_targets: [{ id: T.quarry, business_id: B, name: 'Zz Quarry Labs', status: 'researching', ...noPin }],
   sales_goals: [{ id: P.harbor, business_id: B, goal_type: 'partnership', name: 'Zz Harbor Lane', pipeline_status: 'replied', hot: false, priority: 2, priority_set_at: null, priority_set_by: null, next_meeting_at: null, ...noPin }],
-  sales_flow_events: [], sales_partner_events: [], sales_company_scores: [], sales_company_score_days: [], sales_settings: [],
+  sales_flow_events: [], sales_partner_events: [], sales_company_scores: [], sales_company_score_days: [], sales_settings: [], sales_week_goals: [],
 });
 
 test('pin state (pure): a pin lifts to P1 for 30 days; a priority set before the rename keeps its band (held); expiry ends it; the clamp the score reads; the columns each action sets', () => {
@@ -41,7 +42,8 @@ test('pin state (pure): a pin lifts to P1 for 30 days; a priority set before the
   assert.deepEqual(pinOverride(fresh, NOW), { priority: 1, not_a_fit: false, set_at: new Date(NOW).toISOString() }, 'the clamp expires when the pin does (set_at + 30 d = pinned_until)');
   assert.deepEqual(pinOverride(asIs, NOW).priority, 3);
   assert.equal(pinOverride(asIs, NOW + 19 * DAY), null, 'an expired pin clamps nothing, even with its old priority still on the row');
-  assert.deepEqual(pinOverride({ ...noPin, priority: 2, priority_set_at: '2026-11-10T00:00:00+00:00' }, NOW), { priority: 2, not_a_fit: false, set_at: '2026-11-10T00:00:00+00:00' }, 'a dated priority with no pin still clamps (partner forms)');
+  assert.equal(pinOverride({ ...noPin, priority: 2, priority_set_at: '2026-11-10T00:00:00+00:00' }, NOW), null, 'the clamp is the pin only: a dated priority with no pin lifts nothing');
+  assert.deepEqual(pinPatch({ ...noPin, pinned_until: pgStamp(NOW + DAY), pin_reason: 'old' }, { type: 'employer', action: 'reason', reason: 'new line', now: NOW }), { pin_reason: 'new line' }, 'a reason edit leaves the dates');
   assert.equal(pinOverride({ ...noPin, priority: 2, priority_set_at: null }, NOW), null);
   assert.deepEqual(pinPatch(noPin, { type: 'employer', action: 'pin', reason: 'why', userId: JACK, now: NOW }), { pinned_until: pgStamp(NOW + PIN_DAYS * DAY), pinned_at: pgStamp(NOW), pinned_by: JACK, pin_reason: 'why', is_top: true });
   assert.deepEqual(Object.keys(pinPatch(noPin, { type: 'target', action: 'pin', now: NOW })), ['pinned_until', 'pinned_at', 'pinned_by', 'pin_reason'], 'a target has no star column');
@@ -162,12 +164,18 @@ test('GET goals/top-targets: the P1 pins first (newest pin first), then score; a
     score('partner', P.harbor, 'Zz Harbor Lane', 45, 'P2'),
     score('employer', X.closed, 'Zz Closed', 9, 'P4', { closed: true }), score('employer', X.won, 'Zz Won', 70, 'P1', { flagged_out: true }), score('employer', X.dupe, 'Zz Dupe', 66, 'P1', { duplicate_of: `employer:${X.top}` }),
   ];
+  const todo = (id, link_id, text, due_date, extra = {}) => ({ id, business_id: B, kind: 'todo', status: 'open', link_type: 'opportunity', link_id, text, due_date, carried_from_id: null, ...extra });
+  data.sales_week_goals = [todo('t1', X.top, 'Later one', '2026-11-25'), todo('t2', X.top, 'Call the CHRO at jo@example.com', '2026-11-17'), todo('t3', X.top, 'No date', null), todo('t4', E.acme, 'Done one', '2026-11-14', { status: 'done' }), todo('t5', E.acme, 'A waiting line', '2026-11-14', { kind: 'waiting' })];
   const sb = fakeSupabase(data);
   const all = await topTargets(sb, B, {}, { now: NOW });
   assert.equal(all.status, 200);
   assert.deepEqual(all.body.rows.map(r => [r.rank, r.name, r.score, r.pin ? (r.pin.held ? `held P${r.pin.level}` : 'pinned') : null]), [[1, 'Zz Quarry Labs', 60, 'pinned'], [2, 'Zz Acme Health', 60, 'pinned'], [3, 'Zz Top Score', 78, null], [4, 'Zz Harbor Lane', 45, null], [5, 'Zz Held College', 39, 'held P3']]);
   assert.deepEqual([all.body.n, all.body.total, all.body.book, all.body.pinned], [5, 5, 5, 3]);
-  assert.deepEqual(all.body.rows.map(r => r.why), ['contacted · pinned: newer pin', 'contacted, next Nov 18 · pinned: older pin', '5,000+ employees · contacted', 'contacted', 'contacted · held at P3: priority set Nov 1']);
+  assert.deepEqual(all.body.rows.map(r => r.why.full), ['contacted · pinned: newer pin', 'contacted, next Nov 18 · pinned: older pin', '5,000+ employees · contacted', 'contacted', 'contacted · held at P3: priority set Nov 1']);
+  assert.deepEqual(all.body.rows.map(r => r.why.short), ['size unknown · no visits this week · Contacted', 'size unknown · no visits this week · Contacted', '5,000+ · no visits this week · Contacted', 'size unknown · no visits this week · Contacted', 'size unknown · no visits this week · Contacted'], 'S2: the page line stops at the stage - no pin reason, no next date');
+  assert.deepEqual(all.body.rows.map(r => r.next), [null, null, { text: 'Call the CHRO at [email removed]', due: '2026-11-17' }, null, null], 'Next = the earliest open to-do; done and waiting rows are not it');
+  assert.deepEqual([all.body.scope, all.body.counts], [5, { owners: { [CYRUS]: 2, [JACK]: 2, unassigned: 1 }, bands: { P1: 3, P2: 1, P3: 1, P4: 0 } }]);
+  assert.deepEqual(Object.keys(all.body.rows[0].parts), COMPONENTS);
   assert.ok(all.body.rows.every(r => r.groups.heat + r.groups.fit + r.groups.impact + r.groups.recency + r.groups.pin === r.score));
   const mine = await topTargets(sb, B, { owner: 'me' }, { now: NOW, meId: JACK });
   assert.deepEqual([mine.body.rows.map(r => r.name), mine.body.pinned, mine.body.total], [['Zz Acme Health', 'Zz Held College'], 2, 2]);
@@ -176,7 +184,12 @@ test('GET goals/top-targets: the P1 pins first (newest pin first), then score; a
   assert.deepEqual((await topTargets(sb, B, { band: 'P1' }, { now: NOW })).body.rows.map(r => r.name), ['Zz Quarry Labs', 'Zz Acme Health', 'Zz Top Score']);
   assert.deepEqual((await topTargets(sb, B, { pinned: 'true' }, { now: NOW })).body.rows.map(r => r.name), ['Zz Quarry Labs', 'Zz Acme Health', 'Zz Held College']);
   assert.deepEqual((await topTargets(sb, B, {}, { now: NOW + 25 * DAY })).body.rows.slice(0, 2).map(r => [r.name, !!r.pin]), [['Zz Quarry Labs', true], ['Zz Top Score', false]], 'a pin that ran out stops leading');
-  assert.deepEqual([parseTopQuery({ limit: '9999', band: 'P9', owner: 'nobody' }), [{ pin: { held: false, at: 'b' }, score: 1, name: 'a' }, { pin: null, score: 99, name: 'b' }].sort(pinFirst)[0].name], [{ owner: null, limit: 200, band: null, pinned: false }, 'a']);
+  const ranOut = (await topTargets(sb, B, {}, { now: NOW + 25 * DAY })).body.rows.find(r => r.name === 'Zz Acme Health');
+  assert.deepEqual([ranOut.pin, ranOut.pin_expired, ranOut.pinned_until], [null, { until: pgStamp(NOW + 20 * DAY), reason: 'older pin' }, pgStamp(NOW + 20 * DAY)], 'S4: an expired pin keeps its reason and ranks by score');
+  const jacks = await topTargets(sb, B, { owner: JACK, band: 'P1' }, { now: NOW });
+  assert.deepEqual([jacks.body.n, jacks.body.total, jacks.body.scope, jacks.body.counts.bands], [1, 1, 2, { P1: 1, P2: 0, P3: 1, P4: 0 }], 'the band counts are the owner\'s set, whatever band is on');
+  assert.deepEqual([(await topTargets(sb, B, { size: '5000' }, { now: NOW })).body.rows.map(r => r.name), (await topTargets(sb, B, { size: 'unknown' }, { now: NOW })).body.total, (await topTargets(sb, B, { q: ' QUARRY ' }, { now: NOW })).body.rows.map(r => r.name)], [['Zz Top Score'], 4, ['Zz Quarry Labs']]);
+  assert.deepEqual([parseTopQuery({ limit: '9999', band: 'P9', owner: 'nobody' }), [{ pin: { held: false, at: 'b' }, score: 1, name: 'a' }, { pin: null, score: 99, name: 'b' }].sort(pinFirst)[0].name], [{ owner: null, limit: 1000, band: null, pinned: false, size: null, q: '' }, 'a']);
   assert.ok(!/@/.test(JSON.stringify(all.body)));
 });
 
@@ -206,3 +219,36 @@ test('Scout: "my top targets" / "<member>\'s top n" / "why is X a top target" ro
   assert.ok(!/@/.test(JSON.stringify([mine, cyrus, team, why])));
 });
 
+
+test('Stage 2: a reason edit leaves the dates and is undone; a pin that ran out renews with its reason kept and can be unpinned - employer and partner', async () => {
+  const sb = fakeSupabase(seed());
+  const acme = () => sb.db.sales_opportunities.find(o => o.id === E.acme), harbor = () => sb.db.sales_goals.find(g => g.id === P.harbor);
+  const pin = (type, id, body, d) => applyPin(sb, { businessId: B, userId: JACK, type, id, body, now: at(d) });
+  assert.equal((await pin('employer', E.acme, { action: 'reason', reason: 'x' }, 0)).body.code, 'not_pinned');
+  await pin('employer', E.acme, { action: 'pin', reason: 'first' }, 0);
+  const edit = await pin('employer', E.acme, { action: 'reason', reason: 'second', expect: { pinned_until: pgStamp(NOW + 30 * DAY) } }, 2);
+  const ev = sb.db.sales_flow_events.at(-1);
+  assert.deepEqual([edit.status, acme().pin_reason, acme().pinned_until, ev.kind, ev.text, ev.prev], [200, 'second', pgStamp(NOW + 30 * DAY), 'pin_renew', 'Pin reason: second', { pin_reason: 'first' }]);
+  await undoFlow(sb, { businessId: B, eventId: edit.body.event.id, byUser: JACK, now: at(2) });
+  assert.equal(acme().pin_reason, 'first');
+  assert.equal((await pin('employer', E.acme, { action: 'reason', reason: 'late' }, 40)).body.code, 'not_pinned', 'a pin that ran out is renewed first');
+  const renew = await pin('employer', E.acme, { action: 'renew' }, 40);
+  assert.deepEqual([renew.status, acme().pin_reason, acme().pinned_until, renew.body.pin.reason], [200, 'first', pgStamp(NOW + 70 * DAY), 'first'], 'S4: Renew reuses the reason and sets a fresh 30 days');
+  const off = await pin('employer', E.acme, { action: 'unpin', expect: { pinned_until: pgStamp(NOW + 70 * DAY) } }, 80);
+  assert.deepEqual([off.status, acme().pinned_until, acme().pin_reason, acme().is_top], [200, null, null, false], 'an expired pin unpins directly');
+  await pin('partner', P.harbor, { action: 'pin', reason: 'channel' }, 0);
+  const pEdit = await pin('partner', P.harbor, { action: 'reason', reason: 'new channel' }, 1);
+  assert.deepEqual([pEdit.status, harbor().pin_reason, harbor().pinned_until, pEdit.body.undo.kind], [200, 'new channel', pgStamp(NOW + 30 * DAY), 'partner']);
+  const pRenew = await pin('partner', P.harbor, { action: 'renew' }, 45);
+  assert.deepEqual([pRenew.status, harbor().pin_reason, harbor().pinned_until, harbor().hot], [200, 'new channel', pgStamp(NOW + 75 * DAY), true]);
+  const pOff = await pin('partner', P.harbor, { action: 'unpin' }, 90);
+  assert.deepEqual([pOff.status, harbor().pinned_until, harbor().pin_reason, harbor().hot], [200, null, null, false]);
+});
+
+test('the Map\'s pin glyph reads live pins only: a pin that ran out, or a dated priority with no pin, is not one', async () => {
+  const data = seed();
+  data.sales_targets[0] = { ...data.sales_targets[0], pinned_until: pgStamp(NOW - DAY), pinned_at: pgStamp(NOW - 31 * DAY) };
+  const sb = fakeSupabase(data);
+  assert.deepEqual([...(await pinnedKeys(sb, B, NOW))], [`employer:${E.asis}`]);
+  assert.deepEqual([...(await pinnedKeys(sb, B, NOW + 19 * DAY))], []);
+});

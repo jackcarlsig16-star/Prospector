@@ -150,7 +150,7 @@ test('Log touch form sends a touch signal with the stage the screen showed; Add 
   expect(props.people.add).toHaveBeenCalledTimes(1);
 });
 
-test('inside the drawers every write still calls the same handler once: Add task, Intel priority, Add domain; the header quick note sends a note signal and clears', async () => {
+test('inside the drawers every write still calls the same handler once: Add task, Add domain (Intel has no priority control); the header quick note sends a note signal and clears', async () => {
   const props = setup({ domains: { load: jest.fn(() => Promise.resolve({ domains: [], suggestions: [], apollo_account: null })), add: jest.fn(() => Promise.resolve({ domains: [{ id: 'd2', domain: 'justworks.io', confirmed: true, is_primary: true, source: 'manual' }], suggestions: [], apollo_account: null })), update: jest.fn(), remove: jest.fn() } });
   await waitFor(() => expect(props.onCount).toHaveBeenCalledWith('p1', 2));
   open('Tasks');
@@ -159,9 +159,8 @@ test('inside the drawers every write still calls the same handler once: Add task
   await waitFor(() => expect(props.onCreateTask).toHaveBeenCalledWith({ text: 'Send the deck', link_type: 'partner', link_id: 'p1' }));
   expect(props.onCreateTask).toHaveBeenCalledTimes(1);
   open('Intel');
-  fireEvent.change(screen.getByLabelText('Priority'), { target: { value: '1' } });
-  await waitFor(() => expect(props.onUpdate).toHaveBeenCalledWith('p1', { priority: 1 }));
-  expect(props.onUpdate).toHaveBeenCalledTimes(1);
+  expect(screen.queryByLabelText('Priority')).toBeNull();
+  expect(props.onUpdate).not.toHaveBeenCalled();
   open('Domains');
   fireEvent.click(screen.getByRole('button', { name: '+ Add domain' }));
   fireEvent.change(screen.getByLabelText('New domain'), { target: { value: 'justworks.io' } });

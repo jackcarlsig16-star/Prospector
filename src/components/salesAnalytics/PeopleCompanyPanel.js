@@ -28,8 +28,8 @@ export default function PeopleCompanyPanel({ businessId, person, canEdit, member
   const row = key && rows ? rows.find(r => `${r.type}-${r.id}` === key) || null : null;
   const reload = useCallback(() => load().then(setRows).catch(e => onToast({ text: e.message })), [load, onToast]);
   if (!row) return null;
-  const star = async () => {
-    const patch = await toggleStar(businessId, row);
+  const star = async action => {
+    const patch = await toggleStar(businessId, row, action);
     setRows(rs => rs.map(x => (x.id === row.id ? { ...x, ...patch } : x)));
   };
   return (

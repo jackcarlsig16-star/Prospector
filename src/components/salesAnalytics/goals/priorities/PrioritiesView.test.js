@@ -17,7 +17,7 @@ const row = (type, id, name, score, band, source, extra = {}) => ({ type, id, ke
 const ROWS = [
   row('target', 't1', 'Quarry Labs', 72, 'P1', 'website', { fit_level: 'good', fit_score: 64, first_seen: '2026-10-27', new_today: true, stage: 'researching' }),
   row('employer', 'e1', 'Hilton Example', 49, 'P2', 'upside', { owner_user_id: null, owner: null, owner_team: 'upside', no_double_touch: true, upside_owned: true, touch_locked: true, rank: 2, band_changed: false, trend: 'flat', fit_level: 'strong', fit_score: 78, stage: 'target' }),
-  row('partner', 'p1', 'Harbor Lane', 37, 'P3', 'upside', { researched: 'none', components: comp(0, 0, 10, -3, 10), employees: null, rank: 3, days_since_touch: null, last_touch_at: null, band_changed: false }),
+  row('partner', 'p1', 'Harbor Lane', 37, 'P3', 'upside', { researched: 'none', components: comp(0, 0, 10, -3, 10), employees: null, pinned: true, rank: 3, days_since_touch: null, last_touch_at: null, band_changed: false }),
 ];
 const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, sizes: { unknown: 1, lt200: 0, '200_999': 0, '1k_4999': 0, '5k': 2 }, headcount: { companies: 3, known: 2 }, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0, new_today: 1, fit: { strong: 1, good: 1, low: 0, deprioritized: 0 }, due: { today: 0, week: 0, later: 0 } },
   sources: { upside: 2, partner_referral: 0, person_referral: 0, campaign: 0, website: 1, inbound: 0, homelover_outreach: 0, scout: 0, other: 0 }, owners: [{ user_id: 'u1', name: 'Jack Carlson' }],
@@ -54,6 +54,8 @@ test('dots (homelover-flow-v1 F1 / F5): every ranked company as a dot in its OWN
   expect(dot('Quarry Labs').querySelector('[data-new-ring]')).toBeInTheDocument();
   expect(dot('Hilton Example').getAttribute('data-owner')).toBe('other');
   expect(dot('Hilton Example').querySelector('[data-new-ring]')).toBeNull();
+  expect(dot('Harbor Lane').querySelector('[data-pin-glyph]')).toBeInTheDocument(); // top-targets-v1 T6: one diamond on a pinned dot
+  expect(dot('Quarry Labs').querySelector('[data-pin-glyph]')).toBeNull();
   expect(Number(dot('Quarry Labs').querySelector('[data-core]').getAttribute('r'))).toBeGreaterThan(Number(dot('Harbor Lane').querySelector('[data-core]').getAttribute('r')));
   const legend = screen.getByRole('group', { name: 'Owner' });
   expect(within(legend).getAllByRole('button').map(b => b.textContent)).toEqual(['Me2', 'Other1', '+ 2 with 0']);

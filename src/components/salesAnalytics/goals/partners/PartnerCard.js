@@ -115,10 +115,6 @@ export default function PartnerCard({ partner, open, onToggle, businessId, canEd
           {partner.first_email_at && <Field label="1st email sent" color={SA.muted}>{partner.first_email_at}</Field>}
           {canEdit && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <label style={labelStyle} htmlFor={`prio-${partner.id}`}>Priority</label>
-              <select id={`prio-${partner.id}`} value={partner.priority ?? ''} onChange={e => run(() => onUpdate(partner.id, { priority: e.target.value ? Number(e.target.value) : null }))} style={{ ...inputStyle, height: 36, width: 'auto' }}>
-                <option value="1">P1 · this week</option><option value="2">P2 · 30 days</option><option value="3">P3 · 60–90 days</option><option value="">Unprioritized</option>
-              </select>
               <label style={labelStyle} htmlFor={`own-${partner.id}`}>👤 Assign</label>
               <select id={`own-${partner.id}`} value={partner.owner_user_id || ''} onChange={e => signal({ type: 'assign', owner_user_id: e.target.value || null })} style={{ ...inputStyle, height: 36, width: 'auto' }}>
                 <option value="">Unassigned</option>

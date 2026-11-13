@@ -23,6 +23,8 @@ export const BAND_COLOR = { P1: SA.good, P2: SA.warn, P3: SA.link, P4: SA.muted 
 export const ZONE_TINT = 10; // percent of the band color over the chart surface; 10 keeps every source hue >= 3:1 on every zone (P3 worst, Inbound 3.03:1) - 11 drops P3 to 2.95
 export const rankTicks = n => [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].filter(t => t <= n);
 const ringKey = RING_ORDER.map(k => k[0].toUpperCase() + k.slice(1)).join(' · ');
+// top-targets-v1 T6: a pinned company wears one small diamond at the dot's upper-right edge.
+const pinGlyph = rad => { const c = rad * 0.72 + 1, s = 4; return `M${c} ${-c - s}l${s} ${s}-${s} ${s}-${s}-${s}z`; };
 const Glyph = ({ children }) => <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">{children}</svg>;
 // The key row under the chart: glyphs, then one sentence (priorities-v2 G). homelover-flow-v1 F5: color = owner,
 // dashed = unassigned, size = intent, accent ring = NEW today; the touched halo stays.
@@ -38,6 +40,7 @@ export function ChartKey({ ringsOn = false }) {
       {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'touched ≤ 7 d')}
       {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'touched ≤ 30 d')}
       {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke={SA.text} strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'selected · row below')}
+      {item(<Glyph><circle cx="9" cy="9" r="4" fill="currentColor" /><path d="M13.5 1.5l3 3-3 3-3-3z" fill={SA.accent} stroke={SA.inset} strokeWidth="1" /></Glyph>, 'pinned')}
       <span style={{ flex: '1 1 200px' }}>Color = owner · size = intent · accent ring = NEW today · white ring = touched.{ringsOn ? ` Rings: ${ringKey}.` : ' Visits, people, fit, engagement are columns below, not rings.'}</span>
     </div>
   );
@@ -178,6 +181,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
                   ? <circle data-core r={rad} fill={`color-mix(in srgb, ${color} 35%, ${SA.inset})`} stroke={color} strokeWidth={1.5} strokeDasharray={p.unknown ? '2 2' : undefined} />
                   : <circle data-core r={rad} fill={color} opacity={hollow === 'decayed' ? 0.6 : 1} stroke={p.unknown ? color : 'none'} strokeDasharray={p.unknown ? '2 2' : undefined} />}
               {selected && <circle r={base + 5} fill="none" stroke={SA.text} strokeWidth={2} data-selection-ring />}
+              {r.pinned && <path data-pin-glyph d={pinGlyph(rad)} fill={SA.accent} stroke={SA.inset} strokeWidth={1} />}
               {i < TOP_LABELS && <text y={-(base + (halo ? 20 : 8))} textAnchor="middle" fontSize={11} fontWeight={600} fill={SA.text} style={numStyle} data-direct-label>{r.score}</text>}
               {showTrend && r.band_changed && r.trend && r.trend !== 'flat' && <text y={base + 14} textAnchor="middle" fontSize={10} fill={r.trend === 'up' ? SA.good : SA.bad} data-trend={r.trend}>{r.trend === 'up' ? '▲' : '▼'}</text>}
               <circle r={Math.max(12, base + 6)} fill="transparent" />

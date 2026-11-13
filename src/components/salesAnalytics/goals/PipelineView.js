@@ -30,7 +30,9 @@ import { ownerChip } from './flowModel';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { NOT_A_FIT, priorityValue } from './priorityActions';
-import { toggleStar, starLabel, EXPIRED_TITLE, RENEW_TITLE } from './pinStar';
+import { toggleStar, starLabel, EXPIRED_TITLE } from './pinStar';
+import PinControl from './topTargets/PinControl';
+import { TT_CSS } from './topTargets/topTargetsStyles';
 import { PRIORITY_TYPES } from './companyPanelModel';
 import {
   EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf, readWindowParam, windowParam,
@@ -173,8 +175,8 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const onSort = s => { setSort(s); writeSort(s); };
   const patchRow = (r, patch) => setRows(rs => rs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
-  const starRow = async r => {
-    const patch = await toggleStar(businessId, r);
+  const starRow = async (r, action) => {
+    const patch = await toggleStar(businessId, r, action);
     setRows(rs => rs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
   };
   const star = async r => {
@@ -274,9 +276,10 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
 
   const starCell = r => {
     if (r.type !== 'partner' && r.type !== 'employer') return null;
+    if (canEdit && r.pin_expired) return <PinControl row={r} canEdit onAct={action => starRow(r, action)} />;
     return canEdit
-      ? <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" disabled={busyId === r.id} aria-pressed={r.top} aria-label={starLabel(r)} data-pin-expired={r.pin_expired || undefined} title={r.pin_expired ? RENEW_TITLE : undefined} onClick={() => star(r)}
-        style={{ color: r.top || r.pin_expired ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</button>
+      ? <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" disabled={busyId === r.id} aria-pressed={r.top} aria-label={starLabel(r)} onClick={() => star(r)}
+        style={{ color: r.top ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</button>
       : <span aria-label={r.top ? 'Top' : r.pin_expired ? EXPIRED_TITLE : undefined} data-pin-expired={r.pin_expired || undefined} title={r.pin_expired ? EXPIRED_TITLE : undefined} style={{ fontSize: 15, color: r.top || r.pin_expired ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</span>;
   };
   const priorityCell = r => {
@@ -385,6 +388,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
 
   return (
     <section aria-label="Pipeline companies" data-pipeline-companies style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
+      <style>{TT_CSS}</style>
       {phone ? actions : toolsSlot && createPortal(actions, toolsSlot)}
       <CompaniesFilters channel={channel} onChannel={setChannel} counts={rows ? view.counts : null} filters={filters} set={set} onClear={() => setFilters(EMPTY_FILTERS)}
         owners={owners} stages={stages} phone={phone} searchRef={searchRef} shown={visible.length} total={channelTotal} sortLabel={sortLabel || 'priority'}
@@ -436,7 +440,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
           onApplied={r => { setToast({ text: `Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}` }); load(); }} />
       )}
       {panelRow && (
-        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={() => starRow(panelRow)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
+        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={action => starRow(panelRow, action)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
           onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} onOpenPeople={onOpenPeople && (c => { closePanel(); onOpenPeople(c); })} initialSection={panelSection} />
       )}
       {panel !== undefined && (

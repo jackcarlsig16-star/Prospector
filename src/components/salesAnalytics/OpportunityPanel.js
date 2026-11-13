@@ -42,7 +42,7 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
     organization: '', cohort: '', org_type: 'employer', covered_lives: '', stage: 'target',
     probability: '', est_value: '', owner: '', next_action: '', next_action_date: '',
     expected_close: '', expected_launch: '', decision_makers: '', champion: '', objections: '',
-    competitors: '', needed_to_advance: '', notes: '', is_top: false, lost_reason: '',
+    competitors: '', needed_to_advance: '', notes: '', lost_reason: '',
     ...opportunity,
   }));
 
@@ -147,15 +147,6 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
           {readOnly ? text(draft[key]) : <textarea style={{ ...fieldStyle, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />}
         </Field>
       ))}
-
-      {readOnly
-        ? <Field label="Top opportunity">{text(draft.is_top ? 'Yes' : 'No')}</Field>
-        : (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: SA.text, cursor: 'pointer' }}>
-            <input type="checkbox" checked={!!draft.is_top} onChange={e => set('is_top', e.target.checked)} />
-            Top opportunity
-          </label>
-        )}
 
       {error && <div style={{ color: SA.bad, fontSize: 12 }}>⚠ {error}</div>}
 

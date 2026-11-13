@@ -16,7 +16,7 @@ export const dupeLabel = r => `${r.name} (${DUPE_LABEL[r.type]}${detail(r)})`;
 const linkBtn = { ...saSans, border: 'none', background: 'transparent', color: SA.link, cursor: 'pointer', padding: 0, fontSize: 13 };
 
 export default function AddPartnerForm({ members = [], onCreate, onDupeCheck, onOpenPartner, onDone, onCancel }) {
-  const [draft, setDraft] = useState({ name: '', priority: '1', owner: null });
+  const [draft, setDraft] = useState({ name: '', owner: null });
   const [error, setError] = useState('');
   const [dupes, setDupes] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -51,7 +51,7 @@ export default function AddPartnerForm({ members = [], onCreate, onDupeCheck, on
         const r = current || await check(name);
         if (r && r.exact.length) return;
       }
-      await onCreate({ name, priority: draft.priority ? Number(draft.priority) : null, ...(draft.owner ? { owner_user_id: draft.owner } : {}) });
+      await onCreate({ name, ...(draft.owner ? { owner_user_id: draft.owner } : {}) });
       onDone();
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   };
@@ -61,9 +61,6 @@ export default function AddPartnerForm({ members = [], onCreate, onDupeCheck, on
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input autoFocus placeholder="Partner name (Enter to save)" aria-label="Partner name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
           onKeyDown={e => { if (e.key === 'Enter') add(); if (e.key === 'Escape') onCancel(); }} style={{ ...inputStyle, flex: '1 1 220px' }} />
-        <select aria-label="Priority" value={draft.priority} onChange={e => setDraft(d => ({ ...d, priority: e.target.value }))} style={{ ...inputStyle, width: 'auto' }}>
-          <option value="1">P1</option><option value="2">P2</option><option value="3">P3</option><option value="">Unprioritized</option>
-        </select>
         {members.length > 0 && <OwnerPicker members={members} value={draft.owner} onChange={v => setDraft(d => ({ ...d, owner: v }))} />}
         <Btn primary style={{ height: 40 }} onClick={add} disabled={!name || busy}>{blocked ? 'Add anyway' : 'Add'}</Btn>
         <Btn style={{ height: 40 }} onClick={onCancel}>Cancel</Btn>

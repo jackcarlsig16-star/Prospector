@@ -29,7 +29,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
   const likeRe = pat => new RegExp('^' + String(pat).split('%').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '.')).join('.*') + '$', 'is');
   const parseOr = expr => expr.split(/,(?=[a-z_>-]+\.(?:ilike|eq|is|neq)\.)/).map(part => { const m = /^([^.]+)\.(ilike|eq|is|neq)\.(.*)$/s.exec(part.trim()); return { op: m[2], k: m[1], v: m[2] === 'is' && m[3] === 'null' ? null : m[3] }; });
   const matches = (row, f) => ({
-    eq: () => col(row, f.k) === f.v, neq: () => col(row, f.k) !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lte: () => row[f.k] != null && row[f.k] <= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
+    eq: () => col(row, f.k) === f.v, neq: () => col(row, f.k) !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, gt: () => row[f.k] != null && row[f.k] > f.v, lte: () => row[f.k] != null && row[f.k] <= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
     is: () => (f.v === null ? col(row, f.k) == null : col(row, f.k) === f.v), not_is: () => row[f.k] != null,
     ilike: () => likeRe(f.v).test(String(col(row, f.k) ?? '')), or: () => f.v.some(sub => matches(row, sub)), contains: () => Array.isArray(row[f.k]) && f.v.every(x => row[f.k].includes(x)),
   })[f.op]();
@@ -80,7 +80,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
     const b = {
       select(cols = '*', opts = {}) { if (q.op === 'select') { q.cols = cols; q.head = !!opts.head; } return b; },
       insert(p) { q.op = 'insert'; q.payload = p; return b; }, upsert(p, o = {}) { q.op = 'upsert'; q.payload = p; q.onConflict = o.onConflict; return b; }, update(p) { q.op = 'update'; q.payload = p; return b; }, delete() { q.op = 'delete'; return b; },
-      eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), lte: f('lte'), lt: f('lt'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
+      eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), gt: f('gt'), lte: f('lte'), lt: f('lt'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
       ilike: f('ilike'), contains: f('contains'), or(expr) { q.filters.push({ op: 'or', v: parseOr(expr) }); return b; },
       order(k, o = {}) { q.order.push([k, o.ascending !== false]); return b; }, limit(n) { q.limit = n; return b; }, range(a, z) { q.range = [a, z]; return b; },
       maybeSingle() { q.single = 'maybe'; return b; }, single() { q.single = 'one'; return b; },

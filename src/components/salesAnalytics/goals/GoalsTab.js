@@ -21,6 +21,7 @@ import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
 import ClientsView from './ClientsView';
+import TopTargetsView from './topTargets/TopTargetsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
 import HomeView, { PERIODS, DEFAULT_PERIOD } from './HomeView';
 import TrackImprove from './TrackImprove';
@@ -319,6 +320,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
         )}
 
         {section === 'pipeline' && view === 'clients' && <ClientsView businessId={businessId} />}
+        {section === 'pipeline' && view === 'top-targets' && me && <TopTargetsView businessId={businessId} canEdit={canEdit} meId={meId} members={members} />}
         {section === 'settings' && view === 'team-emails' && me && (
           <TeamEmailsSettings businessId={businessId} meId={meId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
         )}

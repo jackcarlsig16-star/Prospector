@@ -30,6 +30,9 @@ export const BandPill = ({ band }) => (
   <span data-band-pill={band} style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 7px', borderRadius: 999, border: `1px solid ${BAND_COLOR[band] || SA.border}`, color: BAND_COLOR[band] || SA.muted, font: "500 11px 'Geist Mono', ui-monospace, monospace", letterSpacing: '.06em' }}>{band}</span>
 );
 
+// top-targets-v1 T6: the Map's pin glyph beside the name (a phone shows this table, not the dots).
+const PinMark = () => <span data-pin-glyph role="img" aria-label="Pinned" style={{ color: SA.accent, marginLeft: 6, fontSize: 10 }}>◆</span>;
+
 export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onSelect, onOpen, showTrend = false, phone = false, caps = DEFAULT_CAPS, from = 1, collapsible = true, members = [], meId = null, reach = null }) {
   const [sort, setSort] = useState(DEFAULT_SORT);
   const [expanded, setExpanded] = useState(!collapsible);
@@ -41,7 +44,7 @@ export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onS
   const columns = [
     { id: 'rank', label: '#', width: 48, sortValue: r => r.rank, render: r => <span style={{ ...numStyle, color: SA.muted }}>{r.rank ?? '—'}</span> },
     { id: 'name', label: 'Company', sticky: true, width: 220, sortValue: r => r.name, render: r => (
-      <button type="button" className="ui-link ui-link--cell" data-row-name title="Open the company window" onClick={() => onOpen && onOpen(r)} style={{ fontWeight: r.key === selectedKey ? 600 : 500 }}>{r.name}</button>
+      <><button type="button" className="ui-link ui-link--cell" data-row-name title="Open the company window" onClick={() => onOpen && onOpen(r)} style={{ fontWeight: r.key === selectedKey ? 600 : 500 }}>{r.name}</button>{r.pinned && <PinMark />}</>
     ) },
     { id: 'source', label: 'Source', width: 150, sortValue: r => r.source_label, render: r => (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label), flex: 'none' }} />{SOURCE_LABELS[r.source_label] || r.source_label}{r.touch_locked ? ' · no double touch' : ''}</span>
@@ -81,7 +84,7 @@ export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onS
       <span style={{ ...numStyle, color: SA.muted, minWidth: 22 }}>{r.rank ?? ''}</span>
       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label), flex: 'none' }} />
       <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <span style={{ fontWeight: r.key === selectedKey ? 600 : 500, color: SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+        <span style={{ fontWeight: r.key === selectedKey ? 600 : 500, color: SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}{r.pinned && <PinMark />}</span>
         <span data-card-size style={{ fontSize: 12, color: SA.muted }} title={headcountTitle(r)}><HeadcountCell employees={r.employees} source={r.employees_source} /></span>
       </span>
       <span style={{ ...numStyle, fontWeight: 600 }}>{r.score}</span><BandPill band={r.band} />

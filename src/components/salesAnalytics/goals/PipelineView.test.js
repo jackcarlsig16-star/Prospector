@@ -363,21 +363,28 @@ test('priority cell: read-only for Members too - the level\'s tag, no select', a
   expect(document.querySelector('select[data-priority]')).toBeNull();
 });
 
-test('expired pin: a hollow star that renews, never filled', async () => {
+test('expired pin: a hollow star, never filled - Renew or Unpin from its menu and from the company window', async () => {
   const OLD = row('Old Pin', 'employer', 'yellow', { top: false, pin_expired: true, pinned_until: '2026-10-01T00:00:00+00:00' });
-  goalsApi.pipelineBoard.mockResolvedValue([OLD]);
-  goalsApi.pinCompany.mockResolvedValue({ pin: { until: '2026-12-13T00:00:00+00:00' }, event: { id: 'ev1' }, undo: { kind: 'flow', id: 'ev1' } });
+  goalsApi.pipelineBoard.mockResolvedValue([OLD, row('Gone Pin', 'partner', 'yellow', { top: false, pin_expired: true, pinned_until: '2026-10-02T00:00:00+00:00' })]);
+  goalsApi.pinCompany.mockResolvedValue({ pin: null, event: { id: 'ev0' }, undo: { kind: 'partner', id: 'ev0' } });
   setup();
-  const renew = await screen.findByRole('button', { name: 'Renew pin for Old Pin' });
-  expect([renew.textContent, renew.getAttribute('aria-pressed'), renew.title, renew.hasAttribute('data-pin-expired')]).toEqual(['☆', 'false', 'Pin ran out - renew for 30 days', true]);
+  const gone = await screen.findByRole('button', { name: 'Pin expired: Gone Pin. Renew or unpin' });
+  expect(gone).toHaveAttribute('data-star', 'expired');
+  fireEvent.click(gone);
+  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Renew 30 more days', 'Unpin']);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Gone Pin', { action: 'unpin' }));
+  expect(await screen.findByRole('button', { name: 'Star Gone Pin' })).toHaveAttribute('aria-pressed', 'false');
+  goalsApi.pinCompany.mockResolvedValue({ pin: { until: '2026-12-13T00:00:00+00:00' }, event: { id: 'ev1' }, undo: { kind: 'flow', id: 'ev1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Old Pin' }));
-  const inPanel = within(screen.getByRole('dialog', { name: 'Old Pin' })).getByRole('button', { name: 'Renew' });
+  const panel = within(screen.getByRole('dialog', { name: 'Old Pin' }));
+  expect(panel.getByRole('button', { name: 'Unpin' })).toBeTruthy();
+  const inPanel = panel.getByRole('button', { name: 'Renew' });
   expect([inPanel.getAttribute('aria-pressed'), inPanel.title]).toEqual(['false', 'Pin ran out - renew for 30 days']);
   fireEvent.click(inPanel);
   await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'employer', 'Old Pin', { action: 'renew' }));
   expect(await within(screen.getByRole('dialog', { name: 'Old Pin' })).findByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
-  const filled = await screen.findByRole('button', { name: 'Unstar Old Pin' });
-  expect([filled.textContent, filled.hasAttribute('data-pin-expired')]).toEqual(['★', false]);
+  expect(within(screen.getByRole('dialog', { name: 'Old Pin' })).queryByRole('button', { name: 'Unpin' })).toBeNull();
 });
 
 test('Viewer: stars are read-only; employer and partner open the read-only panel (no action bar, no ★ / note / Next)', async () => {

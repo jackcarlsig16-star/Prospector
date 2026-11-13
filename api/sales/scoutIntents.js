@@ -98,7 +98,7 @@ export const isTopTargets = ask => /\btop\s+(?:\d+\s+)?targets?\b/.test(String(a
 const topItem = x => ({
   company: x.name, row: { kind: 'company', type: x.type, id: x.id, name: x.name, score: x.score ?? null, band: x.band || null, owner: x.owner || null, stage: x.stage || null },
   entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: null,
-  text: [x.name, x.type, `top target #${x.rank}`, `score ${x.score} ${x.band}`, `why: ${x.why}`, `bars: heat ${x.groups.heat} · fit ${x.groups.fit} · impact ${x.groups.impact} · recency ${x.groups.recency} · pin ${x.groups.pin}`, x.pin ? `${x.pin.held ? `held at P${x.pin.level}` : 'pinned'} · ${x.pin.days_left} d left` : null, x.owner ? `owner ${x.owner}` : 'unassigned'].filter(Boolean).join(' · '),
+  text: [x.name, x.type, `top target #${x.rank}`, `score ${x.score} ${x.band}`, `why: ${x.why.full}`, `bars: heat ${x.groups.heat} · fit ${x.groups.fit} · impact ${x.groups.impact} · recency ${x.groups.recency} · pin ${x.groups.pin}`, x.pin ? `${x.pin.held ? `held at P${x.pin.level}` : 'pinned'} · ${x.pin.days_left} d left` : null, x.owner ? `owner ${x.owner}` : 'unassigned'].filter(Boolean).join(' · '),
 });
 
 export const salesIntents = [

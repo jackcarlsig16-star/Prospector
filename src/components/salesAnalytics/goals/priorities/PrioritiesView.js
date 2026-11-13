@@ -213,8 +213,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     } catch (e) { setToast({ text: e.message }); }
     finally { setSharing(false); }
   };
-  const starRow = async r => {
-    const patch = await toggleStar(businessId, r);
+  const starRow = async (r, action) => {
+    const patch = await toggleStar(businessId, r, action);
     setBoard(bs => bs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
   };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
@@ -302,7 +302,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
       {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} copyText={() => goalsApi.copyBundle(businessId, selected.type, selected.id)} />}
       {composeFor && <ComposePanel businessId={businessId} row={composeFor} onClose={() => { setComposeFor(null); goalsApi.composeStatus(businessId).then(setCompose).catch(() => {}); }} onToast={setToast} />}
       {panelRow && (
-        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={() => starRow(panelRow)} onPatch={patch => patchRow(panelRow, patch)} onChanged={reloadAll} onToast={setToast}
+        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={action => starRow(panelRow, action)} onPatch={patch => patchRow(panelRow, patch)} onChanged={reloadAll} onToast={setToast}
           onConvert={reloadAll} onClose={() => setPanelKey(null)} onOpenFull={() => setPanelKey(null)} onOpenPeople={onOpenPeople && (c => { setPanelKey(null); onOpenPeople(c); })} />
       )}
       {panelKey && !panelRow && board && <span style={{ fontSize: 12, color: SA.muted }}>That company is not on the Pipeline board any more - recompute to refresh the ranking.</span>}

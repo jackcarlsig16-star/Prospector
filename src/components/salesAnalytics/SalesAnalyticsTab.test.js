@@ -46,11 +46,11 @@ test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; pi
   expect(pipe).toHaveClass('ui-tabs--sub');
   const tabs = within(pipe).getAllByRole('tab');
   // dashboard-v3 A7: Campaigns stays hidden while sales_outreach_* is empty.
-  expect(tabs.map(t => t.textContent)).toEqual(['Companies', 'Clients', 'Map', 'People', 'Partner workflow']);
+  expect(tabs.map(t => t.textContent)).toEqual(['Top targets', 'Companies', 'Clients', 'Map', 'People', 'Partner workflow']);
   expect(tabs.every(t => t.querySelector('svg'))).toBe(true);
-  expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+  expect(tabs[1]).toHaveAttribute('aria-selected', 'true'); // Companies stays the default; Top targets sits to its left
   expect(document.querySelector('[data-sales-subviews] .ui-seg')).toBeNull();
-  fireEvent.click(tabs[2]);
+  fireEvent.click(tabs[3]);
   expect(new URLSearchParams(window.location.search).get('view')).toBe('priorities');
   fireEvent.keyDown(within(pipe).getByRole('tab', { name: 'Map' }), { key: 'ArrowRight' });
   expect(new URLSearchParams(window.location.search).get('view')).toBe('people');

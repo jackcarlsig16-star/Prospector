@@ -155,7 +155,7 @@ test('a row opens the story: Status, Intel folded (sheet fields on open), Activi
   fireEvent.keyDown(rowB, { key: 'Escape' });
   expect(within(rowB).queryByText('Send deck')).toBeNull();
 });
-test('members can change priority in the drop-down (under Intel); the row\'s Next moves into Status while open', async () => {
+test('Intel has no priority control (the pin is the one lift); the row\'s Next moves into Status while open', async () => {
   const d = details({ canEdit: true, onUpdate: jest.fn().mockResolvedValue() });
   const rows = [p('A', { priority: 2 })];
   render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} details={d} canEdit rowActions={() => actions()} />);
@@ -165,8 +165,8 @@ test('members can change priority in the drop-down (under Intel); the row\'s Nex
   expect(within(rowA).getAllByRole('button', { name: /^Next: / })).toHaveLength(1);
   expect(within(within(rowA).getByRole('region', { name: 'Status and next step' })).getByRole('button', { name: 'Log touch' })).toBeTruthy();
   fireEvent.click(within(rowA).getByRole('button', { name: /^Intel/ }));
-  fireEvent.change(within(rowA).getByLabelText('Priority'), { target: { value: '1' } });
-  expect(d.onUpdate).toHaveBeenCalledWith('A', { priority: 1 });
+  expect(within(rowA).queryByLabelText('Priority')).toBeNull();
+  expect(d.onUpdate).not.toHaveBeenCalled();
   fireEvent.click(within(rowA).getByRole('button', { name: /^Activity/ }));
   await within(rowA).findByRole('list', { name: 'Activity timeline' });
 });

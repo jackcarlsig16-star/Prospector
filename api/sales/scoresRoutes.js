@@ -113,12 +113,20 @@ export const rankSort = (a, b) => b.score - a.score || (b.days_since_touch ?? 1e
 // homelover-flow-v1 F11: newest visitors first (first seen on the site, desc; never-seen last), then the rank order.
 export const newestSort = (a, b) => String(b.first_seen || '').localeCompare(String(a.first_seen || '')) || rankSort(a, b);
 
+export async function pinnedKeys(supabase, businessId, now = Date.now()) {
+  const live = t => supabase.from(t).select('id').eq('business_id', businessId).gt('pinned_until', new Date(now).toISOString());
+  const [partners, employers, targets] = await Promise.all([live('sales_goals'), live('sales_opportunities'), live('sales_targets')]);
+  return new Set([...must(partners).map(r => `partner:${r.id}`), ...must(employers).map(r => `employer:${r.id}`), ...must(targets).map(r => `target:${r.id}`)]);
+}
+
 export async function listScores(supabase, businessId, query = {}, { now = Date.now() } = {}) {
   const f = parseFilters(query);
   const { rows: all, computedAt, weights, hasPrev, today } = await loadScoreRows(supabase, businessId, { now });
   // homelover-flow-v1 F2 (ruling F-c): Due is live - open to-dos + an employer's next_action_date - never stored.
   const due = await dueMap(supabase, businessId, { today });
-  for (const r of all) { const d = r.fit_level === 'deprioritized' ? null : due.get(`${r.type}:${r.id}`) || null; r.due = d?.due || null; r.due_date = d?.date || null; }
+  // top-targets-v1 T6: the Map's pin glyph - a live pin, read from the three record tables (never stored on the score).
+  const pinned = await pinnedKeys(supabase, businessId, now);
+  for (const r of all) { const d = r.fit_level === 'deprioritized' ? null : due.get(`${r.type}:${r.id}`) || null; r.due = d?.due || null; r.due_date = d?.date || null; r.pinned = pinned.has(`${r.type}:${r.id}`); }
   const ranked = all.filter(r => !r.live && !r.duplicate_of).sort(rankSort);
   const rows = filterScoreRows(ranked, f, now).sort(f.sort === 'newest' ? newestSort : rankSort);
   const live = filterScoreRows(all.filter(r => r.live && !r.duplicate_of), f, now).sort(rankSort);
