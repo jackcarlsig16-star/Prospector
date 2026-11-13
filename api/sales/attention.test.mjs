@@ -100,8 +100,8 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
   assert.deepEqual([hc.label, hc.line, hc.spend.month, hc.spend.cap, hc.spend.daily_cap], ['Headcounts (Apollo)', null, 0, 500, 25]);
   assert.equal(r.sources.find(x => x.id === 'tidy').error, 'boom');
   assert.deepEqual(r.sources.find(x => x.id === 'visitors').window, { window_start: '2026-10-21', window_end: today, lookback_days: 1, kind: 'daily', companies: 2, last_ok_at: ago(5), gap: false });
-  // V2a follow-up: the people run row never colors the visitors line (still ok above); it feeds people_pull with the parked count.
-  assert.deepEqual(r.sources.find(x => x.id === 'visitors').people_pull, { last_on: '2026-10-21', last_at: ago(3), status: 'error', counts: { contacts: 66, people_added: 12, created: 3 }, list: 'Prospector · Website visitors (export)', list_count: null, error: 'Apollo has no contacts list named "x"', parked: 1 });
+  // V2a follow-up: the people run row never colors the visitors line (still ok above); it feeds people_pull with the count of people without a company record.
+  assert.deepEqual(r.sources.find(x => x.id === 'visitors').people_pull, { last_on: '2026-10-21', last_at: ago(3), status: 'error', counts: { contacts: 66, people_added: 12, created: 3 }, list: 'Prospector · Website visitors (export)', list_count: null, error: 'Apollo has no contacts list named "x"', no_record: 1 });
   assert.deepEqual(r.counts, { overdue_todos: 1, overdue_waiting: 1, held_apollo: 0, held_outlook: 0, campaign_sends: 1, campaign_replies: 1 });
   assert.equal(r.n, 2 + 4);
   const cy = await attention(s, { businessId: B, userId: CY, now: NOW, dry });

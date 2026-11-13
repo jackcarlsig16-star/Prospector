@@ -78,6 +78,17 @@ test('buildPeopleTable: counts from the summary (by key, or by Apollo id for a m
   assert.ok(!/@|hidden|harbor\.example/.test(JSON.stringify(t)), 'no address, no email host');
 });
 
+// visitor-people-filing-v1 V3: a person filed under a company name alone says why there is no record and carries the id
+// "Add as target" posts; a person on a record carries neither.
+test('record_reason: no visit row / a visit row that is not US 500+ / the skip list; null with add_record_id null for a person on a record', () => {
+  const sp = (id, name, company, over = {}) => ({ id, business_id: B, company_type: 'parked', target_id: null, opportunity_id: null, name, title: 'Analyst', note: null, source_kind: 'web_visit', visit_id: null, upload_id: null, archived_at: null, created_at: '2026-11-05T15:00:00Z', company_name: company, ...over });
+  const people = [sp('u1', 'Nia Novisit', 'Zz Never Visited'), sp('u2', 'Sol Small', 'Zz Seen Small'), sp('u3', 'Cal Skipped', 'Cloudflare', { note: 'Company is on the visit skip list' }), salesPeople[1]];
+  const seen = [{ id: 'v9', business_id: B, company_key: 'zz seen small', company_name: 'Zz Seen Small', matched_type: null, matched_id: null, us_500: false, visits_7d: 1, last_visit: '2026-11-04', seen_to: '2026-11-05', top_paths: [], pulled_on: '2026-11-05' }];
+  const t = buildPeopleTable({ rows: peopleRows({ prospects: [], salesPeople: people, partnerContacts: [], opportunities, targets, partners }), activity: [], visits: seen, buyerTitles: [], window: windowOf('all', '2026-11-06'), now: NOW });
+  assert.deepEqual(t.rows.map(r => [r.name, r.company.type, r.record_reason, r.add_record_id]).sort(), [['Cal Skipped', 'parked', 'skip_list', 'u3'], ['Eve Hand', 'employer', null, null], ['Nia Novisit', 'parked', 'no_visit_row', 'u1'], ['Sol Small', 'parked', 'size_unknown', 'u2']]);
+  assert.ok(!/@/.test(JSON.stringify(t.rows)));
+});
+
 test('the window keeps the rows with a signal, an identified date or a company visit inside it; 7 d from Nov 6 = Oct 31', () => {
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities, targets, partners });
   const w7 = buildPeopleTable({ rows, activity, visits, buyerTitles: [], window: windowOf('7', '2026-11-06'), now: NOW });

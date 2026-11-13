@@ -8,6 +8,8 @@ import { isMigrationPending, timelineFor, summarizePerson } from './personActivi
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { HEAT, HEAT_BANDS, visitSignal } from './heatScore.js';
 import { visitIndex } from './visitJoin.js';
+import { recordDecision } from './visitorRecords.js';
+import { SKIP_NOTE } from './visitorPeopleMove.js';
 import { isSnoozed } from './snoozed.js';
 import { SIZE_BUCKETS } from '../../src/constants/headcount.js';
 
@@ -50,7 +52,7 @@ export function peopleRows({ prospects = [], salesPeople = [], partnerContacts =
     if (p.archived_at) continue;
     const c = p.company_type === 'employer' && p.opportunity_id ? company('employer', opp.get(p.opportunity_id)) : p.target_id ? company('target', tgt.get(p.target_id)) : p.company_name ? { type: 'parked', id: null, name: cleanText(p.company_name, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null;
     const source = p.source_kind === 'web_visit' || p.visit_id ? 'visitor' : p.upload_id ? 'upload' : 'hand';
-    out.push({ person_key: `person:${p.id}`, source, name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: c, apollo_id: null, contact_id: null, has_email: false, identified_at: source === 'visitor' ? p.created_at || null : null, last_touch_at: null, status: null, owner_user_id: p.owner_user_id || null });
+    out.push({ person_key: `person:${p.id}`, source, name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: c, apollo_id: null, contact_id: null, has_email: false, identified_at: source === 'visitor' ? p.created_at || null : null, last_touch_at: null, status: null, owner_user_id: p.owner_user_id || null, skip_listed: p.note === SKIP_NOTE });
   }
   for (const c of partnerContacts) {
     out.push({ person_key: `contact:${c.id}`, source: 'contact', name: nameOf(c.name), title: cleanText(c.title, 160) || null, company: company('partner', goal.get(c.goal_id)), apollo_id: c.apollo_contact_id || null, contact_id: c.apollo_contact_id || null, has_email: !!c.email, identified_at: null, last_touch_at: c.last_activity_at || null, status: null, owner_user_id: c.owner_user_id || null, partner_contact_ids: [c.id] });
@@ -68,11 +70,16 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
   const act = new Map();
   for (const a of activity) { act.set(a.person_key, a); if (a.contact_id) act.set(`c:${a.contact_id}`, a); }
   const visitOf = visitIndex(visits);
+  const rowOf = new Map(rows.map(r => [r.person_key, r]));
   const sinceIso = w.since ? `${w.since}T00:00:00` : null;
   const needsSince = new Date(now - NEEDS_TOUCH_DAYS * 864e5).toISOString();
   const people = mergePeople(rows).map(p => {
     const a = p.source_keys.map(k => act.get(k)).find(Boolean) || p.apollo_ids.map(id => act.get(`c:${id}`)).find(Boolean) || null;
     const v = visitOf(p.company);
+    // visitor-people-filing-v1: a person filed under a company name alone says why there is no record (computed here -
+    // the same rule the filer ran; sales_people has no column for it) and carries the id "Add as target" posts.
+    const unlinked = p.source_keys.map(k => rowOf.get(k)).find(r => r?.company?.type === 'parked') || null;
+    const decided = unlinked && !unlinked.skip_listed ? recordDecision({}, [{ title: unlinked.title }], { buyerTitles, visit: visitOf(unlinked.company) }) : null;
     const emails = { sent: nz(a?.sent), opened: nz(a?.opened_h), clicked: nz(a?.clicked), replied: nz(a?.replied), bot_opens: nz(a?.bot_opens) };
     const lastEmail = [a?.last_sent_at, a?.last_open_at, a?.last_click_at, a?.last_reply_at].filter(Boolean).sort().pop() || null;
     const lastEmailWhat = a ? (a.last_reply_at && a.last_reply_at === lastEmail ? 'replied' : a.last_click_at && a.last_click_at === lastEmail ? 'clicked' : a.last_open_at && a.last_open_at === lastEmail ? 'opened' : a.last_sent_at ? 'sent' : null) : null;
@@ -84,6 +91,8 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
       heat: a?.heat ?? null, heat_band: a?.heat_band ?? null, heat_7d_ago: p.source_keys.map(k => heatAgo.get(k)).find(v => v != null) ?? null, visits: visitsRow,
       identified_at: p.identified_at ? String(p.identified_at).slice(0, 10) : null,
       buyer: isBuyerTitle(p.title, buyerTitles), has_email: !!p.has_email, last_touch_at: lastTouch,
+      add_record_id: unlinked ? unlinked.person_key.slice('person:'.length) : null,
+      record_reason: !unlinked ? null : unlinked.skip_listed ? 'skip_list' : decided.action === 'create' ? null : decided.reason,
       in_window: !sinceIso || (lastEmail && lastEmail >= sinceIso) || (visitsRow?.seen_to && visitsRow.seen_to >= w.since) || (p.identified_at && String(p.identified_at) >= sinceIso),
     };
   });
@@ -112,12 +121,12 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
   catch (e) { if (isMigrationPending(e)) return reply(503, { error: 'Run supabase/migrations/20261106_people_v2_stage1.sql first (sales_person_activity is missing)', migration_pending: true }); throw e; }
   const [prospects, salesPeople, partnerContacts, opportunities, targets, partners, visits, settings] = await Promise.all([
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner_user_id, email, snooze_until').eq('business_id', businessId).order('contact_id')),
-    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, source_kind, visit_id, upload_id, archived_at, created_at, company_name, owner_user_id'),
+    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, note, source_kind, visit_id, upload_id, archived_at, created_at, company_name, owner_user_id'),
     all('partner_contacts', 'id, goal_id, name, title, email, apollo_contact_id, last_activity_at, owner_user_id'),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, archived_at, employees, employees_source'),
     all('sales_targets', 'id, name, status, owner_user_id, employees, employees_source'),
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, employees, employees_source', x => x.eq('goal_type', 'partnership')),
-    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, visits_7d, last_visit, seen_to, top_paths, pulled_on'),
+    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, us_500, visits_7d, last_visit, seen_to, top_paths, pulled_on'),
     supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle(),
   ]);
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities: opportunities.filter(o => !o.archived_at), targets, partners });

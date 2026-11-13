@@ -8,7 +8,7 @@ import { insertCompanyRecord } from './companyPanel.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { normName } from './intakeMatch.js';
 import { cleanText, hasPii } from './scrubText.js';
-import { autoCreatePlan, autoSignalPatch, recordDecision } from './visitorRecords.js';
+import { autoCreatePlan, autoSignalPatch, recordDecision, visitLookup } from './visitorRecords.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
 import { VISITOR_ROLE, SKIP_NOTE, relinkParked } from './visitorPeopleMove.js';
@@ -75,11 +75,9 @@ async function peopleKeys(supabase, businessId, type, id) {
 // The errors Postgres answers with before the V2a follow-up migration ran (no 'parked' company_type / no company_name).
 const MIGRATION_PENDING = e => ['23514', '42703', '22P02'].includes(e?.code) || /company_type|company_name|check constraint|does not exist/i.test(String(e?.message || ''));
 export const PARKED_MIGRATION = 'parked people need the migration 20261027_visitor_to_record_v1_v2a.sql';
-// Every parked person of the workspace, keyed by their company (normName) -> { names, ids } (idempotent parking).
-async function parkedKeys(supabase, businessId) {
-  let rows;
-  try { rows = await selectAllPages(() => supabase.from('sales_people').select('id, name, company_name, apollo_person_id').eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id')); }
-  catch (e) { if (MIGRATION_PENDING(e)) return new Map(); throw e; }
+// Every person filed under a company name alone (no record), keyed by that company (normName) -> { names, ids }.
+async function unlinkedKeys(supabase, businessId) {
+  const rows = await selectAllPages(() => supabase.from('sales_people').select('id, name, company_name, apollo_person_id').eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id'));
   const by = new Map();
   for (const r of rows) {
     const k = normName(r.company_name);
@@ -163,31 +161,39 @@ async function fillEmployees(supabase, { type, id, employees, now }) {
   return true;
 }
 
-// V2a - the one filer behind the CSV upload and the list pull: each company -> its matched record (V0) or, when the
-// record rule says so (recordDecision: US and 500+ / unknown, or a buyer title), a new employer target - else its people
-// are PARKED (sales_people company_type 'parked', company name only, no record; Add in People search files them later).
-// A company on the visit skip list (Cloudflare, Lovable, ...) gets no record; its people are PARKED with the note
-// SKIP_NOTE (visitor-people-follow-record-v1 V4 - they used to be dropped unstored) and never re-link on their own. Each person ->
-// sales_people (partner_contacts on a partner), names as given, never an email; idempotent by name and by Apollo contact
-// id. preview: the same decisions with no write. -> { companies: [{ name, action: matched | created | parked |
-// would_create | would_park | skipped, type, id, people_added, already_in, reason }], people: n, counts, sample }
+// The one filer behind the CSV upload and the list pull. Every person is filed as an identified visitor: on the record
+// their company resolves to (V0), on a new employer target when the record rule says so (recordDecision: web_visits holds
+// the company AND that row is US 500+ or one of the people has a buyer title), else under the company name alone
+// (sales_people company_type 'parked' is the stored value for "no record"; the People row offers Add as target). A
+// company on the visit skip list (Cloudflare, Lovable, ...) never gets a record; its people carry SKIP_NOTE and never
+// re-link on their own. Each person -> sales_people (partner_contacts on a partner), names as given, never an email;
+// idempotent by name and by Apollo contact id. preview: the same decisions with no write. -> { companies: [{ name,
+// action: matched | created | would_create | no_record, type, id, people_added, already_in, reason }], people: n,
+// counts: { people_added (filed), people_linked (onto a record), no_record (companies), reasons: { reason: n }, ... }, sample }
 export async function fileVisitedPeople(supabase, { businessId, userId, parsed, sourceNote, now = new Date(), preview = false }) {
   const today = laDateString(now), stamp = slash(today);
-  const [ctx, skipRows, settings, parked] = await Promise.all([loadDupeContext(supabase, businessId), selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id')), salesSettings(supabase, businessId), parkedKeys(supabase, businessId)]);
+  const [ctx, skipRows, settings, unlinked, visits] = await Promise.all([
+    loadDupeContext(supabase, businessId),
+    selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id')),
+    salesSettings(supabase, businessId),
+    unlinkedKeys(supabase, businessId),
+    selectAllPages(() => supabase.from('web_visits').select('id, company_key, domain, us_500, pulled_on').eq('business_id', businessId).order('id')),
+  ]);
   const skip = new Set(skipRows.map(r => r.company_key));
+  const visitOf = visitLookup(visits);
   const companies = [], sample = [];
-  const counts = { companies: parsed.companies.length, matched: 0, created: 0, parked: 0, skipped_companies: 0, people_added: 0, people_parked: 0, already_in: 0, employees_filled: 0, parked_unfiled: 0 };
-  let parkedStore = true;
+  const counts = { companies: parsed.companies.length, matched: 0, created: 0, no_record: 0, reasons: {}, skipped_companies: 0, people_added: 0, people_linked: 0, already_in: 0, employees_filled: 0 };
   for (const c of parsed.companies) {
     const people = parsed.people.filter(p => (normName(p.company) || p.domain) === c.company_key);
+    const nameKey = normName(c.name);
     const m = exactRecord(c.name, c.domain, ctx);
-    let type = null, id = null, action, reason = null, skipListed = false;
+    let type = null, id = null, action, reason = null;
     if (m) { type = m.type === 'opportunity' ? 'employer' : m.type; id = m.id; action = 'matched'; }
-    else if (skip.has(normName(c.name))) { counts.skipped_companies++; skipListed = true; reason = SKIP_NOTE; action = preview ? 'would_park' : 'parked'; }
+    else if (skip.has(nameKey)) { counts.skipped_companies++; reason = 'skip_list'; action = 'no_record'; }
     else {
-      const d = recordDecision(c, people, { buyerTitles: settings.buyer_titles });
+      const d = recordDecision(c, people, { buyerTitles: settings.buyer_titles, visit: visitOf(c.company_key, c.domain) });
       reason = d.reason;
-      if (d.action === 'park') action = preview ? 'would_park' : 'parked';
+      if (d.action !== 'create') action = 'no_record';
       else if (preview) { type = 'target'; action = 'would_create'; }
       else {
         const evidence = cleanText(`Identified visitor${people.length === 1 ? '' : 's'}: ${people.length} (${sourceNote})${c.last_visit ? ` · seen ${c.last_visit}` : ''}`, 400);
@@ -197,34 +203,39 @@ export async function fileVisitedPeople(supabase, { businessId, userId, parsed, 
           type = 'target'; id = r.created.id; action = 'created';
           must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${stamp}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
           ctx.targets.push({ id, name: c.name, status: 'researching' });
+          // insertCompanyRecord just moved this company's unlinked people onto the new target.
+          unlinked.delete(nameKey);
         }
       }
     }
-    const parking = action === 'parked' || action === 'would_park';
-    counts[action === 'matched' ? 'matched' : parking ? 'parked' : 'created']++;
+    const noRecord = action === 'no_record';
+    counts[action === 'matched' ? 'matched' : noRecord ? 'no_record' : 'created']++;
+    if (noRecord) counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
     if (action === 'matched' && !preview && await fillEmployees(supabase, { type, id, employees: c.employees, now })) counts.employees_filled++;
-    const keys = parking ? (parked.get(normName(c.name)) || { names: new Set(), ids: new Set() }) : id ? await peopleKeys(supabase, businessId, type, id) : { names: new Set(), ids: new Set() };
-    if (parking && !parked.has(normName(c.name))) parked.set(normName(c.name), keys);
+    // Known = on the record, or already filed under the company name (a skip-list person stays there beside a record).
+    const under = unlinked.get(nameKey) || { names: new Set(), ids: new Set() };
+    if (!unlinked.has(nameKey)) unlinked.set(nameKey, under);
+    const onRecord = id ? await peopleKeys(supabase, businessId, type, id) : null;
+    const keys = onRecord ? { names: new Set([...onRecord.names, ...under.names]), ids: new Set([...onRecord.ids, ...under.ids]) } : under;
+    const remember = p => { const key = normName(p.name); if (key) keys.names.add(key); if (p.apollo_person_id) keys.ids.add(p.apollo_person_id); };
     let added = 0, already = 0;
     for (const p of people) {
       const fresh = !known(keys, p);
-      if (fresh && !preview && parking) {
-        if (parkedStore) {
-          const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: c.name, company_domain: c.domain, name: p.name, title: p.title || null, note: skipListed ? SKIP_NOTE : p.note || null, source_kind: 'web_visit', source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300), apollo_person_id: p.apollo_person_id || null, created_by: userId }).select('id').single();
-          if (ins.error && MIGRATION_PENDING(ins.error)) parkedStore = false; else must(ins);
-        }
-        if (!parkedStore) counts.parked_unfiled++;
-        const key = normName(p.name); if (key) keys.names.add(key); if (p.apollo_person_id) keys.ids.add(p.apollo_person_id);
-      } else if (fresh && !preview) await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300) }, existingKeys: keys });
-      else if (fresh) { const key = normName(p.name); if (key) keys.names.add(key); if (p.apollo_person_id) keys.ids.add(p.apollo_person_id); }
+      const note = cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300);
+      if (fresh && !preview && noRecord) {
+        must(await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: c.name, company_domain: c.domain, name: p.name, title: p.title || null, note: reason === 'skip_list' ? SKIP_NOTE : p.note || null, source_kind: 'web_visit', source_note: note, apollo_person_id: p.apollo_person_id || null, created_by: userId }).select('id').single());
+        remember(p);
+      } else if (fresh && !preview) await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: note }, existingKeys: keys });
+      else if (fresh) remember(p);
       if (fresh) added++; else already++;
-      if (sample.length < 3) sample.push({ name: p.name, company: c.name, action: fresh ? (parking ? 'parked' : 'new') : 'already' });
+      if (sample.length < 3) sample.push({ name: p.name, company: c.name, action: fresh ? 'new' : 'already' });
     }
-    if (parking) counts.people_parked += added; else counts.people_added += added;
+    counts.people_added += added;
+    if (!noRecord) counts.people_linked += added;
     counts.already_in += already;
-    companies.push({ name: c.name, action, type, id, people_added: parking ? 0 : added, people_parked: parking ? added : 0, already_in: already, employees: c.employees, reason });
+    companies.push({ name: c.name, action, type, id, people_added: added, already_in: already, employees: c.employees, reason });
   }
-  return { companies, people: parsed.people.length, counts, sample, migration_pending: !parkedStore ? PARKED_MIGRATION : null };
+  return { companies, people: parsed.people.length, counts, sample };
 }
 
 // V2a follow-up - POST /goals/people/:id/add-record (Member): a parked person's company becomes an employer target (or
@@ -293,8 +304,8 @@ export async function addPerson(supabase, { businessId, userId, body, now = new 
     const ctx = await loadDupeContext(supabase, businessId);
     const m = exactRecord(cName.value, cDomain.value, ctx);
     if (m) return addPerson(supabase, { businessId, userId, body: { name: name.value, title: title.value, linkedin_url: linkedinUrl, company: { type: m.type === 'opportunity' ? 'employer' : m.type, id: m.id } }, now });
-    const parked = (await parkedKeys(supabase, businessId)).get(normName(cName.value)) || { names: new Set(), ids: new Set() };
-    if (known(parked, person)) return reply(409, { error: `${person.name} is already parked under ${cName.value}` });
+    const parked = (await unlinkedKeys(supabase, businessId)).get(normName(cName.value)) || { names: new Set(), ids: new Set() };
+    if (known(parked, person)) return reply(409, { error: `${person.name} is already filed under ${cName.value}` });
     const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: cName.value, company_domain: cDomain.value, name: person.name, title: person.title, linkedin_url: person.linkedin_url, source_kind: null, source_note: 'Added from Pipeline', created_by: userId }).select('id, name').single();
     if (ins.error && MIGRATION_PENDING(ins.error)) return reply(409, { error: PARKED_MIGRATION });
     const row = must(ins);

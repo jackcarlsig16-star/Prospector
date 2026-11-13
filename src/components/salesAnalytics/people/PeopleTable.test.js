@@ -5,7 +5,7 @@ import PeopleTable from './PeopleTable';
 import { goalsApi } from '../goals/goalsApi';
 import { updateProspect } from '../huddleApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { todoEvents: jest.fn(() => Promise.resolve([])), undoTodoEvent: jest.fn(() => Promise.resolve({})), peopleActivity: jest.fn(), peopleActivityDetail: jest.fn(), members: jest.fn(), peopleViews: jest.fn(), savePeopleView: jest.fn(), deletePeopleView: jest.fn(), copyBundle: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), markContacted: jest.fn(), addPersonRecord: jest.fn() }, OPEN_PIPELINE_RECORD: 'prospector:open-pipeline-record' }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn() }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 const mockPhone = { on: false };
@@ -299,4 +299,27 @@ test('scout-v3 R6: the "Snoozed (n)" chip shows only when someone is snoozed; pr
   await waitFor(() => expect(document.querySelector('[data-snoozed-chip]').getAttribute('aria-pressed')).toBe('true'));
   fireEvent.click(document.querySelector('[data-snoozed-chip]'));
   await waitFor(() => expect(goalsApi.peopleActivity).toHaveBeenLastCalledWith('b1', 'all'));
+});
+
+test('visitor-people-filing V3: a person without a company record shows "Add as target" in its row (the reason in the title); a click posts add-record and reloads; a person on a record has no such button; a Viewer never sees it', async () => {
+  const noRecord = row('Seth Example', { key: 'person:sp9', sources: ['Website'], source: 'Website', identified_at: '2026-11-13', company: { type: 'parked', id: null, name: 'Zz Never Visited', stage: null, owner_user_id: null }, status: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: 60, heat_band: 'hot', has_email: false, last_touch_at: null, add_record_id: 'sp9', record_reason: 'no_visit_row' });
+  goalsApi.peopleActivity.mockResolvedValue({ ...DATA, rows: [...ROWS, noRecord], n: 4, total: 4 });
+  goalsApi.addPersonRecord.mockResolvedValue({ record: { type: 'target', id: 't9', name: 'Zz Never Visited' }, people_moved: 1, already: false });
+  const { unmount } = render(<PeopleTable businessId="b1" canEdit me={ME} />);
+  const t = await screen.findByRole('table', { name: 'People' });
+  const buttons = t.querySelectorAll('[data-add-target]');
+  expect(buttons).toHaveLength(1);
+  expect(buttons[0].closest('tr').getAttribute('data-key')).toBe('person_sp9');
+  expect(buttons[0]).toHaveTextContent('Add as target');
+  expect(buttons[0].title).toBe("No company record: Apollo's company search has not seen this company visit - add Zz Never Visited as an employer target");
+  const loads = goalsApi.peopleActivity.mock.calls.length;
+  fireEvent.click(buttons[0]);
+  await waitFor(() => expect(goalsApi.addPersonRecord).toHaveBeenCalledWith('b1', 'sp9'));
+  expect(await screen.findByText('Zz Never Visited added as a target')).toBeInTheDocument();
+  await waitFor(() => expect(goalsApi.peopleActivity.mock.calls.length).toBeGreaterThan(loads));
+  expect(t.querySelector('[data-person-detail]')).toBeNull();
+  unmount();
+  render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
+  const v = await screen.findByRole('table', { name: 'People' });
+  expect(v.querySelector('[data-add-target]')).toBeNull();
 });

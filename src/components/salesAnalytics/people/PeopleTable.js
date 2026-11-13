@@ -44,6 +44,7 @@ const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 6, f
 const RECORD = ['partner', 'employer', 'target'];
 const rowKeyOf = r => r.key.replace(/[^A-Za-z0-9_-]/g, '_');
 const tag = { display: 'inline-flex', alignItems: 'center', height: 16, padding: '0 6px', borderRadius: 999, border: `1px solid ${SA.accent}`, color: SA.accent, fontSize: 9.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', flex: 'none', lineHeight: 1 };
+const NO_RECORD_WORD = { no_visit_row: "Apollo's company search has not seen this company visit", size_unknown: 'visited, but not counted as US 500+ (size unknown)', under_500: 'under 500 employees', not_us: 'not a US company', skip_list: 'the company is on the visit skip list' };
 const BuyerTag = () => <span data-buyer style={tag} title="Buyer title (matches Settings › buyer titles)">buyer</span>;
 
 export default function PeopleTable({ businessId, canEdit, me = null, initialTarget = null }) {
@@ -94,6 +95,12 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const colorOf = uid => { const i = members.findIndex(m => m.user_id === uid); return i >= 0 ? members[i].color || memberColor(i) : null; };
   const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, ...(section ? { section } : {}) } })); };
   const changed = () => setReload(n => n + 1);
+  const [adding, setAdding] = useState(null);
+  const addAsTarget = async r => {
+    setAdding(r.key);
+    try { const out = await goalsApi.addPersonRecord(businessId, r.add_record_id); setToast({ text: out.already ? `${r.company.name} is already in the pipeline - ${r.name} moved onto it` : `${r.company.name} added as a target` }); changed(); }
+    catch (err) { setToast({ text: err.message }); } finally { setAdding(null); }
+  };
   const set = patch => setFilters(f => ({ ...f, ...patch }));
   const onRemove = key => { if (key === 'company') writePeopleCompany(null); setFilters(f => removeFilter(f, key)); };
   const clearAll = () => { writePeopleCompany(null); setFilters(EMPTY_FILTERS); };
@@ -133,6 +140,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const companyCell = r => (r.company
     ? <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
         {hasRecord(r) ? <button type="button" className="ui-link ui-link--cell" title={`Open ${r.company.name}`} onClick={() => openCompany(r.company)} style={ell}>{r.company.name}</button> : <span style={ell}>{r.company.name}</span>}
+        {!hasRecord(r) && r.add_record_id && canEdit && <button type="button" className="ui-link ui-link--cell" data-add-target disabled={adding === r.key} title={`No company record${r.record_reason ? `: ${NO_RECORD_WORD[r.record_reason] || r.record_reason}` : ''} - add ${r.company.name} as an employer target`} onClick={e => { e.stopPropagation(); addAsTarget(r); }} style={{ fontSize: 10.5, textAlign: 'left' }}>Add as target</button>}
         {hasRecord(r) && (r.company.stage || colorOf(r.company.owner_user_id)) && <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 10.5 }}>{r.company.stage && <span className="ui-group-label" style={{ fontSize: 10.5 }}>{String(r.company.stage).replace(/_/g, ' ')}</span>}{r.company.owner_user_id && colorOf(r.company.owner_user_id) && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: colorOf(r.company.owner_user_id), display: 'inline-block' }} />}</span>}
       </span>
     : <Dim />);

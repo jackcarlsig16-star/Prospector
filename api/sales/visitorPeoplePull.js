@@ -10,7 +10,8 @@ import { scheduleRecompute } from './intentScoreRun.js';
 // "Prospector · Website visitors (export)" (from Apollo's Website Visitors page; no workflow, no trigger on Apollo's side).
 // One pull = balance, the list id (ONE GET /labels the first time, then the id cached in sales_settings), the list's
 // contacts paged under MAX_PAGES (0 credits), balance again -> apollo_credit_spend (even 0) -> the same filer as the
-// CSV upload (matched record by domain / name, else a new employer target; sales_people, never an address).
+// CSV upload (every person filed; a matched record by domain / name, a new employer target only under the filer's record
+// rule, else the company name alone; sales_people, never an address).
 // Runs once per LA day in the BACKGROUND after the visit pull's page-load reply (schedulePeoplePull: fire-and-forget
 // like scheduleRecompute, one in flight per workspace, never inside the request), or on "Pull visitor people now"
 // (force, awaited). Its own visit_pull_runs row (kind 'people', one per LA day) is the ran-today guard once the V2a
@@ -100,11 +101,13 @@ export async function runVisitorPeoplePull(supabase, { businessId, userId, force
       await saveState(supabase, businessId, settings, { list_id: list.id, list_name: list.name, list_count: list.count, resolved_at: new Date(now).toISOString() });
     }
     const contacts = [];
-    let pages = 0;
+    let pages = 0, listTotal = null;
     for (let page = 1; page <= MAX_PAGES; page++) {
       const r = contactsRequest({ listId: list.id, page });
       const json = await apolloRequest({ method: r.method, path: r.path, body: r.body, ctx });
       pages++;
+      // The list's size as this read saw it (the cached count is from the day the id was resolved).
+      if (Number.isInteger(json?.pagination?.total_entries)) listTotal = json.pagination.total_entries;
       contacts.push(...(Array.isArray(json?.contacts) ? json.contacts : []));
       if (!json?.pagination || page >= json.pagination.total_pages) break;
     }
@@ -114,10 +117,10 @@ export async function runVisitorPeoplePull(supabase, { businessId, userId, force
     const parsed = mapContacts(contacts, { seenOn: today });
     const filed = await fileVisitedPeople(supabase, { businessId, userId, parsed, sourceNote: `Apollo list ${list.name}`, now: new Date(now) });
     const counts = { contacts: contacts.length, pages, capped: pages >= MAX_PAGES && contacts.length >= pages * 100, with_email: parsed.with_email, skipped: parsed.skipped, ...filed.counts };
-    await saveState(supabase, businessId, settings, { last_pull_on: today, last_at: new Date(now).toISOString(), last_counts: counts, last_error: filed.migration_pending || null, list_count: list.count ?? state.list_count ?? null });
-    must(await finish({ status: 'ok', credits, error: filed.migration_pending ? cleanText(filed.migration_pending, 300) : null }));
+    await saveState(supabase, businessId, settings, { last_pull_on: today, last_at: new Date(now).toISOString(), last_counts: counts, last_error: null, list_count: listTotal ?? list.count ?? state.list_count ?? null });
+    must(await finish({ status: 'ok', credits, error: null }));
     if (counts.created || counts.people_added || counts.employees_filled) scheduleRecompute(supabase, businessId, 'visit_pull');
-    const out = { ran: true, list: { name: list.name, count: list.count, cached: !!list.cached }, calls: ctx.callCounter.count, credits, counts, companies: filed.companies, sample: filed.sample, migration_pending: filed.migration_pending };
+    const out = { ran: true, list: { name: list.name, count: listTotal ?? list.count, cached: !!list.cached }, calls: ctx.callCounter.count, credits, counts, companies: filed.companies, sample: filed.sample };
     if (/[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i.test(JSON.stringify(out))) return reply(500, { error: 'refused: an address reached the reply' });
     return reply(200, out);
   } catch (e) {

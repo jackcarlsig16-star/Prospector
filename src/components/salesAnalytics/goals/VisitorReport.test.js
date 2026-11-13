@@ -101,7 +101,7 @@ test('V5 merged view: people identified expands to names + titles with HR / bene
     row('Zz Calpine', null, { people: [{ name: 'Margo R.', title: 'Benefits Manager', buyer: true, partial: false, identified: true }], filed_by_prospector: true, priority_rule: 'Identified visitor only', visits_7d: 0, next_action: 'Review 1 identified person' }),
     row('Sizeless Co', 'P3'),
   ] });
-  goalsApi.uploadVisitedPeople.mockResolvedValue({ companies: [{ name: 'Zz ADP', action: 'created', type: 'target', id: 'x', people_added: 2, already_in: 0 }, { name: 'Harbor Lane', action: 'matched', type: 'partner', id: 'p1', people_added: 1, already_in: 1 }], skipped: 1, header_row: 1, people: 4 });
+  goalsApi.uploadVisitedPeople.mockResolvedValue({ companies: [{ name: 'Zz ADP', action: 'created', type: 'target', id: 'x', people_added: 2, already_in: 0 }, { name: 'Harbor Lane', action: 'matched', type: 'partner', id: 'p1', people_added: 1, already_in: 1 }], counts: { companies: 2, matched: 1, created: 1, no_record: 0, reasons: {}, people_added: 3, people_linked: 3, already_in: 1 }, skipped: 1, header_row: 1, people: 4 });
   render(<VisitorReport businessId="b1" canEdit />);
   const table = await screen.findByRole('table');
   expect(within(table).getByRole('columnheader', { name: 'People identified' })).toBeInTheDocument();
@@ -128,7 +128,7 @@ test('V5 merged view: people identified expands to names + titles with HR / bene
   file.text = () => Promise.resolve('First Name,Last Name,Company\nJean,Horton,Zz ADP');
   fireEvent.change(screen.getByLabelText('Upload Visited People CSV'), { target: { files: [file] } });
   await waitFor(() => expect(goalsApi.uploadVisitedPeople).toHaveBeenCalledWith('b1', 'First Name,Last Name,Company\nJean,Horton,Zz ADP'));
-  expect(await screen.findByText('Filed 3 people from the export: 1 company created, 1 matched, 1 already on file, 1 row skipped')).toBeInTheDocument();
+  expect(await screen.findByText('From the export: 3 people filed · 3 linked to records · 0 companies left without a record · 1 company created, 1 matched, 1 already on file, 1 row skipped')).toBeInTheDocument();
   expect(document.body.textContent).not.toMatch(/@/);
 });
 

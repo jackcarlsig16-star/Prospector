@@ -7,6 +7,7 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
 import { goalsApi } from './goalsApi';
+import { filedText } from '../../../utils/filedText';
 import VisitorTrendChart, { summaryLine } from './VisitorTrendChart';
 import EmailFunnel from './EmailFunnel';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote } from './goalsUi';
@@ -189,8 +190,8 @@ export default function VisitorReport({ businessId, canEdit, isAdmin = false, on
     setUploading(true); setNotice('');
     try {
       const r = await goalsApi.uploadVisitedPeople(businessId, await file.text());
-      const created = r.companies.filter(c => c.action === 'created').length, matched = r.companies.length - created, added = r.companies.reduce((n, c) => n + c.people_added, 0), already = r.companies.reduce((n, c) => n + c.already_in, 0);
-      setNotice(`Filed ${added} ${added === 1 ? 'person' : 'people'} from the export: ${created} compan${created === 1 ? 'y' : 'ies'} created, ${matched} matched${already ? `, ${already} already on file` : ''}${r.skipped ? `, ${r.skipped} row${r.skipped === 1 ? '' : 's'} skipped` : ''}`);
+      const c = r.counts, already = c.already_in;
+      setNotice(`From the export: ${filedText(c)} · ${c.created} compan${c.created === 1 ? 'y' : 'ies'} created, ${c.matched} matched${already ? `, ${already} already on file` : ''}${r.skipped ? `, ${r.skipped} row${r.skipped === 1 ? '' : 's'} skipped` : ''}`);
       await load();
     } catch (e) { setNotice(e.message); } finally { setUploading(false); }
   };

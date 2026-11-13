@@ -96,20 +96,36 @@ export function matchLabel(v, { createdKeys = new Set() } = {}) {
 }
 export const priorityWord = p => PRIORITY_LABEL[p] || p;
 
-// V2a follow-up (Oct 27 ruling, choice 1): a visitor's company becomes an employer target only when it is US and 500+
-// (or its headcount is unknown), or one of its identified people carries a buyer title (sales_settings.buyer_titles);
-// otherwise its people wait as 'parked' rows (company name only, no record) until Add in People search. REVISABLE.
+// The people filer's record rule (Oct 27 ruling, narrowed by visitor-people-filing-v1): an identified visitor's company
+// becomes an employer target only when web_visits holds a row for it (Apollo's company search saw the company visit) AND
+// that row is US 500+ (us_500 - the only size / country fact a visit row carries) or one of its identified people has a
+// buyer title (sales_settings.buyer_titles). Otherwise no record: the people are filed under the company name alone and
+// the reason says why. Unknown never creates: on Nov 11 the list read carried no headcount and no country for 96 new
+// people, and "unknown country = US, unknown size = create" would have made 76 targets (a Mexican university and a
+// one-person CPA firm among them). The company's own headcount / country (the CSV has them) only refine a row that is
+// not us_500. REVISABLE.
 export const RECORD_MIN_EMPLOYEES = 500;
-export const UNKNOWN_COUNTRY_IS_US = true; // contacts/search carries no country on most rows; the CSV does
+export const UNKNOWN_COUNTRY_IS_US = false;
+export const NO_RECORD_REASONS = ['no_visit_row', 'size_unknown', 'under_500', 'not_us', 'skip_list'];
 const US = /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i;
 export const isUS = country => (country == null || String(country).trim() === '' ? UNKNOWN_COUNTRY_IS_US : US.test(String(country).trim()));
 export const hasBuyerTitle = (people = [], titles = []) => {
   const wanted = titles.map(t => String(t).toLowerCase().trim()).filter(Boolean);
   return people.some(p => { const title = String(p.title || '').toLowerCase(); return wanted.some(w => title.includes(w)); });
 };
-export function recordDecision(company, people, { buyerTitles = [] } = {}) {
+export function recordDecision(company, people, { buyerTitles = [], visit = null } = {}) {
+  if (!visit) return { action: 'no_record', reason: 'no_visit_row' };
   if (hasBuyerTitle(people, buyerTitles)) return { action: 'create', reason: 'buyer_title' };
-  if (!isUS(company.country)) return { action: 'park', reason: 'not_us' };
-  if (company.employees != null && company.employees < RECORD_MIN_EMPLOYEES) return { action: 'park', reason: 'under_500' };
-  return { action: 'create', reason: company.employees == null ? 'us_size_unknown' : 'us_500' };
+  if (visit.us_500 === true) return { action: 'create', reason: 'us_500' };
+  if (company.employees == null) return { action: 'no_record', reason: 'size_unknown' };
+  if (company.employees < RECORD_MIN_EMPLOYEES) return { action: 'no_record', reason: 'under_500' };
+  if (!isUS(company.country)) return { action: 'no_record', reason: 'not_us' };
+  return { action: 'create', reason: 'us_500' };
+}
+// The latest web_visits row of a company, by its key (normName) or its domain.
+export function visitLookup(visits = []) {
+  const byKey = new Map(), byDomain = new Map();
+  const newer = (map, k, v) => { if (k && (!map.has(k) || String(v.pulled_on || '') > String(map.get(k).pulled_on || ''))) map.set(k, v); };
+  for (const v of visits) { newer(byKey, v.company_key, v); newer(byDomain, v.domain ? String(v.domain).toLowerCase() : null, v); }
+  return (key, domain) => byKey.get(key) || (domain ? byDomain.get(String(domain).toLowerCase()) : null) || null;
 }
