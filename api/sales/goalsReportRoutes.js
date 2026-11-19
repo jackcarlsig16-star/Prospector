@@ -6,6 +6,8 @@ import { businessFeatureOn } from '../lib/outlookFeatures.js';
 import { outlookMeetingsByWeek } from './outlookMeetings.js';
 import { humanShare, humanOpenRate, countExternalMeetings } from './scorecardMath.js';
 import { loadMembers } from './teamEmails/send.js';
+import { laDateString } from './laDate.js';
+import { GOAL_KEYS, weekEnded, WEEK_ENDED_ERROR } from './weeklyMetrics.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -29,7 +31,7 @@ const UNITS = ['people', 'partners'];
 // and the report resolve it: the week's own goal row, else the latest
 // earlier one (carried), else no goal; unit defaults to people. One small
 // read for any list of weeks -> Map week -> { unit, goal, carried }.
-async function firstTouchedGoals(supabase, businessId, weeks) {
+export async function firstTouchedGoals(supabase, businessId, weeks) {
   if (!weeks.length) return new Map();
   const last = weeks.reduce((a, b) => (a > b ? a : b));
   const { data, error } = await supabase.from('sales_metric_targets').select('period_start, goal, unit')
@@ -77,7 +79,7 @@ function weeksOfMonth(month) {
 // ── Computed numbers ────────────────────────────────────────────────────────
 // Last synced value of a sales_metrics_daily metric inside [from, to] (LA
 // dates), or null when no sync landed in that range.
-async function lastSyncedValue(supabase, businessId, metricKey, from, to) {
+export async function lastSyncedValue(supabase, businessId, metricKey, from, to) {
   const { data, error } = await supabase.from('sales_metrics_daily').select('value, metric_date')
     .eq('business_id', businessId).eq('metric_key', metricKey).eq('dim_type', 'all')
     .gte('metric_date', from).lte('metric_date', to).order('metric_date', { ascending: false }).limit(1);
@@ -193,7 +195,7 @@ async function weekScorecard(supabase, businessId, weekStart, { all, forOwner },
   };
 }
 
-async function targetsFor(supabase, businessId, period, starts) {
+export async function targetsFor(supabase, businessId, period, starts) {
   if (!starts.length) return new Map();
   const { data, error } = await supabase.from('sales_metric_targets').select('period_start, metric_key, goal')
     .eq('business_id', businessId).eq('period', period).in('period_start', starts);
@@ -461,7 +463,7 @@ export async function saveTargetRoute(req, res) {
   const { period, period_start, metric_key } = req.body || {};
   if (!['week', 'month'].includes(period)) return res.status(400).json({ error: 'bad enum: period must be week|month' });
   if (period === 'week' ? !isMonday(period_start) : !isFirstOfMonth(period_start)) return res.status(400).json({ error: `period_start must be a ${period === 'week' ? 'Monday' : '1st of a month'} (YYYY-MM-DD)` });
-  const metrics = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
+  const metrics = [...new Set([...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS, ...GOAL_KEYS])];
   if (!metrics.includes(metric_key)) return res.status(400).json({ error: `bad enum: metric_key must be one of ${metrics.join('|')}` });
   const num = v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
   if ('goal' in req.body && !num(req.body.goal)) return res.status(400).json({ error: 'goal must be a number >= 0 or null' });
@@ -473,6 +475,8 @@ export async function saveTargetRoute(req, res) {
   if ('unit' in req.body && (metric_key !== FIRST_TOUCHED || period !== 'week' || !UNITS.includes(req.body.unit))) {
     return res.status(400).json({ error: `unit (${UNITS.join('|')}) only applies to the weekly ${FIRST_TOUCHED} goal` });
   }
+  // weekly-funnel-v1 W3: a week goal is typed before or during its week, never after it.
+  if (period === 'week' && 'goal' in req.body && weekEnded(period_start, laDateString())) return res.status(409).json({ error: WEEK_ENDED_ERROR, code: 'week_ended' });
   const supabase = getSupabase();
   try {
     if (period === 'week' && await weekIsFinal(supabase, req.params.businessId, period_start)) return res.status(409).json({ error: FINAL_ERROR });

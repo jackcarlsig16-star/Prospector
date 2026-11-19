@@ -95,6 +95,7 @@ export const ENTITIES = [
 export const OPENERS = {
   visitor: () => window_({ tab: 'pipeline', view: 'companies', channel: 'website_visit' }, true),
   pulse: () => window_({ tab: 'dashboard', view: 'analytics' }, true),
+  weekly: () => window_({ tab: 'dashboard', view: 'scorecard' }, true),
   funnel: () => window_({ tab: 'dashboard', view: 'sources' }, true),
   attention: () => window_({ tab: 'actions' }, true),
 };
@@ -124,8 +125,8 @@ export const VOCABULARY = {
 
 // D7: the house words from the data and the constants the screens use - never a hand-written prompt.
 export async function glossary(sb, { businessId }) {
-  const [{ mergeWeights }, { BAND_WORD }, { SOURCE_WORD }, { WORDING }, settings, members, colors, reps] = await Promise.all([
-    import('./intentScoreRun.js'), import('./teamEmails/visitorEmail.js'), import('./companyBrief.js'), import('./funnelMath.js'),
+  const [{ mergeWeights }, { BAND_WORD }, { SOURCE_WORD }, { WORDING }, { WORDING: WEEKLY }, settings, members, colors, reps] = await Promise.all([
+    import('./intentScoreRun.js'), import('./teamEmails/visitorEmail.js'), import('./companyBrief.js'), import('./funnelMath.js'), import('./weeklyMetrics.js'),
     sb.from('sales_settings').select('score_weights, buyer_titles').eq('business_id', businessId).maybeSingle().then(must),
     sb.from('business_members').select('user_id, name, role, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(must),
     memberColors(sb, businessId).catch(() => new Map()),
@@ -144,6 +145,8 @@ export async function glossary(sb, { businessId }) {
     names.length ? `Members: ${names.map(m => `${m.name} (${m.role}${m.color ? `, ${m.color}` : ''})`).join(', ')}.` : null,
     settings?.buyer_titles?.length ? `Buyer titles: ${settings.buyer_titles.slice(0, 20).join(', ')}.` : null,
     `Email → site (the funnel route, the daily email's tables): ${WORDING.company} ${WORDING.person} Opens, clicks, replies and meetings are ${WORDING.cohort}. ${WORDING.since}`,
+    // weekly-funnel-v1 W8
+    `Weekly funnel (Dashboard › Scorecard): ${WEEKLY.week} ${WEEKLY.pace} ${WEEKLY.goals} ${WEEKLY.manual}`,
     // scout-v3 D1: which record a word means.
     'Prospects, people, contacts, leads and "who" mean PEOPLE (one row per person, Pipeline › People); accounts, companies, employers, partners and targets mean COMPANIES. A lead is a person from any source.',
     // person-owner-v1 O6

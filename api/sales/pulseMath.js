@@ -57,7 +57,7 @@ export function upcomingExternal(events, now) {
   return { upcoming: up.length, next_at: up[0] ? new Date(Date.parse(up[0].start_at)).toISOString() : null };
 }
 
-function windowValues(w, { counts, opens, deliveredAt, events, visits, people, now }) {
+export function windowValues(w, { counts, opens, deliveredAt, events, visits, people, now }) {
   const rows = counts.filter(r => inDays(w, r.day));
   const sent = sum(rows, r => r.delivered) + sum(rows, r => r.hard_bounced) + sum(rows, r => r.spam_blocked);
   const delivered = sum(rows, r => r.delivered), opened = sum(rows, r => r.opened), replied = sum(rows, r => r.replied);

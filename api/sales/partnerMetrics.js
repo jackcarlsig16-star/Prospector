@@ -82,8 +82,9 @@ export function firstContactEvent(data, goalId) {
     .reduce((min, e) => (!min || Date.parse(e.at) < Date.parse(min.at) ? e : min), null);
 }
 
-export function partnerWeekMetrics(data, weekStart, ownerUserId, nowMs = Date.now()) {
-  const startMs = laStartOfDayMs(weekStart), endMs = laStartOfDayMs(addDays(weekStart, 7));
+// endMs: the week cut short (weekly-funnel-v1's same point last week); the whole week when left out.
+export function partnerWeekMetrics(data, weekStart, ownerUserId, nowMs = Date.now(), endMs = laStartOfDayMs(addDays(weekStart, 7))) {
+  const startMs = laStartOfDayMs(weekStart);
   const mine = data.partners.filter(p => !ownerUserId || p.owner_user_id === ownerUserId);
   const ids = new Set(mine.map(p => p.id));
   const live = e => !data.undone.has(e.id) && ids.has(e.goal_id) && e.event !== 'undo';

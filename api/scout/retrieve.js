@@ -106,6 +106,8 @@ export function parseAsk(q, vocab, { today }) {
     funnel: /\bfunnel\b|\breferr(ed|al|als)\b/.test(text), emails: /\bsequences?\b|\bopen rate\b|\breply rate\b|\bemails? (doing|performing|going)\b|\bhow are (my |our )?emails\b/.test(text),
     opened: /\bopen(ed|s)\b/.test(text), replied: /\brepl(ied|ies|y)\b/.test(text), clicked: /\bclick(ed|s)\b/.test(text),
     // email-funnel-v1 F7: "email to site rate", "emails -> website visits", "visit rate", "email funnel" -> the funnel route.
+    // weekly-funnel-v1 W8: pacing, a metric's trend, last week's goals -> the weekly registry route.
+    weekly: /\bpac(e|ing)\b|\bon (track|pace)\b|\btrend(s|ing)?\b|\b(hit|hitting|miss|missed|meet|met|make|made)\b[^.?!]{0,24}\bgoals?\b|\bweekly funnel\b|\bweek over week\b/.test(text),
     brief: /\bbrief\b|\bintel\b|\bpull\b|\bwhat do we know\b|\btell me about\b|\brecent call\b|\bnotes on\b/.test(text),
     email_site: /\bemails?\b[^.?!]{0,16}\b(to|into|vs|versus|→|->)\s+(the\s+)?(site|website|web|visits?|visitors)\b|\b(site|website|visit|visitor|conversion) rate\b|\bemail funnel\b|\bfunnel\b[^.?!]{0,12}\bemails?\b/.test(text),
   };

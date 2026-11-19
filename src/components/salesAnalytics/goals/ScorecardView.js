@@ -106,7 +106,7 @@ export default function ScorecardView({ businessId, isOwner, toolsSlot, onOpen }
         if (mg != null) await goalsApi.saveTarget(businessId, { period: 'month', period_start: month, metric_key: k, goal: mg });
         for (let i = 0; i < weeks.length; i++) {
           const wg = prevWeeks[i]?.metrics?.[k]?.goal;
-          if (wg != null) await goalsApi.saveTarget(businessId, { period: 'week', period_start: weeks[i].week_start, metric_key: k, goal: wg, ...(k === 'partners_first_touched' ? { unit: 'people' } : {}) });
+          if (wg != null && weeks[i].week_start >= thisWeek) await goalsApi.saveTarget(businessId, { period: 'week', period_start: weeks[i].week_start, metric_key: k, goal: wg, ...(k === 'partners_first_touched' ? { unit: 'people' } : {}) });
         }
       }
       setTick(t => t + 1);

@@ -22,6 +22,7 @@ export const salesReads = {
   loadFunnel: lazy('./funnelRoutes.js', 'loadFunnel'),
   personDetail: lazy('./peopleActivityRoutes.js', 'personDetail'),
   topTargets: lazy('./topTargets.js', 'topTargets'),
+  loadWeekly: lazy('./weeklyRoutes.js', 'loadWeekly'),
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets', 'accounts']);
 const day = v => (v ? String(v).slice(0, 10) : null);
@@ -100,6 +101,23 @@ const topItem = x => ({
   entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: null,
   text: [x.name, x.type, `top target #${x.rank}`, `score ${x.score} ${x.band}`, `why: ${x.why.full}`, `bars: heat ${x.groups.heat} · fit ${x.groups.fit} · impact ${x.groups.impact} · recency ${x.groups.recency} · pin ${x.groups.pin}`, x.pin ? `${x.pin.held ? `held at P${x.pin.level}` : 'pinned'} · ${x.pin.days_left} d left` : null, x.owner ? `owner ${x.owner}` : 'unassigned'].filter(Boolean).join(' · '),
 });
+
+export const WEEKLY_RULE = 'Weekly funnel: every number is this week to date against the same point last week; pace is a projection for counts only; a goal is the one typed for that week.';
+export const isWeekly = ask => !!ask.flags.weekly && !ask.flags.email_site && !ask.company.length;
+const wkNum = (x, v) => (v == null ? '—' : x.unit === 'rate' ? `${(100 * v).toFixed(1)} %` : String(Math.round(v * 10) / 10));
+// One registry row as a line: the numbers, then the direction in words (▲ / ▼ by what is good for the row).
+export function weeklyLine(x, b) {
+  const t = x.this_week, l = x.last_week;
+  const dir = t.delta == null ? null : t.delta === 0 ? 'flat against the same point last week' : `${(t.delta > 0) === (x.direction === 'up') ? '▲ better' : '▼ worse'} than the same point last week by ${x.unit === 'rate' ? `${Math.abs(100 * t.delta).toFixed(1)} pts` : Math.abs(Math.round(t.delta * 10) / 10)}`;
+  const past = x.series.filter(s => !s.current && s.value != null);
+  return [
+    `${x.name} (${x.group})`, `this week to date ${wkNum(x, t.to_date)}`, x.kind === 'manual' ? null : `same point last week ${wkNum(x, t.same_point_last_week)}`, dir,
+    t.pace != null ? `on pace for about ${t.pace} by Sunday` : null, t.goal != null ? `goal ${wkNum(x, t.goal)}${t.progress != null ? `, ${Math.round(100 * t.progress)} % of it` : ''}` : 'no goal set this week',
+    l ? `last week ${wkNum(x, l.value)}${l.goal != null ? ` against a goal of ${wkNum(x, l.goal)}: ${l.hit == null ? 'no number' : l.hit ? 'hit' : 'missed'}` : ', no goal was set'}` : null,
+    past.length ? `earlier weeks, oldest first: ${past.map(s => wkNum(x, s.value)).join(', ')}` : 'no earlier weeks on file',
+    x.kind === 'manual' ? (x.entered.last_week ? `last week entered by ${x.entered.last_week.by}` : 'last week not entered') : null,
+  ].filter(Boolean).join(' · ');
+}
 
 export const salesIntents = [
   { id: 'top_targets', example: 'my top targets', suggest: true, title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
@@ -236,7 +254,20 @@ export const salesIntents = [
       items.push({ entity: 'funnel', id: 'email_site:how', title: 'How the email → site rates are computed', text: `${r.body.wording.company} ${r.body.wording.person} ${r.body.wording.since}${r.body.ready ? '' : ' Delivered rows do not reach that day yet, so no rate is shown in the email.'}` });
       return { read: 'goals/funnel?windows=yesterday,7d,30d', items };
     } },
-  { id: 'emails', example: 'how are our emails doing this month', match: ask => !ask.flags.email_site && (ask.flags.emails || ask.entity === 'emails'),
+  // weekly-funnel-v1 W8: "how are we pacing this week", "what's our open rate trend", "did we hit last week's goals" -
+  // the registry route's own numbers (this week to date against the same point last week, pace, goal, the weeks behind).
+  { id: 'weekly', example: 'how are we pacing this week', title: 'Weekly funnel', rule: WEEKLY_RULE, match: isWeekly,
+    async run(sb, { businessId, ask, now }) {
+      const r = await salesReads.loadWeekly(sb, businessId, { weeks: 12, now });
+      if (r.status !== 200) return { read: `goals/weekly (${r.status})`, items: [] };
+      const b = r.body, q = String(ask.q || '').toLowerCase();
+      const named = b.metrics.filter(x => q.includes(x.name.toLowerCase()) || (x.key === 'human_open_rate' && /\bopen rate\b|\bopens\b/.test(q)));
+      const rows = named.length ? named : b.metrics.filter(x => !x.context && (x.this_week.to_date != null || x.last_week?.value != null || x.this_week.goal != null));
+      const items = rows.map(x => ({ entity: 'weekly', id: x.key, title: `${x.name} · weekly`, text: weeklyLine(x, b) }));
+      items.push({ entity: 'weekly', id: 'how', title: 'How the weekly funnel is read', text: `${b.wording.week} ${b.wording.pace} ${b.wording.goals} ${b.wording.manual}` });
+      return { read: `goals/weekly?weeks=12 · week of ${b.week_start} · day ${b.elapsed.days} of 7`, items };
+    } },
+  { id: 'emails', example: 'how are our emails doing this month', match: ask => !ask.flags.email_site && !isWeekly(ask) && (ask.flags.emails || ask.entity === 'emails'),
     async run(sb, { businessId, ask, now }) {
       const period = ask.since_kind === 'this week' || ask.since_kind === 'last week' ? 'week' : 'month';
       const p = await salesReads.loadPulse(sb, businessId, { period }, new Date(now));
