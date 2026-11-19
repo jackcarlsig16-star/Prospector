@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SA } from '../theme';
 import { goalsApi } from '../goals/goalsApi';
-import AssignButton from './AssignPerson';
+import AssignButton, { AssignList } from './AssignPerson';
 import { numStyle, ErrorNote } from '../goals/goalsUi';
 import { playbookPrompt, mondayOf } from '../goals/companyPanelModel';
 import { markContacted } from '../goals/companyReach';
@@ -30,6 +30,11 @@ export default function PersonDetail({ businessId, row, canEdit, meId, members =
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
   const [todo, setTodo] = useState(null); // { text, due }
+  // A4: Assign swaps the quick menu's buttons for the member list in place (a back row above it) - no second popover.
+  const [assigning, setAssigning] = useState(false);
+  const assignBtn = useRef(null);
+  const wasAssigning = useRef(false);
+  useEffect(() => { if (wasAssigning.current && !assigning) assignBtn.current?.focus({ preventScroll: true }); wasAssigning.current = assigning; }, [assigning]);
   useEffect(() => {
     let live = true;
     setDetail(null); setError('');
@@ -61,17 +66,25 @@ export default function PersonDetail({ businessId, row, canEdit, meId, members =
   const timeline = detail?.timeline || [];
   return (
     <div data-person-detail={row.key} style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: SA.text }}>
-      <div role="group" aria-label="Quick menu" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      {assigning && (
+        <div role="group" aria-label="Quick menu" data-assign-swap className="asg-menu asg-menu--inline" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setAssigning(false); } }}>
+          <button type="button" className="asg-back" aria-label="Back to the quick menu" onClick={() => setAssigning(false)}><span aria-hidden="true">‹</span>Assign</button>
+          <AssignList members={members} ownerUserId={row.owner_user_id || null} label={`Assign ${row.name}`} onPick={onAssign} onClose={() => setAssigning(false)} />
+        </div>
+      )}
+      {!assigning && <div role="group" aria-label="Quick menu" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
         <Button size="sm" disabled={!row.company?.id} disabledReason="No company record yet" onClick={() => onOpenCompany(row.company)}>Open company</Button>
         {canEdit && <>
-          <AssignButton sheet={phone} members={members} ownerUserId={row.owner_user_id || null} name={row.name} onPick={onAssign} className="ui-btn ui-btn--secondary ui-btn--sm">Assign ▸</AssignButton>
+          {phone
+            ? <AssignButton sheet members={members} ownerUserId={row.owner_user_id || null} name={row.name} subtitle={[row.title, row.company?.name].filter(Boolean).join(' · ')} onPick={onAssign} className="ui-btn ui-btn--secondary ui-btn--sm">Assign ▸</AssignButton>
+            : <button ref={assignBtn} type="button" data-assign className="ui-btn ui-btn--secondary ui-btn--sm" aria-label={`Assign ${row.name}`} aria-expanded={false} onClick={() => setAssigning(true)}>Assign ▸</button>}
           <Button size="sm" disabled={!rec || busy === 'draft'} disabledReason={noRecord} title="Copies the email bundle for Claude - Prospector never sends" onClick={draft}>{busy === 'draft' ? 'Copying…' : 'Draft email'}</Button>
           <Button size="sm" disabled={!rec || busy === 'call'} disabledReason={noRecord} title="A call touch on the company (Undo 10 s)" onClick={() => touch('call', 'call')}>Log call</Button>
           <Button size="sm" disabled={!rec} disabledReason={noRecord} aria-expanded={!!todo} onClick={() => setTodo(t => (t ? null : { text: '', due: '' }))}>Add to-do</Button>
           <Button size="sm" disabled={!rec || busy === 'contacted'} disabledReason={noRecord} title="An email touch on the company; a record behind Contacted moves there (Undo 10 s)" onClick={() => touch('email', 'contacted')}>Mark contacted</Button>
           <Button size="sm" variant="danger" disabled={!prospect || row.status === 'dead' || busy === 'dead'} disabledReason={prospect ? 'Already not a fit' : 'No archive for this source yet'} title="The prospect's status (Undo 10 s)" onClick={notAFit}>Not a fit</Button>
         </>}
-      </div>
+      </div>}
       {todo && (
         <form data-todo-form onSubmit={e => { e.preventDefault(); if (todo.text.trim()) addTodo(); }} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <input autoFocus aria-label="To-do" placeholder="What needs doing" value={todo.text} onChange={e => setTodo(t => ({ ...t, text: e.target.value }))} className="ui-input" style={{ ...field, width: 260 }} />

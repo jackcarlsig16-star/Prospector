@@ -8,8 +8,10 @@ import TypeChip from './TypeChip';
 import CompanyActions from './CompanyActions';
 import CompanyFacts, { MoreMenu } from './CompanyFacts';
 import { companyWindowUrl } from '../salesNav';
-import { IconStar, IconExternal, IconClose } from '../../../ui/icons';
-import { EXPIRED_TITLE, RENEW_TITLE } from './pinStar';
+import { IconExternal, IconClose } from '../../../ui/icons';
+import { EXPIRED_TITLE } from './pinStar';
+import PinControl from './topTargets/PinControl';
+import { TT_CSS } from './topTargets/topTargetsStyles';
 import InterestBand from './InterestBand';
 import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
 import CompanyDrawers from './CompanyDrawers';
@@ -53,7 +55,6 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
   const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind' | 'deprioritize' | 'they-replied' | 'referral'
-  const [starBusy, setStarBusy] = useState(false);
   const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
   const [editPanel, setEditPanel] = useState(null); // company-panel-v3 D2: 'jump' | 'source' | 'domain' under the facts
   const [links, setLinks] = useState([]); // intake-insights-v1: channel links naming this company
@@ -119,7 +120,6 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
   }, [menu]);
   const changed = useCallback(() => { setVersion(v => v + 1); onChanged(); }, [onChanged]);
-  const star = async action => { setStarBusy(true); try { await onStar(typeof action === 'string' ? action : undefined); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
 
   const lookup = memberLookup(members);
   const facts = factsFor(row, detail?.record, sourced && source ? source.source : undefined);
@@ -164,10 +164,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       {live ? <KindStageChip row={row} /> : <TypeChip row={row} style={{ height: 24 }} />}
       {live && <LiveChip since={liveSince(detail?.stage_history)} />}
       {canEdit && (row.type === 'partner' || row.type === 'employer') && (
-        <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} data-pin-expired={row.pin_expired || undefined} title={row.pin_expired ? RENEW_TITLE : undefined} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top || row.pin_expired ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />{row.pin_expired ? 'Renew' : 'Top'}</button>
-      )}
-      {canEdit && row.pin_expired && (row.type === 'partner' || row.type === 'employer') && (
-        <button type="button" className="ui-btn ui-btn--tertiary" disabled={starBusy} onClick={() => star('unpin')} style={{ height: 28, padding: '0 8px', fontSize: 12 }}>Unpin</button>
+        <span data-window-pin style={{ display: 'inline-flex' }}><style>{TT_CSS}</style>
+          <PinControl label canEdit row={{ name: row.name, pin: row.top ? { reason: row.pin_reason || '' } : null, pin_expired: row.pin_expired ? { until: row.pinned_until } : null }} onAct={(action, reason) => onStar(action, reason)} />
+        </span>
       )}
       {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
       {!canEdit && row.pin_expired && <span data-pin-expired title={EXPIRED_TITLE} style={{ color: SA.warn, fontSize: 13 }}>☆ {EXPIRED_TITLE}</span>}

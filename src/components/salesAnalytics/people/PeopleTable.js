@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SA, SA_THEME_ROOT_ID } from '../theme';
 import { goalsApi, OPEN_PIPELINE_RECORD } from '../goals/goalsApi';
@@ -18,7 +18,8 @@ import { SOURCE_GLYPH_BY_WORD } from '../../../constants/peopleSource';
 import HeatPill, { HEAT_COLOR, BAND_WORD, delta7 } from './HeatPill';
 import HeatPopover from './HeatPopover';
 import PersonDetail from './PersonDetail';
-import AssignButton, { OwnerMark, assignPerson, ownerOf } from './AssignPerson';
+import AssignButton, { OwnerMark, ownerOf } from './AssignPerson';
+import { useAssign, AssignDoneLine } from './AssignDoneLine';
 
 // people-v2 Stage 2 - Pipeline › People: ONE table of everyone we know (prospects, identified visitors, partner contacts)
 // with their email activity and their company's visits, from GET goals/people/activity (P5: the materialised summary)
@@ -64,12 +65,13 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const [reload, setReload] = useState(0);
   // person-owner-v1 O3: an assign shows at once (key -> owner) until the reload brings the row itself.
   const [owners, setOwners] = useState({});
+  const writing = useRef(new Set());
   const [coldOpen, setColdOpen] = useState(false);
   // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
   const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
   const meId = me?.profile?.id || null;
   const [snoozedOnly, setSnoozedOnly] = useState(false);
-  const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setOwners({}); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
+  const load = useCallback(() => (snoozedOnly ? goalsApi.peopleActivity(businessId, filters.window, 'only') : goalsApi.peopleActivity(businessId, filters.window)).then(d => { setData(d); setOwners(o => Object.fromEntries(Object.entries(o).filter(([k]) => writing.current.has(k)))); setError(''); if (!d.snoozed) setSnoozedOnly(false); }).catch(e => setError(e.message)), [businessId, filters.window, snoozedOnly]);
   useEffect(() => { load(); }, [load, reload]);
   useEffect(() => {
     goalsApi.members(businessId).then(setMembers).catch(() => setMembers([]));
@@ -100,7 +102,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, ...(section ? { section } : {}) } })); };
   const changed = () => setReload(n => n + 1);
   const setLocalOwner = (key, userId) => setOwners(o => { const n = { ...o }; if (userId === undefined) delete n[key]; else n[key] = userId; return n; });
-  const assign = (r, to) => assignPerson({ businessId, personKey: r.key, name: r.name, from: r.owner_user_id || null, to, members, onLocal: userId => setLocalOwner(r.key, userId), onToast: setToast, onChanged: changed });
+  const assigner = useAssign({ businessId, members, onLocal: setLocalOwner, onChanged: changed, inFlight: writing });
+  const assign = (r, to) => assigner.assign({ key: r.key, name: r.name, from: r.owner_user_id || null }, to);
   const [adding, setAdding] = useState(null);
   const addAsTarget = async r => {
     setAdding(r.key);
@@ -151,7 +154,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </span>
     : <Dim />);
   const ownerCell = r => (canEdit
-    ? <AssignButton members={members} ownerUserId={r.owner_user_id || null} name={r.name} onPick={to => assign(r, to)} className="ui-link ui-link--cell" style={{ display: 'inline-flex', maxWidth: '100%', minWidth: 0, textAlign: 'left' }}><OwnerMark members={members} userId={r.owner_user_id} /></AssignButton>
+    ? <AssignButton variant="cell" members={members} ownerUserId={r.owner_user_id || null} name={r.name} onPick={to => assign(r, to)} />
     : <OwnerMark members={members} userId={r.owner_user_id} />);
   const ownerName = r => (r.owner_user_id ? ownerOf(members, r.owner_user_id)?.name || 'Former member' : null);
   const sourceText = r => r.sources.join(' + ');
@@ -209,9 +212,12 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{hasRecord(r) && r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''} · <span data-card-size title={sizeTitle(r)}>{r.company?.employees == null ? 'size unknown' : `${headcountText(r.company.employees)} ${HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] || ''}`.trim()}</span></span>
       <span style={{ fontSize: 12, display: 'flex', gap: 10, flexWrap: 'wrap', ...numStyle }}><span title="sent">✉ {r.emails.sent}</span><span title="human opens">👁 {r.emails.opened}</span><span title="clicked">🖱 {r.emails.clicked}</span><span title="replied">↩ {r.emails.replied}</span><span style={{ color: SA.muted }}>{r.visits ? `${r.visits.visits_7d} visits 7 d` : 'no visits'}</span></span>
       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><span className="ui-chip ui-chip--dense">{sourceCell(r)}</span>{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: canEdit ? 44 : undefined }}>
+        <span className="ui-group-label">Owner</span>
         {canEdit
-          ? <AssignButton sheet members={members} ownerUserId={r.owner_user_id || null} name={r.name} onPick={to => assign(r, to)} className="ui-chip ui-chip--dense" style={{ cursor: 'pointer', minHeight: 24 }}><OwnerMark members={members} userId={r.owner_user_id} />{!r.owner_user_id && <span style={{ marginLeft: 4 }}>Assign</span>}</AssignButton>
-          : <span className="ui-chip ui-chip--dense" data-card-owner><OwnerMark members={members} userId={r.owner_user_id} /></span>}
+          ? <AssignButton sheet variant="big" members={members} ownerUserId={r.owner_user_id || null} name={r.name} subtitle={[r.title, r.company?.name].filter(Boolean).join(' · ')} onPick={to => assign(r, to)} />
+          : <span data-card-owner style={{ fontSize: 13 }}><OwnerMark members={members} userId={r.owner_user_id} /></span>}
       </span>
     </div>
   );
@@ -277,7 +283,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       {error && <ErrorNote message={error} />}
       {data && (
         <div className="ui-theme-dark">
-          <DataTable label="People" columns={columns} groups={groups} rowKey={rowKeyOf} openKey={scoutRow ? rowKeyOf(scoutRow) : null} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
+          <DataTable label="People" columns={columns} groups={groups} rowKey={rowKeyOf} openKey={scoutRow ? rowKeyOf(scoutRow) : null} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" rowStyle={r => (assigner.washKey === r.key ? { '--ui-row-tint': 'color-mix(in srgb, var(--sa-good) 7%, transparent)' } : undefined)} compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
         </div>
       )}
       {toast && createPortal(
@@ -285,6 +291,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
           <span>{toast.text}</span>
           {toast.undo && <Button variant="tertiary" style={{ fontWeight: 600 }} onClick={async () => { const u = toast.undo; setToast(null); try { await u(); } catch (e) { setToast({ text: e.message }); } }}>Undo</Button>}
         </div>, overlayRoot)}
+      <AssignDoneLine line={assigner.line} onClear={assigner.clear} phone={phone} />
       {sheetOpen && createPortal(
         <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 4003 }}>
           <div onClick={() => setSheetOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />

@@ -93,7 +93,7 @@ test('chips, Size and search send the route\'s params; a company name opens its 
   const heard = jest.fn();
   window.addEventListener(OPEN_PIPELINE_RECORD, heard);
   fireEvent.click(screen.getByRole('button', { name: 'Zz Plain Co' }));
-  expect(heard.mock.calls[0][0].detail).toEqual({ key: 'employer-Zz Plain Co' });
+  expect(heard.mock.calls[0][0].detail).toEqual({ key: 'employer-Zz Plain Co', from: 'top-targets' });
   window.removeEventListener(OPEN_PIPELINE_RECORD, heard);
   goalsApi.topTargets.mockResolvedValue({ ...BODY, rows: [], n: 0, total: 0 });
   fireEvent.click(screen.getByRole('button', { name: /^P2/ }));

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup, act } from '@testing-library/react';
 import fs from 'fs';
 import path from 'path';
 import PeopleTable from './PeopleTable';
@@ -325,16 +325,20 @@ test('visitor-people-filing V3: a person without a company record shows "Add as 
   expect(v.querySelector('[data-add-target]')).toBeNull();
 });
 
-// person-owner-v1 Stage 2 (O3)
+// person-owner-v1 Stage 2 (O3) + FIX people-assign-design-v1 (A1-A6): the Owner cell is the trigger (plain text at rest),
+// the list is a listbox that opens on the current owner, the confirmation is the done line (Undo with the seconds left).
 const ownerCells = t => [...t.querySelectorAll('tr[data-row]')].map(tr => `${tr.querySelector('[data-person-name]').textContent}: ${tr.querySelector('[data-owner]').textContent}`);
 const deferred = () => { let resolve, reject; const promise = new Promise((res, rej) => { resolve = res; reject = rej; }); return { promise, resolve, reject }; };
+const openList = (scope, name) => { fireEvent.click(within(scope).getByRole('button', { name: `Assign ${name}` })); return screen.getByRole('listbox', { name: `Assign ${name}` }); };
+const activeText = box => document.getElementById(box.getAttribute('aria-activedescendant')).textContent;
+const doneLine = () => document.querySelector('[data-assign-done]');
 
-test('Owner column: the dot + first name, "—" for Unassigned; the header sorts; the Mine and Unassigned chips count the person owner and the Unassigned count = the route; the Owner select offers Unassigned', async () => {
+test('Owner column: the dot + first name, a hollow dot + "—" for Unassigned; the header sorts; the Mine and Unassigned chips count the person owner and the Unassigned count = the route; the Owner select offers Unassigned', async () => {
   goalsApi.peopleActivity.mockResolvedValue({ ...DATA, counts: { unassigned: 1 } });
   const t = await table();
   expandCold(t);
   expect(ownerCells(t)).toEqual(['Crystal Pringle: Jack', 'Cristina Torres: Cyrus', 'Bo Ops: —']);
-  expect([...t.querySelectorAll('tr[data-row] [data-owner-dot]')].map(d => d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)']);
+  expect([...t.querySelectorAll('tr[data-row] [data-owner-dot]')].map(d => d.getAttribute('data-owner-dot') || d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)', 'none']);
   const chips = within(screen.getByRole('group', { name: 'Filter chips' }));
   expect(chips.getByRole('button', { name: /^Mine/ })).toHaveTextContent('Mine(1)');
   expect(chips.getByRole('button', { name: /^Unassigned/ })).toHaveTextContent(`Unassigned(${(await goalsApi.peopleActivity.mock.results[0].value).counts.unassigned})`);
@@ -346,81 +350,173 @@ test('Owner column: the dot + first name, "—" for Unassigned; the header sorts
   expect(ownerCells(t).slice(0, 2)).toEqual(['Cristina Torres: Cyrus', 'Crystal Pringle: Jack']);
 });
 
-test('Assign from the row: the menu lists the members with their colour dots, then Unassigned; a pick shows at once (optimistic), posts expect = the owner shown, and the 10-s Undo takes it back by the event', async () => {
+test('A6 / A3 / A2 the trigger and the list: the cell is a text button (no button chrome) with a caret; the list is a listbox of the members with their colour dots and workspace roles, Unassigned last; it opens focused on the CURRENT owner; ↑↓ wrap, Home / End, a first letter jumps; ↵ on the current owner closes with no write; Esc gives focus back to the cell', async () => {
   const t = await table();
-  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
-  const menu = screen.getByRole('menu', { name: 'Assign Cristina Torres' });
-  expect(within(menu).getAllByRole('menuitemradio').map(b => `${b.textContent.replace('✓', '')}:${b.getAttribute('aria-checked')}`)).toEqual(['Jack:false', 'Cyrus:true', 'Unassigned:false']);
-  expect([...menu.querySelectorAll('[data-owner-dot]')].map(d => d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)']);
+  const cell = within(t).getByRole('button', { name: 'Assign Cristina Torres' });
+  expect([cell.className, cell.getAttribute('aria-haspopup'), cell.getAttribute('aria-expanded'), !!cell.querySelector('.asg-c svg')]).toEqual(['asg-ow asg-ow--cell', 'listbox', 'false', true]);
+  const box = openList(t, 'Cristina Torres');
+  expect(cell).toHaveAttribute('aria-expanded', 'true');
+  expect(box.closest('[data-assign-menu]').className).toMatch(/asg-menu/);
+  expect(within(box).getAllByRole('option').map(o => `${o.textContent}:${o.getAttribute('aria-selected')}`)).toEqual(['JackOwner:false', 'CyrusMember:true', 'Unassigned:false']);
+  expect([...box.querySelectorAll('[data-owner-dot]')].map(d => d.getAttribute('data-owner-dot') || d.style.background)).toEqual(['rgb(111, 140, 240)', 'rgb(201, 118, 38)', 'none']);
+  expect(document.activeElement).toBe(box);
+  expect(activeText(box)).toBe('CyrusMember');
   expect(t.querySelector('[data-person-detail]')).toBeNull();
+  const key = k => fireEvent.keyDown(box, { key: k });
+  key('ArrowDown'); expect(activeText(box)).toBe('Unassigned');
+  key('ArrowDown'); expect(activeText(box)).toBe('JackOwner');
+  key('ArrowUp'); expect(activeText(box)).toBe('Unassigned');
+  key('Home'); expect(activeText(box)).toBe('JackOwner');
+  key('End'); expect(activeText(box)).toBe('Unassigned');
+  key('c'); expect(activeText(box)).toBe('CyrusMember');
+  key('u'); expect(activeText(box)).toBe('Unassigned');
+  key('j'); expect(activeText(box)).toBe('JackOwner');
+  key('c'); key('Enter');
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(goalsApi.assignPerson).not.toHaveBeenCalled();
+  expect(document.activeElement).toBe(cell);
+  const again = openList(t, 'Cristina Torres');
+  fireEvent.keyDown(again, { key: 'Escape' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  expect(document.activeElement).toBe(cell);
+  fireEvent.keyDown(cell, { key: 'ArrowDown' });
+  expect(activeText(screen.getByRole('listbox'))).toBe('CyrusMember');
+  expandCold(t);
+  expect(activeText(openList(t, 'Bo Ops'))).toBe('Unassigned');
+});
+
+test('A5 the done line: a pick shows at once (optimistic), posts expect = the owner shown, and says "<Name> assigned to <Member>." with Undo and the seconds left; Undo takes it back by the event and says so; Unassigned says "is unassigned."; the row carries the wash; no toast', async () => {
+  const t = await table();
   const d = deferred();
   goalsApi.assignPerson.mockReturnValue(d.promise);
-  fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Jack/ }));
-  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.keyDown(openList(t, 'Cristina Torres'), { key: 'j' });
+  fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Enter' });
+  expect(screen.queryByRole('listbox')).toBeNull();
   expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CristinaTorres', { owner_user_id: 'u1', expect: { owner_user_id: 'u2' } });
   expect(ownerCells(t)[1]).toBe('Cristina Torres: Jack');
   const loads = goalsApi.peopleActivity.mock.calls.length;
   d.resolve({ person: { key: 'prospect:CristinaTorres', owner_user_id: 'u1' }, event: { id: 'e1' } });
-  expect(await screen.findByText('Cristina Torres assigned to Jack')).toBeInTheDocument();
+  expect(await screen.findByText('Cristina Torres assigned to Jack.')).toBeInTheDocument();
+  expect([doneLine().getAttribute('data-assign-done'), doneLine().getAttribute('role'), doneLine().querySelector('[data-assign-undo]').textContent]).toEqual(['ok', 'status', 'Undo 10 s']);
+  expect(t.querySelector('tr[data-key="prospect_CristinaTorres"]').style.getPropertyValue('--ui-row-tint')).toMatch(/--sa-good\) 7%/);
   await waitFor(() => expect(goalsApi.peopleActivity.mock.calls.length).toBeGreaterThan(loads));
   goalsApi.undoPersonEvent.mockResolvedValue({});
-  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Undo/ }));
   await waitFor(() => expect(goalsApi.undoPersonEvent).toHaveBeenCalledWith('b1', 'e1'));
-  fireEvent.click(within(t).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  expect(await screen.findByText('Undone. Cristina Torres is back with Cyrus.')).toBeInTheDocument();
+  expect(doneLine().querySelector('button')).toBeNull();
   goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e2' } });
-  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Unassigned/ }));
+  fireEvent.click(within(openList(t, 'Crystal Pringle')).getByRole('option', { name: /^Unassigned/ }));
   expect(goalsApi.assignPerson).toHaveBeenLastCalledWith('b1', 'prospect:CrystalPringle', { owner_user_id: null, expect: { owner_user_id: 'u1' } });
-  expect(await screen.findByText('Crystal Pringle is unassigned')).toBeInTheDocument();
+  expect(await screen.findByText('Crystal Pringle is unassigned.')).toBeInTheDocument();
+  expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
 });
 
-test('Assign: a 409 reloads and says the owner changed; another failure puts the old owner back with the message', async () => {
+test('A5 / A1 failures: a 409 reloads and says someone changed the owner first (no Retry); another failure puts the old owner back and offers Retry, which re-sends the SAME assign with the SAME expect; a second failure keeps the line and the button; a Retry that works says assigned', async () => {
   const t = await table();
   const loads = goalsApi.peopleActivity.mock.calls.length;
   goalsApi.assignPerson.mockRejectedValue(Object.assign(new Error('The owner changed since you opened this - reloaded'), { status: 409 }));
-  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
-  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Jack/ }));
-  expect(await screen.findByText('Cristina Torres: the owner changed since you opened this - reloaded')).toBeInTheDocument();
+  fireEvent.click(within(openList(t, 'Cristina Torres')).getByRole('option', { name: /^Jack/ }));
+  expect(await screen.findByText('Cristina Torres: someone changed the owner first. Reloaded.')).toBeInTheDocument();
+  expect([doneLine().getAttribute('data-assign-done'), doneLine().querySelector('button')]).toEqual(['warn', null]);
   await waitFor(() => expect(goalsApi.peopleActivity.mock.calls.length).toBeGreaterThan(loads));
   await waitFor(() => expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus'));
   const after = goalsApi.peopleActivity.mock.calls.length;
+  goalsApi.assignPerson.mockClear();
   goalsApi.assignPerson.mockRejectedValue(Object.assign(new Error('Members only'), { status: 403 }));
-  fireEvent.click(within(t).getByRole('button', { name: 'Assign Cristina Torres' }));
-  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /^Jack/ }));
-  expect(await screen.findByText('Members only')).toBeInTheDocument();
+  fireEvent.click(within(openList(t, 'Cristina Torres')).getByRole('option', { name: /^Jack/ }));
+  expect(await screen.findByText('Couldn’t assign Cristina Torres. Members only')).toBeInTheDocument();
+  expect(doneLine().getAttribute('data-assign-done')).toBe('bad');
   expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus');
   expect(goalsApi.peopleActivity.mock.calls.length).toBe(after);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(goalsApi.assignPerson).toHaveBeenCalledTimes(2));
+  expect(goalsApi.assignPerson.mock.calls[1]).toEqual(goalsApi.assignPerson.mock.calls[0]);
+  expect(goalsApi.assignPerson.mock.calls[1]).toEqual(['b1', 'prospect:CristinaTorres', { owner_user_id: 'u1', expect: { owner_user_id: 'u2' } }]);
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Retry' })).not.toBeDisabled());
+  expect(screen.getByText('Couldn’t assign Cristina Torres. Members only')).toBeInTheDocument();
+  goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e9' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('Cristina Torres assigned to Jack.')).toBeInTheDocument();
+  expect(goalsApi.assignPerson).toHaveBeenCalledTimes(3);
 });
 
-test('Assign from the pinned card posts the same write; a Viewer sees the owners and no Assign anywhere', async () => {
+test('Undo pressed while the assign\'s reload is still loading: that earlier reload does not paint the new owner back over the cell', async () => {
+  const t = await table();
+  goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e7' } });
+  const reload = deferred();
+  goalsApi.peopleActivity.mockReturnValue(reload.promise);
+  fireEvent.click(within(openList(t, 'Cristina Torres')).getByRole('option', { name: /^Jack/ }));
+  await screen.findByText('Cristina Torres assigned to Jack.');
+  const undoing = deferred();
+  goalsApi.undoPersonEvent.mockReturnValue(undoing.promise);
+  fireEvent.click(screen.getByRole('button', { name: /^Undo/ }));
+  expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus');
+  await act(async () => { reload.resolve({ ...DATA, rows: ROWS.map(r => (r.name === 'Cristina Torres' ? { ...r, owner_user_id: 'u1' } : r)) }); });
+  expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus');
+  goalsApi.peopleActivity.mockResolvedValue(DATA);
+  await act(async () => { undoing.resolve({}); });
+  expect(await screen.findByText('Undone. Cristina Torres is back with Cyrus.')).toBeInTheDocument();
+  await waitFor(() => expect(ownerCells(t)[1]).toBe('Cristina Torres: Cyrus'));
+});
+
+test('A4 the pinned card: Assign swaps the quick menu for the member list IN PLACE with a back row (no popover); the same listbox and keyboard; back and Esc restore the menu with focus on Assign; a pick posts the same write; a Viewer sees the owners as plain text and no Assign anywhere', async () => {
   const { unmount } = render(<PeopleTable businessId="b1" canEdit me={ME} />);
   const t = await screen.findByRole('table', { name: 'People' });
   fireEvent.click(t.querySelector('tr[data-row] td:nth-child(3)'));
   const detail = await waitFor(() => { const el = t.querySelector('[data-person-detail]'); if (!el) throw new Error('no detail'); return el; });
+  const quick = () => within(detail).getByRole('group', { name: 'Quick menu' });
+  const labels = () => within(quick()).getAllByRole('button').map(b => b.textContent);
+  expect(labels()).toEqual(['Open company', 'Assign ▸', 'Draft email', 'Log call', 'Add to-do', 'Mark contacted', 'Not a fit']);
+  fireEvent.click(within(quick()).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  expect(quick()).toHaveAttribute('data-assign-swap');
+  expect(labels()).toEqual(['‹Assign']);
+  expect(document.querySelector('[data-assign-menu]')).toBeNull();
+  const box = within(quick()).getByRole('listbox', { name: 'Assign Crystal Pringle' });
+  expect(within(box).getAllByRole('option').map(o => o.textContent)).toEqual(['JackOwner', 'CyrusMember', 'Unassigned']);
+  expect([document.activeElement, activeText(box)]).toEqual([box, 'JackOwner']);
+  fireEvent.click(within(quick()).getByRole('button', { name: 'Back to the quick menu' }));
+  expect(labels()).toHaveLength(7);
+  expect(document.activeElement).toBe(within(quick()).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  fireEvent.click(within(quick()).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  fireEvent.keyDown(within(quick()).getByRole('listbox'), { key: 'Escape' });
+  expect(labels()).toHaveLength(7);
   goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e3' } });
-  fireEvent.click(within(within(detail).getByRole('group', { name: 'Quick menu' })).getByRole('button', { name: 'Assign Crystal Pringle' }));
-  fireEvent.click(within(screen.getByRole('menu', { name: 'Assign Crystal Pringle' })).getByRole('menuitemradio', { name: /^Cyrus/ }));
+  fireEvent.click(within(quick()).getByRole('button', { name: 'Assign Crystal Pringle' }));
+  fireEvent.keyDown(within(quick()).getByRole('listbox'), { key: 'ArrowDown' });
+  fireEvent.keyDown(within(quick()).getByRole('listbox'), { key: 'Enter' });
   expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CrystalPringle', { owner_user_id: 'u2', expect: { owner_user_id: 'u1' } });
-  expect(await screen.findByText('Crystal Pringle assigned to Cyrus')).toBeInTheDocument();
+  expect(labels()).toHaveLength(7);
+  expect(await screen.findByText('Crystal Pringle assigned to Cyrus.')).toBeInTheDocument();
   unmount();
   render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
   const v = await screen.findByRole('table', { name: 'People' });
   expect(ownerCells(v)).toEqual(['Crystal Pringle: Jack', 'Cristina Torres: Cyrus']);
   expect(v.querySelector('[data-assign]')).toBeNull();
+  expect(v.querySelector('tr[data-row] [data-owner]').closest('button')).toBeNull();
 });
 
-test('390: each card shows its owner; the owner chip opens the Assign sheet (members with dots, Unassigned) and a pick posts the write; a Viewer card has no Assign', async () => {
+test('390: each card has an Owner row whose 44-px trigger opens the bottom sheet - the title names the person, the note says who they are, the same listbox (roles, Unassigned last), Cancel; a pick posts the write and the done line is the phone one; a Viewer card has no Assign', async () => {
   mockPhone.on = true;
   const { unmount } = render(<PeopleTable businessId="b1" canEdit me={ME} />);
   const list = await screen.findByRole('list', { name: 'People' });
   expect([...list.querySelectorAll('[data-row] [data-owner]')].map(el => el.textContent)).toEqual(['Jack', 'Cyrus']);
-  fireEvent.click(within(list).getByRole('button', { name: 'Assign Cristina Torres' }));
-  const sheet = screen.getByRole('menu', { name: 'Assign Cristina Torres' });
+  const trigger = within(list).getByRole('button', { name: 'Assign Cristina Torres' });
+  expect(trigger.className).toBe('asg-ow asg-ow--big');
+  fireEvent.click(trigger);
+  const sheet = screen.getByRole('dialog', { name: 'Assign Cristina Torres' });
   expect(sheet.getAttribute('data-assign-menu')).toBe('sheet');
-  expect(within(sheet).getAllByRole('menuitemradio').map(b => b.textContent.replace('✓', ''))).toEqual(['Jack', 'Cyrus', 'Unassigned']);
+  expect([sheet.querySelector('.asg-sheet-title').textContent, sheet.querySelector('.asg-sheet-note').textContent]).toEqual(['Assign Cristina Torres', 'VP People · Equinox. A person’s owner is separate from their company’s.']);
+  expect(within(sheet).getAllByRole('option').map(b => `${b.textContent}:${b.getAttribute('aria-selected')}`)).toEqual(['JackOwner:false', 'CyrusMember:true', 'Unassigned:false']);
+  fireEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog', { name: 'Assign Cristina Torres' })).toBeNull();
+  expect(goalsApi.assignPerson).not.toHaveBeenCalled();
   goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e4' } });
-  fireEvent.click(within(sheet).getByRole('menuitemradio', { name: /^Jack/ }));
+  fireEvent.click(trigger);
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Assign Cristina Torres' })).getByRole('option', { name: /^Jack/ }));
   expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'prospect:CristinaTorres', { owner_user_id: 'u1', expect: { owner_user_id: 'u2' } });
-  expect(await screen.findByText('Cristina Torres assigned to Jack')).toBeInTheDocument();
+  expect(await screen.findByText('Cristina Torres assigned to Jack.')).toBeInTheDocument();
+  expect(doneLine().className).toMatch(/asg-done--phone/);
   unmount();
   render(<PeopleTable businessId="b1" canEdit={false} me={{ profile: { id: 'u9', display_name: 'View Er' } }} />);
   const v = await screen.findByRole('list', { name: 'People' });

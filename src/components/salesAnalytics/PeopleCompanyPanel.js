@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { goalsApi } from './goals/goalsApi';
 import CompanyPanel from './goals/CompanyPanel';
-import { toggleStar } from './goals/pinStar';
+import { pinAct } from './goals/pinStar';
 import { companyRowFor } from './peopleModel';
 
 // sales-ia-v2 P5 - "Open company" from a People row: the P4 company panel on
@@ -28,9 +28,11 @@ export default function PeopleCompanyPanel({ businessId, person, canEdit, member
   const row = key && rows ? rows.find(r => `${r.type}-${r.id}` === key) || null : null;
   const reload = useCallback(() => load().then(setRows).catch(e => onToast({ text: e.message })), [load, onToast]);
   if (!row) return null;
-  const star = async action => {
-    const patch = await toggleStar(businessId, row, action);
-    setRows(rs => rs.map(x => (x.id === row.id ? { ...x, ...patch } : x)));
+  const patchStar = patch => setRows(rs => rs.map(x => (x.id === row.id ? { ...x, ...patch } : x)));
+  const star = async (action, reason) => {
+    const out = await pinAct(businessId, row, action, reason);
+    patchStar(out.patch);
+    onToast({ text: out.text, undo: out.undo ? async () => patchStar(await out.undo()) : null });
   };
   return (
     <CompanyPanel businessId={businessId} row={row} canEdit={canEdit} members={members} meId={meId}

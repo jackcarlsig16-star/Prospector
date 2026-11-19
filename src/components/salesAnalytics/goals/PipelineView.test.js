@@ -8,7 +8,7 @@ import { OPEN_TASKS } from './goalsApi';
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), pinCompany: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(),
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), pinCompany: jest.fn(), undoFlow: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(),
   members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), undoTodoEvent: jest.fn(() => Promise.resolve({})), todoEvents: jest.fn(() => Promise.resolve([])), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
   addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
@@ -377,14 +377,20 @@ test('expired pin: a hollow star, never filled - Renew or Unpin from its menu an
   expect(await screen.findByRole('button', { name: 'Star Gone Pin' })).toHaveAttribute('aria-pressed', 'false');
   goalsApi.pinCompany.mockResolvedValue({ pin: { until: '2026-12-13T00:00:00+00:00' }, event: { id: 'ev1' }, undo: { kind: 'flow', id: 'ev1' } });
   fireEvent.click(screen.getByRole('button', { name: 'Old Pin' }));
+  // the window's control is the star's own (ruling of Nov 18): the same menu, then the done line with Undo
   const panel = within(screen.getByRole('dialog', { name: 'Old Pin' }));
-  expect(panel.getByRole('button', { name: 'Unpin' })).toBeTruthy();
-  const inPanel = panel.getByRole('button', { name: 'Renew' });
-  expect([inPanel.getAttribute('aria-pressed'), inPanel.title]).toEqual(['false', 'Pin ran out - renew for 30 days']);
+  const inPanel = panel.getByRole('button', { name: 'Pin expired: Old Pin. Renew or unpin' });
+  expect([inPanel.textContent, inPanel.getAttribute('data-star')]).toEqual(['Renew', 'expired']);
   fireEvent.click(inPanel);
-  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'employer', 'Old Pin', { action: 'renew' }));
-  expect(await within(screen.getByRole('dialog', { name: 'Old Pin' })).findByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
-  expect(within(screen.getByRole('dialog', { name: 'Old Pin' })).queryByRole('button', { name: 'Unpin' })).toBeNull();
+  expect(within(screen.getByRole('menu', { name: 'Pin · Old Pin' })).getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Renew 30 more days', 'Unpin']);
+  fireEvent.click(screen.getByRole('menuitem', { name: /^Renew/ }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'employer', 'Old Pin', { action: 'renew', expect: { pinned_until: '2026-10-01T00:00:00+00:00' } }));
+  expect((await within(screen.getByRole('dialog', { name: 'Old Pin' })).findByRole('button', { name: 'Pinned: Old Pin. Edit, renew or unpin' })).textContent).toBe('Pinned');
+  expect(await screen.findByText('Old Pin: Pin renewed for 30 days')).toBeInTheDocument();
+  goalsApi.undoFlow.mockResolvedValue({});
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.undoFlow).toHaveBeenCalledWith('b1', 'ev1'));
+  expect((await within(screen.getByRole('dialog', { name: 'Old Pin' })).findByRole('button', { name: 'Pin expired: Old Pin. Renew or unpin' })).textContent).toBe('Renew');
 });
 
 test('Viewer: stars are read-only; employer and partner open the read-only panel (no action bar, no ★ / note / Next)', async () => {
@@ -415,6 +421,53 @@ test('Viewer: stars are read-only; employer and partner open the read-only panel
 const factText = (name, label) => screen.getByRole('dialog', { name }).querySelector(`[data-fact="${label}"] b`)?.textContent ?? null;
 const openMore = (panel, item) => { fireEvent.click(panel.getByRole('button', { name: 'More' })); fireEvent.click(panel.getByRole('menuitem', { name: item })); };
 
+test('a window opened from Top targets goes back there when it closes (ruling of Nov 18); a window opened from a Companies row stays; the same target does not reopen on the next visit', async () => {
+  const target = { key: 'partner-Gallagher', section: null, from: 'top-targets', n: 71 };
+  const onReturn = jest.fn();
+  setup({ focusTarget: target, onReturn });
+  await screen.findByRole('dialog', { name: 'Gallagher' });
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Gallagher' })).getByRole('button', { name: 'Close panel' }));
+  expect(screen.queryByRole('dialog', { name: 'Gallagher' })).toBeNull();
+  expect(onReturn).toHaveBeenCalledWith('top-targets');
+  fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Gallagher' })).getByRole('button', { name: 'Close panel' }));
+  expect(onReturn).toHaveBeenCalledTimes(1);
+  cleanup();
+  setup({ focusTarget: target, onReturn });
+  await screen.findByRole('button', { name: 'Gallagher' });
+  expect(screen.queryByRole('dialog', { name: 'Gallagher' })).toBeNull();
+});
+
+test('the company window\'s pin control is the star\'s (ruling of Nov 18): the menu, Unpin -> the done line with Undo (the partner undo route); Pin asks for the reason and sends it with expect', async () => {
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
+  // the window's pin control = the star's: Unpin from its menu -> the done line with Undo; Pin asks for the reason
+  expect(panel.getByRole('button', { name: 'Pinned: Gallagher. Edit, renew or unpin' }).textContent).toBe('Pinned');
+  goalsApi.pinCompany.mockResolvedValue({ pin: null, event: { id: 'ev9' }, undo: { kind: 'partner', id: 'ev9' } });
+  fireEvent.click(panel.getByRole('button', { name: 'Pinned: Gallagher. Edit, renew or unpin' }));
+  expect(within(screen.getByRole('menu', { name: 'Pin · Gallagher' })).getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Edit reason', 'Renew 30 more days', 'Unpin']);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { action: 'unpin', expect: { pinned_until: null } }));
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Pin Gallagher' }).textContent).toBe('Pin'));
+  expect(await screen.findByText('Gallagher: Unpinned')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'Gallagher', 'ev9'));
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Pinned: Gallagher. Edit, renew or unpin' })).toBeTruthy());
+  goalsApi.pinCompany.mockResolvedValue({ pin: null, event: { id: 'ev10' }, undo: { kind: 'partner', id: 'ev10' } });
+  fireEvent.click(panel.getByRole('button', { name: 'Pinned: Gallagher. Edit, renew or unpin' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Unpin' }));
+  fireEvent.click(await panel.findByRole('button', { name: 'Pin Gallagher' }));
+  const pinForm = document.querySelector('[data-pin-pop="form"]');
+  expect(within(pinForm).getByRole('button', { name: 'Pin' })).toBeDisabled();
+  fireEvent.change(within(pinForm).getByRole('textbox'), { target: { value: 'Seif’s intro' } });
+  goalsApi.pinCompany.mockResolvedValue({ pin: { until: '2026-12-18T00:00:00+00:00', reason: 'Seif’s intro' }, event: { id: 'ev11' }, undo: { kind: 'partner', id: 'ev11' } });
+  fireEvent.click(within(pinForm).getByRole('button', { name: 'Pin' }));
+  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenLastCalledWith('b1', 'partner', 'Gallagher', { action: 'pin', reason: 'Seif’s intro', expect: { pinned_until: null } }));
+  expect(await screen.findByText('Gallagher: Pinned')).toBeInTheDocument();
+  await waitFor(() => expect(document.querySelector('[data-pin-pop]')).toBeNull());
+});
+
 test('panel: header chips; body from GET goals/company; Add note goes through the company note route; ★ through the hot signal; Add to-do links the record with owner + due and offers Undo', async () => {
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
@@ -432,11 +485,7 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   await waitFor(() => expect(goalsApi.addCompanyNote).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', 'Called, left voicemail'));
   await waitFor(() => expect(panel.queryByLabelText('Note')).toBeNull());
   expect(goalsApi.companyDetail).toHaveBeenCalledTimes(2);
-  expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
-  goalsApi.pinCompany.mockResolvedValue({ pin: null, event: { id: 'ev9' }, undo: { kind: 'partner', id: 'ev9' } });
-  fireEvent.click(panel.getByRole('button', { name: 'Top' }));
-  await waitFor(() => expect(goalsApi.pinCompany).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { action: 'unpin' }));
-  await waitFor(() => expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'false'));
+  expect(panel.getByRole('button', { name: 'Pinned: Gallagher. Edit, renew or unpin' }).textContent).toBe('Pinned');
   fireEvent.click(panel.getByRole('button', { name: 'To-do' }));
   fireEvent.change(panel.getByLabelText('To-do'), { target: { value: 'Call Pat about the pilot' } });
   fireEvent.change(panel.getByLabelText('To-do owner'), { target: { value: 'u2' } });

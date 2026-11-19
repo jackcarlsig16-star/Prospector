@@ -122,7 +122,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   }, [nav]);
 
   useEffect(() => {
-    const open = e => { setPipelineTarget({ key: e.detail?.key, section: e.detail?.section || null, n: Date.now() }); nav('pipeline', 'companies'); };
+    const open = e => { setPipelineTarget({ key: e.detail?.key, section: e.detail?.section || null, from: e.detail?.from || null, n: Date.now() }); nav('pipeline', 'companies'); };
     window.addEventListener(OPEN_PIPELINE_RECORD, open);
     return () => window.removeEventListener(OPEN_PIPELINE_RECORD, open);
   }, [nav]);

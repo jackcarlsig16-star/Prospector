@@ -30,7 +30,7 @@ import { ownerChip } from './flowModel';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { NOT_A_FIT, priorityValue } from './priorityActions';
-import { toggleStar, starLabel, EXPIRED_TITLE } from './pinStar';
+import { toggleStar, pinAct, starLabel, EXPIRED_TITLE } from './pinStar';
 import PinControl from './topTargets/PinControl';
 import { TT_CSS } from './topTargets/topTargetsStyles';
 import { PRIORITY_TYPES } from './companyPanelModel';
@@ -68,7 +68,10 @@ const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const SIZE_TAG = { research: 'Research', manual: 'Typed', apollo: 'Apollo' };
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
-export default function PipelineView({ businessId, canEdit, isAdmin = false, meId, onOpenPartner, onOpenCompanies, onOpenPeople, focusTarget = null }) {
+// The focusTarget already opened (its n): this view unmounts when the window sends the user back to another Pipeline
+// view, and the same target must not open its window again on the next visit to Companies.
+let handledTarget = null;
+export default function PipelineView({ businessId, canEdit, isAdmin = false, meId, onOpenPartner, onOpenCompanies, onOpenPeople, onReturn, focusTarget = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
@@ -179,11 +182,19 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     const patch = await toggleStar(businessId, r, action);
     setRows(rs => rs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
   };
+  // The company window's pin control: the star's reason popover, then the done line with Undo.
+  const starWindow = async (r, action, reason) => {
+    const out = await pinAct(businessId, r, action, reason);
+    patchRow(r, out.patch);
+    setToast({ text: out.text, undo: out.undo ? async () => patchRow(r, await out.undo()) : null });
+  };
   const star = async r => {
     setBusyId(r.id);
     try { await starRow(r); } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
   };
 
+  // A window opened from another Pipeline view (Top targets) goes back there when it closes.
+  const returnTo = useRef(null);
   const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
   const closePanel = useCallback(() => {
     clearOpenParam();
@@ -193,8 +204,12 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     const rowEl = document.querySelector(`[data-row][data-key="${panelKey}"]`);
     rowEl?.scrollIntoView({ block: 'nearest' });
     rowEl?.querySelector('[data-row-name]')?.focus({ preventScroll: true });
-  }, [panelKey]);
+    const back = returnTo.current;
+    returnTo.current = null;
+    if (back) onReturn?.(back);
+  }, [panelKey, onReturn]);
   const open = r => {
+    returnTo.current = null;
     if (r.type === 'signal') return openTasks({ link: null, view: 'signals', filter: 'team' });
     return setPanelKey(rowKey(r));
   };
@@ -231,7 +246,9 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   };
   // one-plus-button-v1: a record added from the header "+" (OPEN_PIPELINE_RECORD) - same landing as `added`.
   useEffect(() => {
-    if (!focusTarget?.key) return;
+    if (!focusTarget?.key || (focusTarget.n != null && focusTarget.n === handledTarget)) return;
+    handledTarget = focusTarget.n ?? null;
+    returnTo.current = focusTarget.from || null;
     added({ type: focusTarget.key.split('-')[0], id: focusTarget.key.slice(focusTarget.key.indexOf('-') + 1) }, { section: focusTarget.section || null });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusTarget]);
@@ -440,7 +457,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
           onApplied={r => { setToast({ text: `Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}` }); load(); }} />
       )}
       {panelRow && (
-        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={action => starRow(panelRow, action)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
+        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={(action, reason) => starWindow(panelRow, action, reason)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
           onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} onOpenPeople={onOpenPeople && (c => { closePanel(); onOpenPeople(c); })} initialSection={panelSection} />
       )}
       {panel !== undefined && (

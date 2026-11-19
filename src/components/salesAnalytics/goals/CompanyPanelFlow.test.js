@@ -56,7 +56,7 @@ test('an employer (Contacted, setup done, live interest): head = title · Intere
   const title = head.querySelector('[data-company-panel]');
   expect(title.querySelectorAll('[data-chip]')).toHaveLength(0);
   expect(within(title).queryByText(/Employer · Contacted/)).toBeNull();
-  expect(within(title).getByRole('button', { name: /Top/ })).toBeInTheDocument();
+  expect(title.querySelector('[data-window-pin] button[data-star]')).toBeInTheDocument(); // the star's own pin control (ruling of Nov 18)
   expect(within(title).getByRole('link', { name: /acmehealth\.example/ })).toBeInTheDocument();
   expect(counts(head)).toEqual({ Stage: 0, 'Next step': 1, Owner: 1, Intent: 1, 'Mark contacted': 0, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 0, 'Add to pipeline': 0, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1, Type: 1, Team: 1, Recompute: 1 }); // Recompute = the scored Intent's breakdown button (closed), not a title link
   expect(head.querySelector('[data-facts-row] select, [data-fact-pop] select, [data-actions-row] select')).toBeNull(); // no select in a fact popover (the Files card's upload form keeps its own)

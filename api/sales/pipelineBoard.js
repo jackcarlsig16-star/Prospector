@@ -234,9 +234,9 @@ async function loadBoard(businessId, filters) {
   const weekAgo = addDays(laDateString(new Date(now)), -7);
   const all = (table, cols, narrow = x => x) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)));
   const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout, scoreRows] = await Promise.all([
-    all('sales_goals', 'id, name, category, tier, pipeline_status, pinned_until, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
+    all('sales_goals', 'id, name, category, tier, pipeline_status, pinned_until, pin_reason, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
       x => x.eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, pinned_until, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
+    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, pinned_until, pin_reason, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
       x => x.is('archived_at', null).order('id')),
     all('sales_targets', 'id, name, status, owner_team, owner_user_id, record_id, channel, created_at, employees, employees_source, domain, domain_source', x => x.in('status', ['proposed', 'researching']).order('id')),
     filters.includeApollo ? all('sales_sequenced_accounts', 'account_id, name, first_sequenced_at, employees', x => x.order('account_id')) : [],

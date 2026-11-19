@@ -84,7 +84,7 @@ test('board rows: partners + employer/membership opportunities + open targets, s
   assert.deepEqual(g, {
     type: 'partner', id: 'p1', name: 'Gallagher', stage: 'meeting_set', stage_label: 'Meeting set', color: 'yellow',
     owner_team: 'homelover', owner: 'Jack', tier: '1', next_step: 'Send deck', next_step_due: null,
-    last_touch_at: '2026-10-10T00:00:00Z', top: true, pin_expired: false, pinned_until: '2099-01-01T00:00:00+00:00', record_id: 'HLU-0001',
+    last_touch_at: '2026-10-10T00:00:00Z', top: true, pin_expired: false, pinned_until: '2099-01-01T00:00:00+00:00', pin_reason: null, record_id: 'HLU-0001',
     channel: 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
     category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null, work: null, channels: ['all', 'partners'],
     // company-workflow-v1: the size columns + the owner person.
@@ -121,7 +121,7 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!json.includes('@'), 'no email');
   assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(json), 'no phone');
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
-  const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'pin_expired', 'pinned_until', 'priority', 'priority_set_at', 'priority_set_by',
+  const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'pin_expired', 'pin_reason', 'pinned_until', 'priority', 'priority_set_at', 'priority_set_by',
     'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work',
     'fit_level', 'fit_score', 'fit_source', 'deprioritized', 'due', 'due_date', 'first_seen', 'new_today'].sort();
   // FIX headcount-auto-v1 REV2 H7: employers and targets carry domain / domain_source for the Set domain control.
@@ -315,7 +315,7 @@ test('export sheet: visitor and signal rows never go out', async () => {
 
 test('the star reads the pin: a live pin is top; a pin that ran out is pin_expired, never top; no pin is neither', () => {
   const at = Date.parse('2026-11-13T00:00:00Z');
-  assert.deepEqual(starOf({ pinned_until: '2026-12-01T00:00:00+00:00' }, at), { top: true, pin_expired: false, pinned_until: '2026-12-01T00:00:00+00:00' });
-  assert.deepEqual(starOf({ pinned_until: '2026-11-01T00:00:00+00:00', hot: true, is_top: true }, at), { top: false, pin_expired: true, pinned_until: '2026-11-01T00:00:00+00:00' });
-  assert.deepEqual(starOf({ pinned_until: null, hot: true }, at), { top: false, pin_expired: false, pinned_until: null });
+  assert.deepEqual(starOf({ pinned_until: '2026-12-01T00:00:00+00:00' }, at), { top: true, pin_expired: false, pinned_until: '2026-12-01T00:00:00+00:00', pin_reason: null });
+  assert.deepEqual(starOf({ pinned_until: '2026-11-01T00:00:00+00:00', hot: true, is_top: true }, at), { top: false, pin_expired: true, pinned_until: '2026-11-01T00:00:00+00:00', pin_reason: null });
+  assert.deepEqual(starOf({ pinned_until: null, hot: true }, at), { top: false, pin_expired: false, pinned_until: null, pin_reason: null });
 });

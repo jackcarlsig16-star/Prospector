@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SA } from '../../theme';
 import { goalsApi } from '../goalsApi';
-import { toggleStar } from '../pinStar';
+import { pinAct } from '../pinStar';
 import { SOURCE_THEME_CSS } from '../../palette';
 import useMediaQuery from '../../../../utils/useMediaQuery';
 import { FRAME_TOOLS_ID } from '../../salesFrame';
@@ -213,11 +213,12 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     } catch (e) { setToast({ text: e.message }); }
     finally { setSharing(false); }
   };
-  const starRow = async (r, action) => {
-    const patch = await toggleStar(businessId, r, action);
-    setBoard(bs => bs.map(x => (x.id === r.id ? { ...x, ...patch } : x)));
-  };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
+  const starWindow = async (r, action, reason) => {
+    const out = await pinAct(businessId, r, action, reason);
+    patchRow(r, out.patch);
+    setToast({ text: out.text, undo: out.undo ? async () => patchRow(r, await out.undo()) : null });
+  };
 
   const menu = selected ? (
     <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} reach={reach?.[`${selected.type}:${selected.id}`] || null} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
@@ -302,7 +303,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
       {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} copyText={() => goalsApi.copyBundle(businessId, selected.type, selected.id)} />}
       {composeFor && <ComposePanel businessId={businessId} row={composeFor} onClose={() => { setComposeFor(null); goalsApi.composeStatus(businessId).then(setCompose).catch(() => {}); }} onToast={setToast} />}
       {panelRow && (
-        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={action => starRow(panelRow, action)} onPatch={patch => patchRow(panelRow, patch)} onChanged={reloadAll} onToast={setToast}
+        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={(action, reason) => starWindow(panelRow, action, reason)} onPatch={patch => patchRow(panelRow, patch)} onChanged={reloadAll} onToast={setToast}
           onConvert={reloadAll} onClose={() => setPanelKey(null)} onOpenFull={() => setPanelKey(null)} onOpenPeople={onOpenPeople && (c => { setPanelKey(null); onOpenPeople(c); })} />
       )}
       {panelKey && !panelRow && board && <span style={{ fontSize: 12, color: SA.muted }}>That company is not on the Pipeline board any more - recompute to refresh the ranking.</span>}

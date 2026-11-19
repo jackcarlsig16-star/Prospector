@@ -34,7 +34,9 @@ function ReasonForm({ row, edit, phone, busy, error, onSubmit, onCancel }) {
   );
 }
 
-export default function PinControl({ row, canEdit, phone = false, onAct }) {
+// label: the company window's control - the same star, form and menu behind a small text button (Pin / Pinned / Renew).
+const LABEL = { none: 'Pin', pinned: 'Pinned', expired: 'Renew' };
+export default function PinControl({ row, canEdit, phone = false, label = false, onAct }) {
   const [mode, setMode] = useState(null); // null | 'menu' | 'form' | 'edit'
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -69,8 +71,8 @@ export default function PinControl({ row, canEdit, phone = false, onAct }) {
   const body = mode === 'menu' ? menu : form;
   return (
     <span ref={root} style={{ position: 'relative', display: 'inline-flex' }}>
-      <button type="button" className="tt-star tt-star--btn" data-star={state} aria-label={starLabel(row)} aria-haspopup={state === 'none' ? 'dialog' : 'menu'} aria-expanded={!!mode}
-        style={phone ? { width: 44, height: 44 } : undefined} onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setAt({ top: b.bottom + 6, right: Math.max(8, window.innerWidth - b.right) }); setError(''); setMode(m => (m ? null : state === 'none' ? 'form' : 'menu')); }}><Star state={state} size={phone ? 20 : 16} /></button>
+      <button type="button" className={label ? 'ui-btn ui-btn--tertiary' : 'tt-star tt-star--btn'} data-star={state} aria-label={starLabel(row)} aria-haspopup={state === 'none' ? 'dialog' : 'menu'} aria-expanded={!!mode}
+        style={label ? { height: 28, padding: '0 8px', fontSize: 12, gap: 5 } : phone ? { width: 44, height: 44 } : undefined} onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setAt({ top: b.bottom + 6, right: Math.max(8, window.innerWidth - b.right) }); setError(''); setMode(m => (m ? null : state === 'none' ? 'form' : 'menu')); }}><Star state={state} size={label ? 13 : phone ? 20 : 16} />{label && LABEL[state]}</button>
       {mode && !phone && createPortal(
         <div className={`${SA_THEME_CLASS} ${mode === 'menu' ? 'tt-pop tt-pop--menu' : 'tt-pop'}`} data-pin-pop={mode} style={{ position: 'fixed', top: at?.top ?? 0, right: at?.right ?? 8, zIndex: 4003, width: mode === 'menu' ? 230 : 320 }}>{body}</div>, document.body)}
       {mode && phone && createPortal(

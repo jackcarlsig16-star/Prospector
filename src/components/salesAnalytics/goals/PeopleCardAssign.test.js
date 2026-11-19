@@ -15,20 +15,26 @@ const detail = { people: [
 ] };
 const row = { type: 'employer', id: 'o1', name: 'Acme Health' };
 
-test('People card: owners shown; Assign posts expect = the owner shown and shows at once; the typed name has no control; a Viewer reads only', async () => {
+test('People card: owners shown; the row\'s Owner cell opens the same listbox; Assign posts expect = the owner shown, shows at once and says so on the done line (not the window\'s toast); the typed name has no control; a Viewer reads only', async () => {
   const onToast = jest.fn(), onChanged = jest.fn();
   goalsApi.assignPerson.mockResolvedValue({ person: {}, event: { id: 'e1' } });
   const { unmount } = render(<PeopleCard businessId="b1" row={row} detail={detail} canEdit members={MEMBERS} onForm={jest.fn()} onChanged={onChanged} onToast={onToast} />);
   expect([...document.querySelectorAll('[data-owner]')].map(el => el.textContent)).toEqual(['Jack', '—']);
   expect(screen.queryByRole('button', { name: 'Assign Typed Name' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Assign Bo Visitor' }));
-  const menu = screen.getByRole('menu', { name: 'Assign Bo Visitor' });
-  expect(within(menu).getAllByRole('menuitemradio').map(b => b.textContent.replace('✓', ''))).toEqual(['Jack', 'Cyrus', 'Unassigned']);
-  fireEvent.click(within(menu).getByRole('menuitemradio', { name: /^Cyrus/ }));
+  const box = screen.getByRole('listbox', { name: 'Assign Bo Visitor' });
+  expect(within(box).getAllByRole('option').map(b => `${b.textContent}:${b.getAttribute('aria-selected')}`)).toEqual(['JackOwner:false', 'CyrusMember:false', 'Unassigned:true']);
+  fireEvent.click(within(box).getByRole('option', { name: /^Cyrus/ }));
   expect(goalsApi.assignPerson).toHaveBeenCalledWith('b1', 'person:sp1', { owner_user_id: 'u2', expect: { owner_user_id: null } });
   expect([...document.querySelectorAll('[data-owner]')].map(el => el.textContent)).toEqual(['Jack', 'Cyrus']);
-  await waitFor(() => expect(onToast).toHaveBeenCalledWith(expect.objectContaining({ text: 'Bo Visitor assigned to Cyrus', undo: expect.any(Function) })));
+  expect(await screen.findByText('Bo Visitor assigned to Cyrus.')).toBeInTheDocument();
+  expect(document.querySelector('[data-assign-done] [data-assign-undo]').textContent).toBe('Undo 10 s');
+  expect(onToast).not.toHaveBeenCalled();
   expect(onChanged).toHaveBeenCalled();
+  goalsApi.undoPersonEvent.mockResolvedValue({});
+  fireEvent.click(screen.getByRole('button', { name: /^Undo/ }));
+  expect(await screen.findByText('Undone. Bo Visitor is unassigned again.')).toBeInTheDocument();
+  expect(goalsApi.undoPersonEvent).toHaveBeenCalledWith('b1', 'e1');
   unmount();
   render(<PeopleCard businessId="b1" row={row} detail={detail} canEdit={false} members={MEMBERS} onForm={jest.fn()} onChanged={jest.fn()} onToast={jest.fn()} />);
   expect([...document.querySelectorAll('[data-owner]')].map(el => el.textContent)).toEqual(['Jack', '—']);

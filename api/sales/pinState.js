@@ -26,8 +26,8 @@ export function pinState(row, now = Date.now()) {
 }
 
 // What a row's star reads. top = a live pin (filled); pin_expired = a pin that ran out and was never unpinned
-// (hollow, with Renew); pinned_until rides along as the writer's expect.
-export const starOf = (row, now = Date.now()) => ({ top: isPinned(row, now), pin_expired: !!row?.pinned_until && !isPinned(row, now), pinned_until: row?.pinned_until || null });
+// (hollow, with Renew); pinned_until rides along as the writer's expect, pin_reason as what Edit reason opens on.
+export const starOf = (row, now = Date.now()) => ({ top: isPinned(row, now), pin_expired: !!row?.pinned_until && !isPinned(row, now), pinned_until: row?.pinned_until || null, pin_reason: row?.pin_reason || null });
 
 // What the score's clamp reads (intentScore's override: { priority, not_a_fit, set_at }; it expires set_at + days).
 // Only a live pin clamps: a dated priority with no pin lifts nothing.

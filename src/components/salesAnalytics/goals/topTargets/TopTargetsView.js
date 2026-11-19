@@ -18,7 +18,7 @@ import { BANDS, SIZE_OPTIONS, GROUP_ORDER, GROUP_LABEL, GROUP_COLOR, routeParams
 // at the stage, Mine replaces the signed-in member's chip, an expired pin is a hollow star with Renew, Viewers read.
 const UNDO_MS = 10000;
 const DONE = { pin: 'Pinned', renew: 'Pin renewed for 30 days', unpin: 'Unpinned', reason: 'Pin reason saved' };
-const openCompany = r => window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${r.type}-${r.id}` } }));
+const openCompany = r => window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${r.type}-${r.id}`, from: 'top-targets' } }));
 const TodoBox = () => <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" focusable="false"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5" /></svg>;
 
 export default function TopTargetsView({ businessId, canEdit, meId, members = [] }) {
