@@ -106,7 +106,7 @@ test('D2 details: a pronoun carries the part before\'s company into the to-do re
   salesReads.openTodosFor = async () => ({ rows: [linked, todo(2, null), { ...todo(3, null), text: 'Prep the Northrop Grumman deck' }], total: 3 });
   const c = await buildContext(sb, registry, { auth: ana, scope: A, q: 'pull the intel on Northrop Grumman and show my tasks for them', now: NOW });
   assert.deepEqual(c.parts.map(p => p.intent), ['brief', 'todos']);
-  assert.deepEqual(c.parts[0].brief, { entity: 'employers', id: u('4') });
+  assert.deepEqual({ entity: c.parts[0].brief.entity, id: c.parts[0].brief.id }, { entity: 'employers', id: u('4') });
   assert.equal(c.parts[1].ask.carried, true);
   assert.equal(c.parts[1].count, 2);
   assert.deepEqual(c.parts[1].labels.map(l => c.items.get(l).row.link), [{ entity: 'employers', type: 'employer', id: u('4'), name: 'Northrop Grumman', open: { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: `employer-${u('4')}` } } }, null], 'K1: the link reads employer, never opportunity; it carries its name and opener');
@@ -116,7 +116,7 @@ test('D2 details: a pronoun carries the part before\'s company into the to-do re
   salesReads.peopleActivity = async () => ({ status: 200, body: { rows: [person('prospect:c1', 'Dana Mayer', 'Cloudflare', 68, 'hot')] } });
   salesReads.personDetail = async () => ({ status: 200, body: { timeline: [{ kind: 'reply', at: '2026-11-08T10:00:00Z', step: 2, automated: false, reply_class: 'interested' }], notes: 'Met at the conference' } });
   const b = await buildContext(sb, registry, { auth: ana, scope: A, q: 'pull the intel on Dana Mayer', now: NOW });
-  assert.deepEqual(b.parts[0].brief, { entity: 'people', id: 'prospect:c1' });
+  assert.deepEqual({ entity: b.parts[0].brief.entity, id: b.parts[0].brief.id }, { entity: 'people', id: 'prospect:c1' });
   assert.match(b.pack, /Dana Mayer · reply step 2 \(interested\) · 2026-11-08/);
   const none = await buildContext(sb, registry, { auth: ana, scope: A, q: 'who are our hottest prospects at Cloudflare', now: NOW });
   assert.equal(none.parts[0].brief, null, 'a brief needs a brief word');

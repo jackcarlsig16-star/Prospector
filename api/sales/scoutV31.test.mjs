@@ -94,7 +94,8 @@ test('C1 on asks: the rows ride with the ask, the resolved record becomes the fi
   assert.ok(r.body.summary.startsWith('the second one → Meagan Earl, Cloudflare. '));
   assert.match(calls[0].messages.at(-1).content, /This is a follow-up on the last answer: the second one → Meagan Earl, Cloudflare\. Answer about that record only\./);
   assert.equal(r.body.context_stats.intent, 'brief');
-  assert.deepEqual(r.body.sections[0].brief, { entity: 'people', id: 'prospect:p2' });
+  // C7: the person brief's grid - Company is a field; a field with nothing on file is "—"
+  assert.deepEqual(r.body.sections[0].brief, { entity: 'people', id: 'prospect:p2', grid: [{ label: 'Record', value: 'Person · VP People' }, { label: 'Company', value: 'Cloudflare · contacted' }, { label: 'Visits', value: 'last visit 2026-11-09' }, { label: 'Last email', value: '2026-11-08 · opened' }, { label: 'Notes', value: 'Met at the expo' }] });
   assert.ok(r.body.sections[0].read.includes('goals/people/activity/person') && !r.body.sections[0].read.includes('prospect:'), r.body.sections[0].read);
   // "their tasks": the people's COMPANY is the to-do filter
   const linked = { id: u('6'), text: 'Send Cloudflare the agreement', due_date: '2026-11-12', owner_user_id: u('a'), created_at: '2026-11-01T00:00:00Z', link_type: 'opportunity', link_id: u('3'), steps: [] };
@@ -119,6 +120,7 @@ test('C1 on asks: the rows ride with the ask, the resolved record becomes the fi
   assert.equal(none.status, 200); assert.match(none.body.cant.reason, /^Ask for a list first/); assert.equal(none.body.answer_md, none.body.cant.reason); assert.deepEqual(none.body.sections, []);
   const which = await ask(sb, registry, { auth: ana, body: { q: 'what do we know about her', scope: A, rows } });
   assert.match(which.body.cant.reason, /^Which one\?/);
+  assert.deepEqual(which.body.cant.candidates, [{ key: 'people:prospect:p1', entity: 'people', id: 'prospect:p1', title: 'Dana Mayer', sub: 'Cloudflare' }, { key: 'people:prospect:p2', entity: 'people', id: 'prospect:p2', title: 'Meagan Earl', sub: 'Cloudflare' }], 'the picker\'s rows');
   assert.equal(calls.length, 0); assert.equal(which.body.usage, null);
   // a fresh question with rows on screen is not a follow-up
   calls = model('Two people. [r1] [r2]');
@@ -168,6 +170,9 @@ test('C2 draft: "write an email to the second one" drafts inline to THAT person 
   log.length = 0;
   const old = await plan(sb, registry, { auth: ana, body: { scope: A, text: 'write an email to the second one', rows: ROWS } });
   assert.deepEqual(old.body.open, { panel: 'compose', type: 'employer', id: u('3'), name: 'Cloudflare', to: 'Meagan Earl' }); assert.equal(old.body.draft, undefined); assert.equal(log.length, 0);
+  // a command with several candidates asks which one, with the rows to pick from (people only: the verb's kinds)
+  const amb = await plan(sb, registry, { auth: ana, body: { scope: A, inline: true, text: 'write an email to her', rows: ROWS } });
+  assert.match(amb.body.cant.reason, /^Which one\?/); assert.deepEqual(amb.body.cant.candidates.map(c => c.title), ['Dana Mayer', 'Meagan Earl', 'Danilea Cruz', 'Lee Stone', 'Rae North']); assert.deepEqual(amb.body.cant.pills, []);
   // one at a time; a Viewer never drafts
   assert.match((await plan(sb, registry, { auth: ana, body: { scope: A, inline: true, text: 'write an email to those people', rows: ROWS } })).body.cant.reason, /one draft at a time/);
   log.length = 0;
@@ -265,7 +270,7 @@ test('C4 task verbs: each a card, each through applyTodo with expect + origin sc
   const made = fakeTodoWrites(todos);
   r = await go('add a task to call Cloudflare Thursday');
   assert.equal(r.p.body.verb, 'add_task');
-  assert.deepEqual(r.p.body.fields, { task: 'Call Cloudflare', linked_to: 'Cloudflare', owner: 'Ana', due: '2026-11-12', due_note: '"thursday" read as the next one' });
+  assert.deepEqual(r.p.body.fields, { task: 'Call Cloudflare', linked_to: 'Cloudflare', linked_detail: 'Employer · Contacted', link: { type: 'employer', id: u('3'), name: 'Cloudflare' }, person_key: null, owner: 'Ana', due: '2026-11-12', due_note: '"thursday" read as the next one' });
   assert.deepEqual(r.p.body.rows.map(x => [x.kind, x.title, x.to]), [['task', 'Call Cloudflare', 'open to-do · due 2026-11-12']]);
   assert.deepEqual(made, [['todoOn', 'employer', u('3'), 'Call Cloudflare', '2026-11-12', 'scout', null, r.p.body.plan_id]]);
   assert.equal(r.a.body.line, 'Added 1');
@@ -327,6 +332,7 @@ test('C6: a cited name appears once (the prompt says so and a post-pass enforces
   model('It is a hot employer. [r1]');
   const r = await ask(sb, registry, { auth: ana, body: { q: 'what do we know about Cloudflare', scope: A } });
   assert.equal(r.body.sections[0].read, 'goals/brief/employer');
+  assert.deepEqual(r.body.sections[0].brief.grid.map(g => [g.label, g.value]), [['Record', 'employer'], ['Visits', 'Visited pricing twice'], ['Last touch', '—'], ['Notes', '—'], ['People', '—']]);
   assert.ok(r.body.context_stats.reads.every(x => !UUID.test(x) && !/prospect:|person:/.test(x)), JSON.stringify(r.body.context_stats.reads));
   assert.ok(!/Records \(/.test(r.body.answer_md)); assert.ok(!JSON.stringify(r.body).includes('@'));
 });

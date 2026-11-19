@@ -77,11 +77,12 @@ const settled = async container => {
 };
 
 const CASES = Object.entries(ROWS).flatMap(([kind, row]) => menuFor(row).map(m => [kind, m.id, m.label]));
-test('the menus under test: person 8 items, company 7, task 4', () => {
+test('the menus under test: person 8 items, company 7, task 6', () => {
   expect(CASES.map(c => `${c[0]}:${c[1]}`)).toEqual([
     'person:assign', 'person:add_task', 'person:contacted', 'person:not_fit', 'person:draft', 'person:bundle', 'person:snooze', 'person:copy',
     'company:assign', 'company:add_task', 'company:contacted', 'company:not_fit', 'company:draft', 'company:snooze', 'company:copy',
-    'task:task:done', 'task:task:reassign', 'task:task:snooze', 'task:open',
+    // scout-v3.1 C4: a task's verbs are Scout's own now (each a card), plus Open
+    'task:task_done', 'task:assign', 'task:snooze', 'task:task_due', 'task:task_drop', 'task:open',
   ]);
 });
 
@@ -92,7 +93,7 @@ test.each(CASES)('%s row · %s (%s) ends in a visible line, scrolled into view',
   const block = await settled(container);
   expect(scrolled).toHaveBeenCalled();
   expect(block.textContent).not.toMatch(/@|\d{3}[-.\s]\d{3}[-.\s]\d{4}/);
-  if (['assign', 'contacted', 'not_fit', 'snooze'].includes(id)) {
+  if (['assign', 'contacted', 'not_fit', 'snooze', 'task_done', 'task_due', 'task_drop'].includes(id)) {
     expect(block.querySelector('[data-scout-card]')).toBeTruthy();
     fireEvent.click(block.querySelector('[data-scout-confirm]'));
     await waitFor(() => expect(container.querySelector('[data-scout-done-line]').textContent).toBe('✓ Assigned 1 to Ana'));

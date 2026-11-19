@@ -76,8 +76,9 @@ export function resolveFollowUp(text, rows, { kinds = KIND_WORDS, companyEntitie
     const kind = kindOf(one[1]);
     const pool = one[2] ? of('people') : of(kind);
     // "that company" on one person row = that person's company
-    if (kind === 'company' && !pool.length) { const people = of('people').filter(r => r.company?.name); if (people.length === 1) return out(people, 'one', one[0], { pronoun: true, company: true }); return out([], 'one', one[0], { pronoun: true, ambiguous: people.length > 1 }); }
-    return out(pool.length === 1 ? pool : [], 'one', one[0], { pronoun: true, ambiguous: pool.length > 1 });
+    // ambiguous: the candidates ride along, so the caller can ask "which one?" with the rows to pick from
+    if (kind === 'company' && !pool.length) { const people = of('people').filter(r => r.company?.name); if (people.length === 1) return out(people, 'one', one[0], { pronoun: true, company: true }); return out([], 'one', one[0], { pronoun: true, ambiguous: people.length > 1, ...(people.length > 1 ? { candidates: people, company: true } : {}) }); }
+    return out(pool.length === 1 ? pool : [], 'one', one[0], { pronoun: true, ambiguous: pool.length > 1, ...(pool.length > 1 ? { candidates: pool } : {}) });
   }
   return { rows: [], how: 'none', phrase: null };
 }

@@ -17,12 +17,16 @@ export default function ComposePanel({ businessId, row, onClose, onToast }) {
   const generate = async () => {
     setState(s => ({ ...s, loading: true, error: '' }));
     try {
-      const r = await goalsApi.compose(businessId, row.type, row.id);
+      const r = await goalsApi.compose(businessId, row.type, row.id, row.person || null);
       setSubject(r.draft.subject); setBody(r.draft.body);
       setState({ loading: false, error: '', draft: r.draft, lint: r.lint, cost: r.cost_usd, cap: r.cap, claims: r.claims || [] });
     } catch (e) { setState(s => ({ ...s, loading: false, error: e.message })); }
   };
-  useEffect(() => { generate(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [businessId, row.type, row.id]);
+  // scout-v3.1 C2: opened from Scout's inline draft, the panel shows THAT draft (no second call); Regenerate still calls.
+  useEffect(() => {
+    if (row.prefill) { setSubject(row.prefill.subject); setBody(row.prefill.body); setState({ loading: false, error: '', draft: row.prefill, lint: null, cost: row.prefill.cost ?? null, cap: row.prefill.cap || null, claims: [] }); return; }
+    generate();
+  /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [businessId, row.type, row.id]);
   const lintAgain = async () => {
     setLinting(true);
     try { const r = await goalsApi.composeLint(businessId, { type: row.type, id: row.id, subject, body, claims: state.claims }); setState(s => ({ ...s, lint: r.lint })); }
@@ -40,7 +44,7 @@ export default function ComposePanel({ businessId, row, onClose, onToast }) {
         <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-label="Close" onClick={onClose}>✕</button>
       </div>
       <p style={{ margin: 0, fontSize: 12, color: SA.muted }}>One Claude call from the Brief only. Nothing is sent from here{state.cost != null ? ` · this draft cost $${state.cost.toFixed(4)}` : ''}{state.cap ? ` · ${state.cap.used}/${state.cap.max} today` : ''}.</p>
-      {row.to && <p data-compose-to style={{ margin: 0, fontSize: 13, color: SA.text }}>For <b>{row.to}</b> at {row.name}. The draft is written to the company; address it to {row.to} in your mail app.</p>}
+      {row.to && <p data-compose-to style={{ margin: 0, fontSize: 13, color: SA.text }}>For <b>{row.to}</b> at {row.name}. {row.person ? `The draft is written to ${row.to}; nothing is sent from here.` : `The draft is written to the company; address it to ${row.to} in your mail app.`}</p>}
       {state.error && <ErrorNote message={state.error} />}
       {state.loading && <span style={{ fontSize: 13, color: SA.muted }}>Writing…</span>}
       {state.draft && (

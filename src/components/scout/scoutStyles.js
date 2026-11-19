@@ -176,6 +176,20 @@ const SCOUT_CSS = `
 .scout-cant { display:flex; flex-direction:column; gap:8px; font-size:13px; color:var(--ui-text); }
 .scout-pills { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
 .scout-pill { font-size:11.5px; color:var(--ui-sub); border:1px solid var(--ui-border); border-radius:999px; padding:2px 9px; }
+.scout-kv { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:5px 14px; margin:0; font-size:13px; color:var(--ui-text); min-width:0; }
+.scout-kv dt { font:500 11px 'Geist Mono', ui-monospace, monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); padding-top:2px; white-space:nowrap; }
+.scout-kv dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+.scout-kv dd small { color:var(--ui-muted); }
+.scout-draft { border:1px solid var(--ui-border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; background:${edge(18)}; min-width:0; }
+.scout-draft__head { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; font-size:12.5px; color:var(--ui-sub); }
+.scout-draft__subject { font-size:13.5px; color:var(--ui-text); overflow-wrap:anywhere; }
+.scout-draft__body { margin:0; white-space:pre-wrap; font-size:13px; line-height:1.5; color:var(--ui-text); overflow-wrap:anywhere; max-height:300px; overflow-y:auto; }
+.scout-focus { padding:8px 14px 0; display:flex; }
+.scout-focus .scout-pill { display:inline-flex; align-items:center; gap:6px; }
+.scout-focus button { border:0; background:none; color:var(--ui-muted); font-size:14px; line-height:1; padding:0 2px; min-width:24px; min-height:24px; cursor:pointer; border-radius:999px; }
+.scout-focus button:hover { color:var(--ui-text); }
+.scout-menu__date { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; font-size:12.5px; color:var(--ui-sub); border-top:1px solid ${edge(25)}; }
+.scout-menu__date input { background:transparent; color:var(--ui-text); border:1px solid var(--ui-border); border-radius:6px; padding:3px 6px; font:inherit; color-scheme:dark; }
 .scout-brief { display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:13px; color:var(--ui-text); min-width:0; }
 .scout-actline { font-size:12px; color:var(--ui-muted); }
 .scout-sheet .scout-undo { min-height:36px; }

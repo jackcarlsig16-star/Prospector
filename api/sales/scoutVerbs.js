@@ -47,6 +47,7 @@ const ok = r => { if (r.status >= 400) throw Object.assign(new Error(r.body?.err
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KIND = { partners: 'partner', employers: 'employer', targets: 'target' };
 const COMPANY_ENTITIES = Object.keys(KIND);
+const KIND_NAME = { partner: 'Partner', employer: 'Employer', target: 'Target' };
 const TABLE = { partner: ['sales_goals', 'name', ', pipeline_status, snoozed_until'], employer: ['sales_opportunities', 'organization', ', stage'], target: ['sales_targets', 'name', ', status'] };
 const STATUS_WORD = { new: 'new', claimed: 'claimed', contacted: 'contacted', booked: 'booked', not_now: 'not now', dead: 'not a fit' };
 
@@ -371,7 +372,7 @@ const addTask = {
     const dueNote = args.when?.past ? "that date is in the past - confirm or edit" : weekday ? `"${args.when.phrase}" read as the next one` : args.date ? null : 'no date said - due today';
     const me = (await salesMembers(sb, ctx.businessId)).find(m => m.id === ctx.auth.user.id)?.name.split(/\s+/)[0] || 'you';
     return {
-      fields: { task, linked_to: company?.name || null, owner: me, due, due_note: dueNote },
+      fields: { task, linked_to: company?.name || null, linked_detail: company ? [KIND_NAME[company.type], company.stage ? String(company.stage).replace(/_/g, ' ').replace(/^./, c => c.toUpperCase()) : null].filter(Boolean).join(' · ') : null, link: company ? { type: company.type, id: company.id, name: company.name } : null, person_key, owner: me, due, due_note: dueNote },
       rows: [{ key: 'todos:new', kind: 'task', title: task, from: null, to: `open to-do · due ${due}`, note: [company ? `linked to ${company.name}` : 'not linked to a record', dueNote].filter(Boolean).join(' · '), exec: { create: { text: task, due_date: due, link: company ? { type: company.type, id: company.id } : null, person_key } } }],
     };
   },

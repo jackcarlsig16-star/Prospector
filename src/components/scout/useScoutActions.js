@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { scoutApi } from './scoutApi';
 import { goalsApi } from '../salesAnalytics/goals/goalsApi';
 import { playbookPrompt } from '../salesAnalytics/goals/companyPanelModel';
-import { SCOUT_CAPTURE, UNDO_SECONDS, planRows, keyOf, dateIn, cardTitle, withResults, withoutResults, withAction, undoneAction, copiedLine, bundleLine, TASK_LINE } from './scoutActions';
+import { SCOUT_CAPTURE, UNDO_SECONDS, planRows, keyOf, dateIn, cardTitle, withResults, withoutResults, withAction, undoneAction, copiedLine, bundleLine, TASK_LINE, draftText } from './scoutActions';
 
 // scout-v3 Stage 2 - one action at a time, for the answer on screen:
 //   planning -> card (Confirm / Cancel) -> working (names tick) -> done (Undo for 10 s, Retry on a failed row)
-//   or: cant (the verb pills + one nearest action) · opened / copied / note (one line).
+//   or: cant (the verb pills + one nearest action, or "Which one?" with the rows to pick) · opened / copied / note.
+//   scout-v3.1: draft (the inline draft: Copy · Open in Write email · Regenerate; never a send).
 // Every pick and every command ends in exactly one of those: nothing resolves without a line (a pending request shows
 // the working sweep from the click, a failed one says why).
 // Every write is the server's (/plan writes nothing, /act runs it, /undo reverses it). The rows update in place from
@@ -17,10 +18,12 @@ const copy = async text => {
 };
 const OFFLINE = "Scout can't reach the server · try again.";
 
-export function useScoutActions({ scope, current, onTurn, onOpenItem, onCompose }) {
+export function useScoutActions({ scope, current, focus = null, onTurn, onOpenItem, onCompose }) {
   const [act, setAct] = useState(null);
   const turnRef = useRef(current);
   turnRef.current = current;
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
   const note = (kind, text) => setAct({ kind, text });
 
   useEffect(() => {
@@ -69,14 +72,15 @@ export function useScoutActions({ scope, current, onTurn, onOpenItem, onCompose 
   const run = useCallback(async body => {
     setAct({ kind: 'planning', label: body.text ? 'Reading the command…' : 'Working…' });
     let r;
-    try { r = await scoutApi.plan({ scope, rows: planRows(turnRef.current), ...body }); }
+    try { r = await scoutApi.plan({ scope, rows: planRows(turnRef.current), inline: true, ...(focusRef.current?.length ? { focus: focusRef.current } : {}), ...body }); }
     catch (e) { if (e.status === 403 && e.body?.cant) r = e.body; else { note('note', e.offline ? OFFLINE : e.message); return 'done'; } }
     if (r.command === false) { setAct(null); return 'ask'; }
     if (r.cant) setAct({ kind: 'cant', cant: r.cant, text: body.text || '', keys: body.keys });
+    else if (r.draft) { setAct({ kind: 'draft', draft: r.draft, open: r.open, line: r.line, body, copied: false }); const turn = turnRef.current; if (turn && r.line) onTurn(withAction(turn, r.line)); }
     else if (r.open) await opened(r);
     else setAct({ kind: 'card', card: r });
     return 'done';
-  }, [scope, opened]);
+  }, [scope, opened, onTurn]);
 
   const settle = (r, card) => {
     const turn = turnRef.current;
@@ -111,11 +115,22 @@ export function useScoutActions({ scope, current, onTurn, onOpenItem, onCompose 
       onOpenItem(item); note('opened', TASK_LINE[id]); return undefined;
     }
     if (id === 'copy') return packCopy([item]);
-    return run({ verb: id, keys: [keyOf(item)], args: id === 'snooze' ? { date: dateIn(args.days) } : args || {}, text: '' });
+    const { days, ...rest } = args || {};
+    return run({ verb: id, keys: [keyOf(item)], args: days != null ? { ...rest, date: dateIn(days) } : rest, text: '' });
   }, [onOpenItem, packCopy, run]);
 
   return {
     act, confirm, retry, undo, pick, copy: packCopy,
+    // C2 - the inline draft: one more call, the clipboard, or the Write email panel prefilled (never a send)
+    regenerate: () => (act?.kind === 'draft' ? run(act.body) : undefined),
+    copyDraft: async () => { if (act?.kind !== 'draft' || act.draft.withheld) return; try { await copy(draftText(act.draft)); setAct(a => ({ ...a, copied: true })); } catch (e) { note('note', `Not copied: ${e.message}`); } },
+    openDraft: () => { if (act?.kind !== 'draft') return; const o = act.open, d = act.draft; onCompose({ type: o.type, id: o.id, name: o.name, to: o.to || null, key: `${o.type}-${o.id}`, person: d.to || null, prefill: o.prefill ? { ...o.prefill, cost: d.cost?.usd ?? null, cap: d.cap || null } : null }); },
+    // C4 - Edit on the task card: quick capture, prefilled with how Scout read it (the card is dropped, nothing written)
+    editTask: () => { if (act?.kind !== 'card' || !act.card.fields) return; const f = act.card.fields; window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId: scope, text: f.task, due_date: f.due, past: !!act.card.when?.past, link: f.link || null, person_key: f.person_key || null } })); note('opened', 'Opened quick capture — save it there'); },
+    // "Which one?" on a command: the same command, on the row picked
+    choose: c => (act?.kind === 'cant' && !act.ask ? run({ text: act.text, keys: [c.key] }) : undefined),
+    // an ask that could not point at a row: the reason, and the rows to pick from when there are several
+    askCant: (cant, q) => setAct({ kind: 'cant', cant: { pills: [], ...cant }, text: q, ask: true }),
     command: text => run({ text }),
     nearest: () => (act?.kind === 'cant' && act.cant.nearest?.id ? run({ verb: act.cant.nearest.id, text: act.text, keys: act.keys }) : undefined),
     say: text => note('note', text),

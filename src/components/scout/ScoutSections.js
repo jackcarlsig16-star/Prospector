@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import HeatPill from '../salesAnalytics/people/HeatPill';
 import { OpenGlyph, SortGlyph, CaretGlyph, WorkspaceTag } from './ScoutParts';
 import { entityLabel } from './scoutModel';
-import { keyOf, rowKind, menuFor, sectionNoun, countPill, SNOOZE_CHOICES, PHONE_SHOWN } from './scoutActions';
+import { keyOf, rowKind, menuFor, sectionNoun, countPill, SNOOZE_CHOICES, TASK_DATES, PHONE_SHOWN } from './scoutActions';
 
 // scout-v3 Stage 2 (specs/design/scout-v3/Scout3Answer + Scout3Phone) - one numbered section per part of the ask: its
 // title, a count pill, a table of the part's rows (people: name over title · company over stage · heat on the one
@@ -73,7 +73,10 @@ export function RowMenu({ item, phone, members, onPick, onClose }) {
     return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('mousedown', out); };
   }, [sub, onClose]);
   const items = menuFor(item);
-  const subItems = sub === 'members' ? [...members.map(m => ({ id: m.user_id, label: m.first || m.name, color: m.color })), { id: null, label: 'Unassigned' }] : sub === 'dates' ? SNOOZE_CHOICES : null;
+  // a task's Snooze ▸ and Due ▸: tomorrow / next week / pick a date (scout-v3.1 C4)
+  const dated = sub === 'taskdates' || sub === 'dues';
+  const verbOf = sub === 'members' ? 'assign' : sub === 'dues' ? 'task_due' : 'snooze';
+  const subItems = sub === 'members' ? [...members.map(m => ({ id: m.user_id, label: m.first || m.name, color: m.color })), { id: null, label: 'Unassigned' }] : sub === 'dates' ? SNOOZE_CHOICES : sub === 'taskdates' ? TASK_DATES : sub === 'dues' ? [{ id: 'today', label: 'Today', days: 0 }, ...TASK_DATES] : null;
   const title = [item.title, item.row?.company?.name].filter(Boolean).join(' · ');
   return (
     <div ref={ref} className={`scout-menu${phone ? ' scout-menu--sheet' : ''}`} data-scout-menu={sub || 'root'}>
@@ -86,9 +89,10 @@ export function RowMenu({ item, phone, members, onPick, onClose }) {
         </button>
       ))}
       {subItems && subItems.map(m => (
-        <button key={String(m.id)} type="button" role="menuitem" data-scout-pick={`${sub}:${m.id}`} onClick={() => onPick(sub === 'members' ? 'assign' : 'snooze', sub === 'members' ? { owner_user_id: m.id } : { days: m.days })}><span className="scout-owner">{m.color && <i className="scout-dot" style={{ background: m.color }} />}{m.label}</span></button>
+        <button key={String(m.id)} type="button" role="menuitem" data-scout-pick={`${sub}:${m.id}`} onClick={() => onPick(verbOf, sub === 'members' ? { owner_user_id: m.id } : { days: m.days })}><span className="scout-owner">{m.color && <i className="scout-dot" style={{ background: m.color }} />}{m.label}</span></button>
       ))}
       </div>
+      {dated && <label className="scout-menu__date"><span>Pick a date</span><input type="date" aria-label={sub === 'dues' ? 'Due date' : 'Snooze until'} data-scout-pick-date onChange={e => { if (e.target.value) onPick(verbOf, { date: e.target.value }); }} /></label>}
     </div>
   );
 }
@@ -132,7 +136,7 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
         <header className="scout-section__head">
           {numbered && <span className="scout-num-badge" aria-hidden="true">{n}</span>}
           <b className="scout-section__title">{section.title || `Part ${n}`}</b>
-          <span className="scout-count" data-scout-count>{countPill(section, sectionNoun(section))}</span>
+          <span className="scout-count" data-scout-count data-scout-fill={section.fill ? '' : undefined}>{countPill(section, sectionNoun(section))}</span>
         </header>
       )}
       {!section.rows.length && <p className="scout-empty" data-scout-empty>{section.line || 'Nothing matched.'}</p>}
@@ -160,9 +164,12 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
 
 // D9: a brief (one company or person + a brief word) opens with its header - Brief · 1 record · the name · heat or
 // score · Open · Copy for Claude - above its rows.
-export function BriefHead({ item, onOpen, onCopy }) {
+// scout-v3.1 C7: under the header, the label / value grid the server built from the same Brief (Record · Visits · Last
+// touch · Notes · People for a company; Record · Company · Visits · Last email · Notes for a person).
+export function BriefHead({ item, grid = null, onOpen, onCopy }) {
   const person = item.entity === 'people';
   return (
+    <>
     <div className="scout-brief" data-scout-brief>
       <span className="scout-count">Brief · 1 {person ? 'person' : 'company'}</span>
       <b>{item.title}</b>
@@ -171,5 +178,7 @@ export function BriefHead({ item, onOpen, onCopy }) {
       {item.open && <button type="button" className="scout-btn" onClick={() => onOpen(item)} aria-label={`Open ${item.title}`}><OpenGlyph />Open</button>}
       <button type="button" className="scout-btn scout-btn--accent" data-scout-copy onClick={() => onCopy([item])}>Copy for Claude</button>
     </div>
+    {grid?.length > 0 && <dl className="scout-kv" data-scout-brief-grid>{grid.map(g => [<dt key={`${g.label}-l`}>{g.label}</dt>, <dd key={`${g.label}-v`} className={g.value === '—' ? 'scout-dim' : undefined}>{g.value}</dd>])}</dl>}
+    </>
   );
 }

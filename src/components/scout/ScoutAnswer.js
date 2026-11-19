@@ -35,25 +35,29 @@ export function WorkingPanel({ q, elapsed }) {
 
 // scout-v3 Stage 2: the answer = the summary, then one numbered section per part (ScoutSections), the action block
 // for this answer (the confirm card, working, done + Undo, can't-do) and its action sub-lines (D11). No Records block.
-export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null }) {
+export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null, focus = null }) {
   const sections = useMemo(() => sectionsOf(turn), [turn]);
   const foot = footerParts(turn);
   const numbered = sections.length > 1;
   const single = sections.length === 1 ? sections[0] : null;
   const briefOf = s => (s.brief ? s.rows.find(r => r.entity === s.brief.entity && String(r.id) === String(s.brief.id)) || null : null);
   const inline = inlineKey ? sections.flatMap(s => s.rows).find(r => keyOf(r) === inlineKey) : null;
+  const briefFirst = !!single && !!briefOf(single);
   return (
     <div className="scout-answer" data-scout-answer>
       <div className="scout-head scout-q"><span className="scout-neon" style={{ display: 'inline-flex' }}><StarGlyph /></span><span>{turn.q}</span>{scopeChip}</div>
+      {focus}
       <div className="scout-panel" style={{ gap: 14 }}>
-        <Prose text={turn.summary || turn.answer_md} />
+        {/* C7: a brief opens with its header and grid, then the prose */}
+        {!briefFirst && <Prose text={turn.summary || turn.answer_md} />}
         {sections.map((s, i) => {
           const b = briefOf(s);
           // one part with one record and no brief: the prose is the answer, the record rides as a single row
           if (single && !s.rows.length) return null;
           return (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-              {b && <BriefHead item={b} onOpen={onOpen} onCopy={onCopy} />}
+              {b && <BriefHead item={b} grid={s.brief.grid} onOpen={onOpen} onCopy={onCopy} />}
+              {b && briefFirst && <Prose text={turn.summary || turn.answer_md} />}
               <Section n={i + 1} section={numbered ? s : { ...s, title: s.rows.length >= 2 ? s.title : null }} numbered={numbered} phone={phone} scopeAll={scopeAll} colorOf={colorOf} sorted={turn.ask?.sort === 'score' || turn.ask?.sort === 'heat'}
                 canAct={canAct} onOpen={onOpen} menu={menu} onMenu={onMenu} members={members} onPick={onPick} />
             </div>

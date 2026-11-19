@@ -4,9 +4,9 @@ import { scoutApi } from './scout/scoutApi';
 import { goalsApi } from './salesAnalytics/goals/goalsApi';
 import ScoutResults, { optionId } from './scout/ScoutResults';
 import { WorkingPanel, AnswerPanel, EdgePanel } from './scout/ScoutAnswer';
-import { ConfirmCard, ActWorking, DoneLine, CantDo, ActNote } from './scout/ScoutActionCard';
+import { ConfirmCard, ActWorking, DoneLine, CantDo, ActNote, DraftBlock } from './scout/ScoutActionCard';
 import { useScoutActions } from './scout/useScoutActions';
-import { looksLikeCommand } from './scout/scoutActions';
+import { looksLikeCommand, planRows, keyOf, focusLabel } from './scout/scoutActions';
 import ComposePanel from './salesAnalytics/goals/priorities/ComposePanel';
 import { SA_THEME_CSS, SA_THEME_CLASS } from './salesAnalytics/theme';
 import { StarGlyph, ScopePill, StaticScope } from './scout/ScoutParts';
@@ -39,6 +39,8 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const [composeToast, setComposeToast] = useState('');
   const [inlineKey, setInlineKey] = useState(null);
   const [retry, setRetry] = useState(0);
+  // scout-v3.1 C8: the record(s) a follow-up narrowed the conversation to - what "her" / "it" mean until cleared
+  const [focus, setFocus] = useState(null);
   const sheet = mode === 'sheet';
   const empty = scopeOptions.length === 0;
   const colorOf = useCallback(id => scopeOptions.find(o => o.id === id)?.color || null, [scopeOptions]);
@@ -92,7 +94,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     setTurns(ts => { const next = ts.map(t => (t.at === turn.at ? turn : t)); saveThread(meId, next); return next; });
   }, [meId]);
   const openRef = useRef(null);
-  const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, onTurn, onOpenItem: item => openRef.current?.(item, true), onCompose: setCompose });
+  const actions = useScoutActions({ scope, current: view === 'answer' ? current : null, focus: focus?.rows || null, onTurn, onOpenItem: item => openRef.current?.(item, true), onCompose: setCompose });
   // The result line of an action sits under the answer's last section: bring it into view, the popover scrolls inside itself.
   const actRef = useRef(null);
   const actKey = actions.act ? `${actions.act.kind}:${actions.act.text || ''}` : '';
@@ -107,22 +109,27 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const salesScope = scope !== 'all' && !!businesses.find(b => b.id === scope)?.features?.goals_sales;
   useEffect(() => { if (current && salesScope && !members.length) goalsApi.members(scope).then(ms => { const list = (ms || []).map(m => ({ user_id: m.user_id, first: String(m.name || 'Member').split(' ')[0], color: m.color || null })); const mine = String(me?.profile?.display_name || '').split(' ')[0]; setMembers(meId && mine && !list.some(m => m.user_id === meId) ? [...list, { user_id: meId, first: mine, color: null }] : list); }).catch(() => {}); }, [current, salesScope, members.length, scope]);
 
-  const ask = useCallback(async (question = text) => {
+  // rows = the answer on screen (every section, in order): what "the second one" points at. opts.rows = one picked row.
+  const ask = useCallback(async (question = text, opts = {}) => {
     if (!question || question.length < MIN_CHARS) return;
     const at = Date.now();
     setAsked({ q: question, at }); setTick(0); setView('working'); setOpen(true); setEdge(null); setInlineKey(null); setMenu(null); actions.onNewAsk();
     try {
-      const r = await scoutApi.ask({ q: question, scope, thread: threadMessages(turns) });
+      const rows = opts.rows || (current && current.scope === scope ? planRows(current) : []);
+      const r = await scoutApi.ask({ q: question, scope, thread: threadMessages(turns), ...(rows.length ? { rows } : {}), ...(focus && !opts.rows ? { focus: focus.rows } : {}) });
       const elapsed = Math.max(1, Math.round((Date.now() - at) / 1000));
       if (r.withheld) { setEdge({ kind: 'withheld', q: question }); setView('edge'); return; }
-      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
+      // nothing to point at, or several candidates ("Which one?"): said under the answer on screen - no turn, no ask spent
+      if (r.cant) { actions.askCant(r.cant, question); setView(current ? 'answer' : 'act'); return; }
+      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, ...(r.resolved ? { resolved: r.resolved } : {}), context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
       const next = [...turns, turn].slice(-THREAD_MAX);
+      setFocus(r.resolved ? { rows: r.resolved.rows, label: focusLabel(r.resolved.rows) } : null);
       setTurns(next); saveThread(meId, next); setCurrent(turn); setView('answer');
     } catch (e) {
       setEdge(e.status === 429 ? { kind: 'cap', cap: e.body?.cap ? { used: e.body.used, max: e.body.cap } : null } : e.offline || e.status >= 500 ? { kind: 'offline', retry: 'ask', q: question } : { kind: 'error', message: e.message });
       setView('edge');
     }
-  }, [text, scope, turns, meId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [text, scope, turns, meId, current, focus]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // stay = opened from a row's ⋯ menu: the panel stays up so the action's line is read (a click outside closes it).
   const openItem = useCallback((item, stay = false) => {
@@ -143,8 +150,10 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     return setQ('');
   };
 
-  const clearThread = () => { setTurns([]); saveThread(meId, []); setCurrent(null); actions.clear(); setView('search'); };
-  const reopen = t => { setCurrent(t); setInlineKey(null); setMenu(null); actions.clear(); setView('answer'); };
+  const clearThread = () => { setTurns([]); saveThread(meId, []); setCurrent(null); setFocus(null); actions.clear(); setView('search'); };
+  const reopen = t => { setCurrent(t); setFocus(t.resolved ? { rows: t.resolved.rows, label: focusLabel(t.resolved.rows) } : null); setInlineKey(null); setMenu(null); actions.clear(); setView('answer'); };
+  // "Which one?": a command runs again on the row picked; a question is asked again about that one row
+  const choose = c => (actions.act?.ask ? ask(actions.act.text, { rows: planRows(current).filter(r => keyOf(r) === c.key) }) : actions.choose(c));
 
   // Typing a command over an answer keeps the answer (its rows are what "those" means); anything else searches.
   const onChange = e => { const v = e.target.value; setQ(v); setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };
@@ -168,10 +177,11 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const showPanel = open || sheet;
   const a = actions.act;
   const actBody = !a ? null
-    : a.kind === 'card' ? <ConfirmCard card={a.card} onConfirm={actions.confirm} onCancel={actions.cancel} />
+    : a.kind === 'card' ? <ConfirmCard card={a.card} onConfirm={actions.confirm} onCancel={actions.cancel} onEdit={actions.editTask} />
+    : a.kind === 'draft' ? <DraftBlock draft={a.draft} copied={a.copied} onCopy={actions.copyDraft} onOpen={actions.openDraft} onRegenerate={actions.regenerate} />
     : a.kind === 'working' ? <ActWorking card={a.card} ticked={a.ticked} />
     : a.kind === 'done' ? <DoneLine result={a.result} secondsLeft={a.left} undone={a.undone} onUndo={actions.undo} onRetry={actions.retry} />
-    : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} />
+    : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} onChoose={a.cant.candidates?.length ? choose : null} />
     : a.kind === 'planning' ? <ActNote kind="planning">{a.label}</ActNote>
     : <ActNote kind={a.kind}>{a.text}</ActNote>;
   const actBlock = actBody && <div ref={actRef} data-scout-actblock>{actBody}</div>;
@@ -185,6 +195,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
         scopeChip={<StaticScope name={opt?.name || allText} color={opt?.color} />}
         onOpen={openItem} inlineKey={inlineKey} members={members} menu={menu} onMenu={setMenu} onPick={(item, id, args) => { setMenu(null); actions.pick(item, id, args); }}
         onCopy={actions.copy} act={actBlock}
+        focus={focus && <div className="scout-focus" data-scout-focus><span className="scout-pill">{focus.label}<button type="button" aria-label={`Clear the focus (${focus.label})`} title="Clear the focus" onClick={() => setFocus(null)}>×</button></span></div>}
         turns={turns} onReopen={reopen} onClear={clearThread} />
     );
   } else if (showPanel && view === 'act' && actBlock) {

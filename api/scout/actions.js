@@ -100,12 +100,16 @@ export async function plan(supabase, registry, { auth, body = {}, now = actDeps.
   if (!cmd) return reply(200, { command: false });
   if (cmd.refused) return reply(200, cant(verbs, cmd.refused.reason, cmd.refused.nearest));
   const verb = cmd.verb;
-  const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 200).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name || ''), 160) } : null }));
+  const rowsIn = list => (Array.isArray(list) ? list : []).slice(0, 200).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name || ''), 160) } : null }));
+  const rows = rowsIn(body.rows);
   const today = laDateString(new Date(now));
   const members = mod.members ? await mod.members(supabase, business.id) : [];
-  const target = resolveTargets(text || cmd.text, rows, body.keys, { entities: verb.accepts || null });
+  let target = resolveTargets(text || cmd.text, rows, body.keys, { entities: verb.accepts || null });
+  // C8: with a focus up, a pronoun in a command means the focused record(s)
+  const focus = rowsIn(body.focus).slice(0, 10);
+  if (focus.length && target.pronoun && target.how !== 'picked') { const f = resolveFollowUp(text || cmd.text, focus, { entities: verb.accepts || null }); if (f.rows.length) target = f; }
   const usable = target.rows.filter(r => !verb.accepts || verb.accepts.includes(r.entity));
-  if (target.ambiguous) return reply(200, cant(verbs, `Which one? Say it like "the second one" or use a name.`, verb.id));
+  if (target.ambiguous) { const c = cant(verbs, 'Which one? Say it like "the second one" or use a name.', null); c.cant.pills = []; c.cant.candidates = target.candidates.filter(r => !verb.accepts || verb.accepts.includes(r.entity)).slice(0, 8).map(r => ({ key: r.key, entity: r.entity, id: r.id, title: r.title, ...(r.company?.name ? { sub: r.company.name } : {}) })); return reply(200, c); }
   const args = { ...(body.args && typeof body.args === 'object' ? body.args : {}), inline: body.inline === true };
   if (verb.needs === 'member' && !('owner_user_id' in args)) {
     const to = /\bto\s+(me|myself|nobody|no one|unassigned|[a-z][a-z-]+)\b/.exec(cmd.text) || (/^unassign\b/.test(cmd.text) ? [null, 'nobody'] : null);

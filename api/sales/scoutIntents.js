@@ -1,4 +1,4 @@
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { addDays } from './goalsShared.js';
 import { readType } from './readType.js';
@@ -142,6 +142,10 @@ export function weeklyLine(x, b) {
   ].filter(Boolean).join(' · ');
 }
 
+// scout-v3.1 C7 - the brief's label / value grid: the same facts the Brief holds, one line each; a field with nothing
+// on file is "—"; a value holding an address or phone shape is left out.
+export const briefGrid = pairs => pairs.map(([label, value]) => { const v = value ? cleanText(String(value), 240) : ''; return { label, value: v && !hasPii(v) ? v : '—' }; });
+
 export const salesIntents = [
   { id: 'top_targets', example: 'my top targets', suggest: true, title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
     async run(sb, { businessId, auth, ask, now }) {
@@ -166,6 +170,7 @@ export const salesIntents = [
   { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', context: true, rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,
     async run(sb, { businessId, ask, today }) {
       const items = [], reads = [], records = [];
+      let grid = null;
       for (const name of ask.company.slice(0, 2)) {
         const c = await findCompany(sb, businessId, name);
         if (!c) {
@@ -175,6 +180,7 @@ export const salesIntents = [
           records.push({ entity: 'people', id: person.key });
           items.push(personItem(person));
           const d = await salesReads.personDetail(sb, businessId, { key: person.key });
+          grid = briefGrid([['Record', ['Person', person.title].filter(Boolean).join(' · ')], ['Company', person.company?.name ? `${person.company.name}${person.company.stage ? ` · ${String(person.company.stage).replace(/_/g, ' ')}` : ''}` : null], ['Visits', person.visits?.last_visit ? `last visit ${day(person.visits.last_visit)}${person.visits.top_page ? ` · ${person.visits.top_page}` : ''}` : null], ['Last email', person.last_email ? `${day(person.last_email.at)} · ${person.last_email.what}` : null], ['Notes', d.status === 200 ? d.body.notes : null]]);
           if (d.status === 200) {
             for (const t of d.body.timeline.filter(x => !x.automated).slice(0, 8)) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · ${t.kind}${t.step != null ? ` step ${t.step}` : ''}${t.reply_class ? ` (${t.reply_class})` : ''} · ${day(t.at)}${t.subject ? ` · ${t.subject}` : ''}` });
             if (d.body.notes) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · note: ${d.body.notes}` });
@@ -187,6 +193,9 @@ export const salesIntents = [
         const entity = ENTITY_OF[c.type];
         records.push({ entity, id: c.id });
         const row = { kind: 'company', type: c.type, id: c.id, name: r.body.company.name, score: r.body.score?.score ?? null, band: r.body.score?.band || null };
+        const of = kind => r.body.lines.filter(l => l.kind === kind).map(l => l.text);
+        const touches = of('touch'), people = of('person');
+        grid = briefGrid([['Record', (of('company')[0] || c.type).replace(new RegExp(`^${r.body.company.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · `), '')], ['Visits', of('visit')[0]], ['Last touch', touches[0]?.replace(/^Last touch: /, '')], ['Notes', touches.length > 1 ? `${touches[1]}${touches.length > 2 ? ` · ${touches.length - 2} more` : ''}` : null], ['People', people.length ? people.join(' · ') : null]]);
         items.push({ company: r.body.company.name, row, entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${c.type}${r.body.score ? ` · intent ${r.body.score.score} ${r.body.score.band}` : ''}${r.body.next_step ? ` · next: ${r.body.next_step}` : ''}` });
         for (const l of r.body.lines) items.push({ entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${l.kind}: ${l.text}` });
         if (c.domain) {
@@ -194,7 +203,7 @@ export const salesIntents = [
           for (const m of msgs) items.push({ entity: 'outlook', id: m.graph_id, title: cleanText(m.subject || '(no subject)', 120), date: day(m.occurred_at), text: `${cleanText(m.subject || '(no subject)', 120)} · ${m.direction === 'sent' ? 'email sent' : 'email received'} · ${day(m.occurred_at)} · ${c.domain}` });
         }
       }
-      return { read: reads.join(' + '), items, total: records.length, brief: records.length === 1 ? records[0] : null };
+      return { read: reads.join(' + '), items, total: records.length, brief: records.length === 1 ? { ...records[0], ...(grid ? { grid } : {}) } : null };
     } },
   // scout-v3 R11: the open list by the rule, never filtered by the question's leftover words; a company named (or
   // carried by a pronoun from the part before) narrows it to that company's to-dos - by link, else by its name in the text.

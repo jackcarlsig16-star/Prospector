@@ -90,7 +90,7 @@ test('the sectioned answer: summary, two numbered sections with count pills, peo
   expect(onOpen).toHaveBeenLastCalledWith({ entity: 'employers', id: 'e1', title: 'Cloudflare', open: CO_OPEN });
 });
 
-test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, Snooze ▸ the dates; a task row lists Done · Reassign · Snooze · Open and opens the task (no Scout write)', async () => {
+test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, Snooze ▸ the dates; a task row lists Done · Reassign · Snooze · Due · Drop · Open', async () => {
   const { container, onOpen } = await answered();
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Dana Mayer' }));
   const menu = screen.getByRole('menu', { name: 'Actions for Dana Mayer' });
@@ -112,8 +112,9 @@ test('the ⋯ menu: a person row lists the seven verbs, Assign ▸ the members, 
   await waitFor(() => expect(calls('/api/scout/plan')).toHaveLength(2));
   expect(calls('/api/scout/plan')[1].args.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Send the joint note' }));
-  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Done', 'Reassign', 'Snooze', 'Open']);
-  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Done' }));
+  // scout-v3.1 C4: a task row's verbs are Scout's (Done · Reassign ▸ · Snooze ▸ · Due ▸ · Drop -> a card each); Open opens the task
+  expect(within(screen.getByRole('menu')).getAllByRole('menuitem').map(b => b.textContent.replace('▸', ''))).toEqual(['Done', 'Reassign', 'Snooze', 'Due', 'Drop', 'Open']);
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Open' }));
   expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ entity: 'todos', id: 't1' }));
   expect(calls('/api/scout/plan')).toHaveLength(2);
   expect(calls('/api/scout/act')).toHaveLength(0);

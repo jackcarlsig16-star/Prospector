@@ -308,7 +308,8 @@ export const goalsApi = {
   saveScoreView: (id, body) => call(id, '/scores/views', { method: 'POST', body }),
   deleteScoreView: (id, viewId) => call(id, `/scores/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
   composeStatus: id => call(id, '/compose/status'),
-  compose: (id, type, recordId) => call(id, `/compose/${type}/${recordId}`, { method: 'POST', body: {} }),
+  // person (scout-v3.1 C2) = the recipient { person_key, name, title }: the draft greets them by first name
+  compose: (id, type, recordId, person = null) => call(id, `/compose/${type}/${recordId}`, { method: 'POST', body: person ? { person } : {} }),
   composeLint: (id, body) => call(id, '/compose/lint', { method: 'POST', body }),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),

@@ -17,7 +17,7 @@ export const MAX_TOKENS = 1200;
 export const LIST_MAX = 15; // records named in the prose; the rest ride in the table (Jack, Stage 3)
 export const CALL_TYPE = 'scout_ask';
 export const Q_MAX = 500, THREAD_MAX = 6, TURN_MAX = 2000, ACTIONS_MAX = 5;
-export const ROWS_MAX = 200;
+export const ROWS_MAX = 200, CANDIDATES_MAX = 8;
 export const SYSTEM = [
   'You are Scout, the assistant inside Prospector, a sales workspace. You answer questions about the user\'s own records.',
   'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: a label like [r1] followed by its fields.',
@@ -117,16 +117,21 @@ export function validateAsk(body = {}) {
   // D11: an action is a sub-line of the answer it acted on ("→ assigned 3 to Ana · undone"), never its own turn.
   const withActions = t => [cleanText(t.content, TURN_MAX), ...(t.actions || []).slice(-ACTIONS_MAX).map(a => `→ ${cleanText(a, 200)}`)].join('\n');
   // scout-v3.1 C1: the rows of the answer on screen (every section, in display order), so a follow-up can point at them.
-  const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, ROWS_MAX).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' && r.company.name ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name), 160) } : null }));
-  return { q, thread: thread.map(t => ({ role: t.role, content: withActions(t) })), scope, rows };
+  const rowsOf = list => (Array.isArray(list) ? list : []).slice(0, ROWS_MAX).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' && r.company.name ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name), 160) } : null }));
+  const rows = rowsOf(body.rows);
+  // C8: the record(s) the conversation is narrowed to - what a pronoun means while the focus chip is up
+  const focus = rowsOf(body.focus).slice(0, 10);
+  return { q, thread: thread.map(t => ({ role: t.role, content: withActions(t) })), scope, rows, focus };
 }
 
 // C1: what the follow-up points at. -> null (not a follow-up) | { cant } | { rows, line, company? }.
-export function followUpOf(q, rows) {
-  const r = resolveFollowUp(q, rows, { ask: true });
+export function followUpOf(q, rows, focus = []) {
+  let r = resolveFollowUp(q, rows, { ask: true });
+  // a pronoun means the focused record(s) while there is a focus; ordinals and names still read the rows on screen
+  if (focus.length && (r.pronoun || r.how === 'none')) { const f = resolveFollowUp(q, focus, { ask: true }); if (f.pronoun && f.rows.length) r = f; }
   if (r.how === 'none') return null;
   if (!rows.length) return ['ordinal', 'one'].includes(r.how) ? { cant: 'Ask for a list first, then point at a row, like "the second one".' } : null;
-  if (r.ambiguous) return { cant: 'Which one? Say it like "the second one" or use a name.' };
+  if (r.ambiguous) return { cant: 'Which one? Say it like "the second one" or use a name.', candidates: r.candidates.slice(0, CANDIDATES_MAX).map(c => ({ key: c.key, entity: c.entity, id: c.id, title: r.company ? c.company.name : c.title, ...(c.company?.name && !r.company ? { sub: c.company.name } : {}) })) };
   if (!r.rows.length) return r.how === 'ordinal' ? { cant: `The last answer has ${rows.length} row${rows.length === 1 ? '' : 's'}; that one is not among them.` } : null;
   return { rows: r.rows, line: resolvedLine(r), phrase: r.phrase, ...(r.company ? { company: true } : {}) };
 }
@@ -139,9 +144,9 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   const n = await asksToday(supabase, auth.user.id, now);
   if (n >= DAILY_CAP) return { status: 429, body: { error: `Scout has answered ${DAILY_CAP} questions for you today. It opens again tomorrow.`, cap: DAILY_CAP, used: n } };
   cancelPlans(auth.user.id); // S1: a new ask cancels an open confirm card
-  const follow = followUpOf(v.q, v.rows);
+  const follow = followUpOf(v.q, v.rows, v.focus);
   // nothing to point at (or more than one candidate): said plainly, no model call, no ask counted
-  if (follow?.cant) return { status: 200, body: { answer_md: follow.cant, summary: follow.cant, sections: [], items: [], usage: null, withheld: false, cant: { reason: follow.cant }, scope, cap: { used: n, max: DAILY_CAP } } };
+  if (follow?.cant) return { status: 200, body: { answer_md: follow.cant, summary: follow.cant, sections: [], items: [], usage: null, withheld: false, cant: { reason: follow.cant, ...(follow.candidates ? { candidates: follow.candidates } : {}) }, scope, cap: { used: n, max: DAILY_CAP } } };
   let ctx;
   try { ctx = await buildContext(supabase, registry, { auth, scope, q: v.q, now, follow }); }
   catch (e) { if (e.status) return { status: e.status, body: { error: e.message } }; throw e; }
