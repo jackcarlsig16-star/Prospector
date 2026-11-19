@@ -41,10 +41,14 @@ const visits = [
 ];
 const people = [{ first_touch_at: '2026-11-02T18:00:00Z' }, { first_touch_at: '2026-11-04T18:00:00Z' }, { first_touch_at: '2026-10-27T18:00:00Z' }, { first_touch_at: '2026-09-01T18:00:00Z' }];
 
-test('buildPulse this week: every metric from the rows, the window before it, a five-point series, deltas with direction', () => {
+test('buildPulse this week: every metric from the rows, read on pace - the delta is against the same point last week (Mon-Thu), counts carry a projection, rates never do; a five-point series', () => {
   const p = buildPulse({ period: 'this_week', today: TODAY, now: NOW, counts, opens, deliveredAt, events, visits, people, goal: { goal: 100, unit: 'people', carried: false }, synced_at: '2026-11-05T17:00:00Z', apollo_calls: 21, credits: { used: 0, cap: 500 } });
-  assert.equal(p.from, '2026-11-02'); assert.equal(p.to, '2026-11-05'); assert.deepEqual(p.prev, { from: '2026-10-26', to: '2026-11-01' });
+  assert.equal(p.from, '2026-11-02'); assert.equal(p.to, '2026-11-05'); assert.deepEqual(p.prev, { from: '2026-10-26', to: '2026-10-29' });
   assert.deepEqual(Object.keys(p.metrics), METRICS);
+  assert.ok(Object.values(p.metrics).every(x => x.same_point === true));
+  // Pace = to date ÷ 4/7 (Thursday), whole numbers, counts only.
+  assert.deepEqual([p.metrics.sent.pace, p.metrics.meetings.pace, p.metrics.visitors.pace, p.metrics.first_touched.pace], [179, 2, 5, 4]);
+  assert.deepEqual([p.metrics.delivered_rate.pace, p.metrics.human_open_rate.pace, p.metrics.reply_rate.pace], [null, null, null]);
   const m = p.metrics;
   // Sent = delivered + hard bounced + spam blocked, by send date; last week 100+4+50 = 154, this week 60+2+40 = 102.
   assert.deepEqual([m.sent.value, m.sent.prev, m.sent.delta], [102, 154, -52]);
@@ -57,8 +61,9 @@ test('buildPulse this week: every metric from the rows, the window before it, a 
   assert.equal(m.human_open_rate.value, 0.08 * 0.5); assert.equal(m.human_open_rate.prev, 0.1); assert.equal(m.human_open_rate.apollo_open_rate, 0.08); assert.equal(m.human_open_rate.human_share, 0.5);
   // Replies = replied / delivered; "ever" sums every stored row.
   assert.equal(m.reply_rate.value, 0); assert.equal(m.reply_rate.prev, 1 / 150); assert.equal(m.reply_rate.ever, 4); assert.equal(m.reply_rate.replied, 0); assert.equal(m.reply_rate.delivered, 100);
-  // Meetings = external events booked in the window (a this week, b last week, c internal, d = b again); upcoming = b, next Nov 9.
-  assert.deepEqual([m.meetings.value, m.meetings.prev, m.meetings.delta], [1, 1, 0]);
+  // Meetings = external events booked in the window (a this week, b last Friday - after the same point, c internal, d = b again); upcoming = b, next Nov 9.
+  assert.deepEqual([m.meetings.value, m.meetings.prev, m.meetings.delta], [1, 0, 1]);
+  assert.deepEqual(m.meetings.series, [0, 0, 0, 1, 1]);
   assert.equal(m.meetings.upcoming, 1); assert.equal(m.meetings.next_at, '2026-11-09T20:30:00.000Z');
   // Visitors = companies seen by pulls in the window (x, z, q = 3 over 2 pull days; last week x, y = 2); a window without a pull is null.
   assert.deepEqual([m.visitors.value, m.visitors.prev, m.visitors.pulled_days], [3, 2, 2]);
@@ -71,6 +76,7 @@ test('buildPulse this week: every metric from the rows, the window before it, a 
 test('buildPulse month + empty rows: the month windows, nulls where nothing is stored (never zero rates), no goal', () => {
   const p = buildPulse({ period: 'month', today: TODAY, now: NOW, counts, opens, deliveredAt, events, visits, people });
   assert.equal(p.from, '2026-11-01'); assert.deepEqual(p.prev, { from: '2026-10-01', to: '2026-10-31' });
+  assert.equal(p.metrics.sent.same_point, undefined); assert.equal(p.metrics.sent.pace, undefined);
   assert.deepEqual([p.metrics.sent.value, p.metrics.sent.prev], [102, 154]);
   assert.equal(p.metrics.first_touched.goal, null); assert.equal(p.metrics.first_touched.source, 'people first-touched · month goal');
   const e = buildPulse({ period: 'this_week', today: TODAY, now: NOW });

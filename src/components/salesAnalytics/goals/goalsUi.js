@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, saSans, saMono } from '../theme';
 import '../../../ui/kitTheme';
 import { SEMANTIC } from '../palette';
@@ -134,12 +134,15 @@ export function ErrorNote({ message }) {
 
 // Inline number editor: click to edit, Enter saves, Esc cancels. Rates are
 // typed as percentages (17 = 17%).
-export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display, muted }) {
+// commitOnBlur: leaving the field saves what was typed (a typed weekly number); without it a blur cancels (goals).
+export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display, muted, commitOnBlur = false }) {
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
+  // Escape and a save in flight both take the focus away: neither may be read as "leaving the field saves".
+  const quiet = useRef(false);
   if (draft === null) {
     return (
-      <button type="button" onClick={() => setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value))} aria-label={ariaLabel}
+      <button type="button" onClick={() => { quiet.current = false; setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value)); }} aria-label={ariaLabel}
         style={{ all: 'unset', cursor: 'pointer', color: value == null ? (muted ? SA.muted : SA.link) : 'inherit', textDecoration: 'underline dotted', textDecorationColor: SA.borderStrong, textUnderlineOffset: 3, ...numStyle }}>
         {value == null ? placeholder : display}
       </button>
@@ -148,13 +151,16 @@ export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, di
   const save = async () => {
     const n = draft.trim() === '' ? null : Number(draft);
     if (n !== null && !(Number.isFinite(n) && n >= 0)) return;
+    if (commitOnBlur && n === (value ?? null)) { setDraft(null); return; }
+    quiet.current = true;
     setBusy(true);
-    try { await onSave(n == null ? null : rate ? n / 100 : n); setDraft(null); } catch { /* the table shows the error */ } finally { setBusy(false); }
+    try { await onSave(n == null ? null : rate ? n / 100 : n); setDraft(null); } catch { quiet.current = false; /* the table shows the error */ } finally { setBusy(false); }
   };
+  const blur = () => { if (quiet.current) return; if (commitOnBlur) save(); else setDraft(null); };
   return (
     <input autoFocus value={draft} disabled={busy} inputMode="decimal" aria-label={ariaLabel}
-      onChange={e => setDraft(e.target.value)} onBlur={() => setDraft(null)}
-      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setDraft(null); }}
+      onChange={e => setDraft(e.target.value)} onBlur={blur}
+      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') { quiet.current = true; setDraft(null); } }}
       style={{ ...inputStyle, height: 30, width: 96, textAlign: 'right', fontSize: 13 }} />
   );
 }

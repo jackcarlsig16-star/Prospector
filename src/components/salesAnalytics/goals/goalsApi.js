@@ -320,6 +320,9 @@ export const goalsApi = {
 
   scorecard: (id, month, owner) => call(id, `/scorecard?${q({ month, owner })}`),
   saveTarget: (id, body) => call(id, '/targets', { method: 'PUT', body }).then(d => d.target),
+  // weekly-funnel-v1 - the weekly registry (every row as a 12-week series, this week on pace) and a typed LinkedIn number.
+  weekly: (id, weeks = 12) => call(id, `/weekly?${q({ weeks })}`),
+  saveManual: (id, body) => call(id, '/weekly/manual', { method: 'PUT', body }).then(d => d.metric),
   hero: (id, weekStart, owner, skipMonth) => call(id, `/hero?${q({ week_start: weekStart, owner, skip_month: skipMonth ? 1 : null })}`),
 
   appendToSection: (id, weekStart, key, line) => call(id, `/report/${weekStart}/sections/${key}/append`, { method: 'POST', body: { line } }),

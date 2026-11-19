@@ -99,7 +99,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     document.querySelector(`[data-key="${rowKeyOf(scoutRow)}"]`)?.scrollIntoView?.({ block: 'center' });
   }, [scoutRow]);
   const colorOf = uid => { const i = members.findIndex(m => m.user_id === uid); return i >= 0 ? members[i].color || memberColor(i) : null; };
-  const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, ...(section ? { section } : {}) } })); };
+  const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, from: 'people', ...(section ? { section } : {}) } })); };
   const changed = () => setReload(n => n + 1);
   const setLocalOwner = (key, userId) => setOwners(o => { const n = { ...o }; if (userId === undefined) delete n[key]; else n[key] = userId; return n; });
   const assigner = useAssign({ businessId, members, onLocal: setLocalOwner, onChanged: changed, inFlight: writing });

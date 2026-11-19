@@ -1,5 +1,8 @@
 import { addDays, laMonday, laStartOfDayMs } from './goalsShared.js';
 import { humanShare, humanOpenRate, countExternalMeetings } from './scorecardMath.js';
+// weeklyMetrics imports windowValues from this file: the cycle is safe because both sides only call across it at run
+// time, never while a module loads. The pace rule has ONE home (weekly-funnel-v1 W4) and that is weeklyMetrics.
+import { samePointLastWeek, paceOf } from './weeklyMetrics.js';
 
 // dashboard-v3 Stage 2 - Home's Pulse, pure. One period = SERIES windows of the same kind, oldest first, the last one
 // the window on screen (this week / month / 90 days run to today, so they are partial); its delta is against the
@@ -8,6 +11,8 @@ import { humanShare, humanOpenRate, countExternalMeetings } from './scorecardMat
 // through the one bot rule (A4, scorecardMath); meetings = Outlook events with an external domain booked in the window
 // (A5); visitors = companies seen by the daily pulls (a window without a pull is unknown, not 0); first-touched =
 // people whose first touch falls in the window (partnerMetrics' merge) against the month goal.
+// weekly-funnel-v1 W4: "This week" is partial, so it is read on PACE - its delta is against the same point last week
+// (same_point), never the whole of last week, and a count carries `pace` (weeklyMetrics.paceOf); a rate is never projected.
 export const PERIODS = ['this_week', 'last_week', '4_weeks', 'month', '90_days'];
 export const PERIOD_LABEL = { this_week: 'This week', last_week: 'Last week', '4_weeks': '4 weeks', month: 'This month', '90_days': '90 days' };
 export const SERIES = 5;
@@ -98,17 +103,24 @@ export function buildPulse({ period, today, now = Date.now(), owner = null, coun
   const vals = ws.map(w => windowValues(w, { counts, opens, deliveredAt, events, visits, people, now }));
   const cur = vals[vals.length - 1];
   const upcoming = upcomingExternal(events, now);
+  const paced = period === 'this_week';
+  const prevWin = paced ? samePointLastWeek(today) : ws[ws.length - 2];
+  const prevVals = paced ? windowValues(prevWin, { counts, opens, deliveredAt, events, visits, people, now }) : null;
+  const m = (key, kind, extra) => {
+    const out = metric(key, kind, vals, extra, prevVals);
+    return paced ? { ...out, same_point: true, pace: paceOf({ unit: kind, kind: 'flow' }, out.value, today) } : out;
+  };
   return {
-    period, label: PERIOD_LABEL[period], today, owner, from: ws[ws.length - 1].from, to: ws[ws.length - 1].to, prev: ws[ws.length - 2], windows: ws,
+    period, label: PERIOD_LABEL[period], today, owner, from: ws[ws.length - 1].from, to: ws[ws.length - 1].to, prev: prevWin, windows: ws,
     synced_at, apollo_calls, credits,
     metrics: {
-      sent: metric('sent', 'count', vals, { source: 'Apollo · by send date' }),
-      delivered_rate: metric('delivered_rate', 'rate', vals, { delivered: cur.delivered, sent: cur.sent, source: 'delivered ÷ sent · by send date' }),
-      human_open_rate: metric('human_open_rate', 'rate', vals, { apollo_open_rate: cur.apollo_open_rate, human_share: cur.human_share, opened: cur.opened, delivered: cur.delivered, source: 'tracked, bots hidden' }),
-      reply_rate: metric('reply_rate', 'rate', vals, { replied: cur.replied, delivered: cur.delivered, ever: sum(counts, r => r.replied), source: 'replies ÷ delivered' }),
-      meetings: metric('meetings', 'count', vals, { ...upcoming, source: 'Outlook events with an external domain', scope: owner ? 'owner' : 'team' }),
-      visitors: metric('visitors', 'count', vals, { pulled_days: cur.pulled_days, source: 'companies seen · pulls look back 7 d', scope: 'team' }),
-      first_touched: metric('first_touched', 'count', vals, { goal: goal?.goal ?? null, unit: goal?.unit || 'people', carried: !!goal?.carried, weeks_in: weeksIn(today), source: `${goal?.unit || 'people'} first-touched · month goal` }),
+      sent: m('sent', 'count', { source: 'Apollo · by send date' }),
+      delivered_rate: m('delivered_rate', 'rate', { delivered: cur.delivered, sent: cur.sent, source: 'delivered ÷ sent · by send date' }),
+      human_open_rate: m('human_open_rate', 'rate', { apollo_open_rate: cur.apollo_open_rate, human_share: cur.human_share, opened: cur.opened, delivered: cur.delivered, source: 'tracked, bots hidden' }),
+      reply_rate: m('reply_rate', 'rate', { replied: cur.replied, delivered: cur.delivered, ever: sum(counts, r => r.replied), source: 'replies ÷ delivered' }),
+      meetings: m('meetings', 'count', { ...upcoming, source: 'Outlook events with an external domain', scope: owner ? 'owner' : 'team' }),
+      visitors: m('visitors', 'count', { pulled_days: cur.pulled_days, source: 'companies seen · pulls look back 7 d', scope: 'team' }),
+      first_touched: m('first_touched', 'count', { goal: goal?.goal ?? null, unit: goal?.unit || 'people', carried: !!goal?.carried, weeks_in: weeksIn(today), source: `${goal?.unit || 'people'} first-touched · month goal` }),
     },
   };
 }

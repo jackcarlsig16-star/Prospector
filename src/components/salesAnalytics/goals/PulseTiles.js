@@ -4,7 +4,8 @@ import { cardStyle, labelStyle, numStyle, fmt } from './goalsUi';
 // dashboard-v3 Stage 2 / 4 - the Pulse tiles Home and Email share: every digit is the pulse route's (value, delta,
 // direction, series); this file only formats. A tile = mono label · 30/600 number · delta line (▲▼— colored by the
 // route's `better`) · sparkline of the last five windows · one source line. The app's columns are ~150 px, so the
-// sparkline gets its own line under the delta.
+// sparkline gets its own line under the delta. weekly-funnel-v1 W4: "This week" on Home is read on pace - the route's
+// delta is against the same point last week (m.same_point) and a count carries the route's projection (m.pace).
 const VS = { this_week: 'vs last wk', last_week: 'vs wk before', '4_weeks': 'vs prior 4 wks', month: 'vs last month', '90_days': 'vs prior 90 d' };
 export const HOME_TILES = [
   { key: 'sent', label: 'Sent' },
@@ -37,7 +38,7 @@ export function deltaOf(key, m, period) {
   const up = m.delta > 0, flat = m.delta === 0;
   const dir = flat ? 'flat' : (up === (m.better === 'up')) ? 'good' : 'bad';
   const amount = m.kind === 'rate' ? `${sign(m.delta)}${pts(Math.abs(m.delta))} pts` : `${sign(m.delta)}${fmt(Math.abs(m.delta))}${m.delta_pct ? ` (${sign(m.delta_pct)}${Math.round(Math.abs(m.delta_pct) * 100)}%)` : ''}`;
-  return { dir, text: `${amount} ${VS[period]}` };
+  return { dir, text: `${amount} ${m.same_point ? 'vs same point last wk' : VS[period]}` };
 }
 const DIR_COLOR = { good: SA.good, bad: SA.bad, flat: SA.faint, none: SA.faint };
 const Arrow = ({ dir }) => (
@@ -46,19 +47,28 @@ const Arrow = ({ dir }) => (
   </svg>
 );
 
-// 90 × 22, the last SERIES windows; a null is a gap, never a zero; the last point gets a dot.
-export function Sparkline({ series, color = SA.accent, width = 90, height = 22 }) {
+// 90 × 22, the last SERIES windows; a null is a gap, never a zero; the last point gets a dot. The Scorecard's weekly
+// line (weekly-funnel-v1 W6) adds: goals = one value per point, drawn as a dotted segment across each week that has
+// one; hollowLast = the last point is this week to date, drawn hollow; dots = every known point marked (a week
+// between two gaps would draw nothing otherwise); label = the text a screen reader gets instead of the picture.
+export function Sparkline({ series, goals = null, hollowLast = false, dots = false, label = null, color = SA.accent, width = 90, height = 22 }) {
   const vals = series.filter(v => v != null);
-  const max = vals.length ? Math.max(...vals) : 0, min = vals.length ? Math.min(...vals, 0) : 0;
-  const x = i => (series.length > 1 ? (i * width) / (series.length - 1) : width);
+  const all = [...vals, ...(goals || []).filter(v => v != null)];
+  const max = all.length ? Math.max(...all) : 0, min = all.length ? Math.min(...all, 0) : 0;
+  const step = series.length > 1 ? width / (series.length - 1) : width;
+  const x = i => (series.length > 1 ? i * step : width);
   const y = v => height - 2 - ((v - min) / (max - min || 1)) * (height - 4);
   let d = '', on = false;
   series.forEach((v, i) => { if (v == null) { on = false; return; } d += `${on ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)} `; on = true; });
   const last = series.length - 1;
   return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" style={{ flex: 'none', overflow: 'visible' }}>
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': 'true' })} style={{ flex: 'none', overflow: 'visible' }}>
+      {(goals || []).map((g, i) => g != null && <line key={`g${i}`} data-goal-seg x1={Math.max(0, x(i) - step / 2).toFixed(1)} x2={Math.min(width, x(i) + step / 2).toFixed(1)} y1={y(g).toFixed(1)} y2={y(g).toFixed(1)} stroke={SA.muted} strokeWidth="1.25" strokeDasharray="1.5 2.5" />)}
       {vals.length >= 2 && <path d={d} fill="none" stroke={color} strokeWidth="1.5" />}
-      {series[last] != null && <circle cx={x(last)} cy={y(series[last])} r="2" fill={color} />}
+      {dots && series.map((v, i) => v != null && i !== last && <circle key={i} data-point cx={x(i)} cy={y(v)} r="1.4" fill={color} />)}
+      {series[last] != null && (hollowLast
+        ? <circle data-point="current" cx={x(last)} cy={y(series[last])} r="2.6" fill={SA.surface} stroke={color} strokeWidth="1.5" />
+        : <circle data-point cx={x(last)} cy={y(series[last])} r="2" fill={color} />)}
     </svg>
   );
 }
@@ -78,6 +88,7 @@ export function Tile({ t, m, period }) {
       <span data-delta={delta.dir} style={{ fontSize: 12, lineHeight: 1.3, display: 'flex', alignItems: 'flex-start', gap: 5, color: DIR_COLOR[delta.dir], minWidth: 0, ...numStyle }}>
         <span style={{ flex: 'none', paddingTop: 2 }}><Arrow dir={delta.dir} /></span><span>{delta.text}</span>
       </span>
+      {m.pace != null && <span data-pace style={{ fontSize: 11.5, color: SA.muted, ...numStyle }}><span style={{ ...labelStyle, fontSize: 9.5, marginRight: 5 }}>pace</span>on pace for ~{fmt(m.pace)}</span>}
       <Sparkline series={m.series} />
       <span style={{ fontSize: 11, color: SA.faint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }} title={src}>{src}</span>
     </div>

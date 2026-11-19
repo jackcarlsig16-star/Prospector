@@ -438,6 +438,15 @@ test('a window opened from Top targets goes back there when it closes (ruling of
   expect(screen.queryByRole('dialog', { name: 'Gallagher' })).toBeNull();
 });
 
+test('a window opened from a People row goes back to People when it closes (ruling of Nov 19)', async () => {
+  const onReturn = jest.fn();
+  setup({ focusTarget: { key: 'partner-Gallagher', section: 'people', from: 'people', n: 72 }, onReturn });
+  await screen.findByRole('dialog', { name: 'Gallagher' });
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Gallagher' })).getByRole('button', { name: 'Close panel' }));
+  expect(onReturn).toHaveBeenCalledTimes(1);
+  expect(onReturn).toHaveBeenCalledWith('people');
+});
+
 test('the company window\'s pin control is the star\'s (ruling of Nov 18): the menu, Unpin -> the done line with Undo (the partner undo route); Pin asks for the reason and sends it with expect', async () => {
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));

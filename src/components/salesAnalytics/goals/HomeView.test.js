@@ -61,6 +61,23 @@ test('tileValue / deltaOf: the route\'s digits, direction from the delta\'s sign
   expect(deltaOf('first_touched', PULSE.metrics.first_touched, 'this_week')).toEqual({ dir: 'flat', text: '8% of goal · 3 wks in' });
   expect(deltaOf('first_touched', { ...PULSE.metrics.first_touched, goal: null }, 'this_week')).toEqual({ dir: 'flat', text: '0 vs last wk' });
   expect(deltaOf('sent', { ...PULSE.metrics.sent, better: 'down' }, 'this_week').dir).toBe('good');
+  // weekly-funnel-v1 W4: the route says the delta is against the same point last week - the words follow it
+  expect(deltaOf('sent', { ...PULSE.metrics.sent, same_point: true }, 'this_week')).toEqual({ dir: 'bad', text: '−63 (−22%) vs same point last wk' });
+  expect(deltaOf('delivered_rate', { ...PULSE.metrics.delivered_rate, same_point: true }, 'this_week').text).toBe('+1.3 pts vs same point last wk');
+});
+
+test('This week on pace (weekly-funnel-v1 W4): a count tile carries the route\'s projection labelled pace and reads against the same point last week; a rate tile is never projected', async () => {
+  const paced = Object.fromEntries(Object.entries(PULSE.metrics).map(([k, v]) => [k, { ...v, same_point: true, pace: v.kind === 'rate' ? null : Math.round(v.value / (4 / 7)) }]));
+  goalsApi.pulse.mockResolvedValue({ ...PULSE, prev: { from: '2026-10-26', to: '2026-10-29' }, metrics: paced });
+  render(<HomeView businessId="b1" period="this_week" owner={null} canEdit onOpenEmail={() => {}} />);
+  await screen.findByText('229');
+  const tile = k => document.querySelector(`[data-pulse-tile="${k}"]`);
+  expect(tile('sent').querySelector('[data-pace]')).toHaveTextContent('paceon pace for ~401');
+  expect(tile('sent').querySelector('[data-delta]')).toHaveTextContent('−63 (−22%) vs same point last wk');
+  expect(tile('visitors').querySelector('[data-pace]')).toHaveTextContent('on pace for ~112');
+  expect(tile('meetings').querySelector('[data-pace]')).toHaveTextContent('on pace for ~4');
+  expect(tile('delivered_rate').querySelector('[data-delta]')).toHaveTextContent('+1.3 pts vs same point last wk');
+  for (const k of ['delivered_rate', 'human_open_rate', 'reply_rate']) expect(tile(k).querySelector('[data-pace]')).toBeNull();
 });
 
 test('top three by the route\'s order (severity)', () => {
@@ -87,6 +104,7 @@ test('Home: the title line, seven tiles = the route\'s digits with their directi
   expect(tile('visitors')).toHaveTextContent('team-wide');
   expect(tile('first_touched')).toHaveTextContent('8% of goal · 3 wks in');
   expect(tile('sent').querySelectorAll('svg path').length).toBeGreaterThan(0);
+  expect(document.querySelectorAll('[data-pace]')).toHaveLength(0);
   const card = screen.getByRole('region', { name: /Insights/ });
   expect(card).toHaveTextContent('✦ generated · 10 rules · updated 3 h ago');
   expect(within(card).getAllByRole('img').map(e => e.getAttribute('aria-label'))).toEqual(['Problem', 'Problem', 'Watch']);

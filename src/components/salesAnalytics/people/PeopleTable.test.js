@@ -152,9 +152,9 @@ test('select vs open: a row click pins the detail (timeline + company visits + n
   const opened = [];
   window.addEventListener('prospector:open-pipeline-record', e => opened.push(e.detail));
   fireEvent.click(within(t).getByRole('button', { name: 'Crystal Pringle' }));
-  expect(opened).toEqual([{ key: 'employer-o1', section: 'people' }]);
+  expect(opened).toEqual([{ key: 'employer-o1', from: 'people', section: 'people' }]);
   fireEvent.click(within(t).getAllByRole('button', { name: 'Acme Health' })[0]);
-  expect(opened[1]).toEqual({ key: 'employer-o1' });
+  expect(opened[1]).toEqual({ key: 'employer-o1', from: 'people' });
   expect(t.querySelector('[data-person-detail]')).toBeNull();
   fireEvent.click(t.querySelector('tr[data-row] td'));
   const detail = await waitFor(() => { const el = t.querySelector('[data-person-detail="prospect:CrystalPringle"]'); if (!el) throw new Error('no detail'); return el; });

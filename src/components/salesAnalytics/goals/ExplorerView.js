@@ -24,7 +24,7 @@ const HTML2CANVAS = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/ht
 const HEIGHT_ICON = { compact: <IconHeightCompact />, standard: <IconHeightStandard />, tall: <IconHeightTall /> };
 const lbl = text => <span className="ui-group-label" aria-hidden="true" style={{ width: 44, flex: 'none' }}>{text}</span>;
 const row = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
-const GRID = 'rgba(120,130,144,.16)', SHADE = 'rgba(120,130,144,.08)';
+const GRID = 'rgba(120,130,144,.16)', SHADE = 'rgba(120,130,144,.08)', SURFACE = '#1E242C';
 function loadHtml2canvas() {
   if (window.html2canvas) return Promise.resolve(window.html2canvas);
   return new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = HTML2CANVAS; s.onload = () => resolve(window.html2canvas); s.onerror = () => reject(new Error('Could not load the screenshot library')); document.head.appendChild(s); });
@@ -34,7 +34,10 @@ function loadHtml2canvas() {
 // stack in one column per bucket (the left axis tops out at the tallest stack); countLine = a count series flagged
 // { line: true } draws as a line on the right axis with count ticks instead of a column (Apollo's rolling 7-day visits
 // beside the companies identified - a line never reads as "visits that day").
-export function Chart({ data, show, height, hover, pinned, onHover, onPin, stacked = false, countLine = false }) {
+// weekly-funnel-v1 W6 - the Scorecard's expanded row draws on the same chart: a series flagged { goal: true } is the
+// week goals, a dotted segment across each week that has one (no dots, no end label); hollowCurrent draws the point of
+// the current bucket hollow (it is to date, not a finished week) and a series' end_note rides its end label.
+export function Chart({ data, show, height, hover, pinned, onHover, onPin, stacked = false, countLine = false, hollowCurrent = false }) {
   const n = data.labels.length;
   const H = heightPx(height);
   const g = geometry(n, H);
@@ -79,11 +82,13 @@ export function Chart({ data, show, height, hover, pinned, onHover, onPin, stack
         let d = '', on = false;
         pts.forEach(p => { if (!p) { on = false; return; } d += `${on ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)} `; on = true; });
         const lastI = s.values.map((v, i) => (v == null ? -1 : i)).filter(i => i >= 0).pop();
+        if (s.goal) return <g key={`l${k}`} data-goal-line>{pts.map((p, i) => p && <line key={i} x1={p[0] - g.slot / 2} x2={p[0] + g.slot / 2} y1={p[1]} y2={p[1]} stroke={s.color} strokeWidth="1.5" strokeDasharray="2 4" />)}</g>;
+        const hollow = i => hollowCurrent && data.labels[i].current;
         return (
           <g key={`l${k}`} data-line={s.layer}>
             <path d={d} fill="none" stroke={s.color} strokeWidth="2" />
-            {pts.map((p, i) => p && <circle key={i} cx={p[0]} cy={p[1]} r="2.6" fill={s.color} />)}
-            {lastI != null && lastI >= 0 && <text x={g.center(lastI) + 8} y={pts[lastI][1] + 3} fontSize="10.5" fontWeight="600" fill={s.color} data-end-label={s.layer}>{fmtValue(s.line ? 'count' : 'rate', s.values[lastI])}</text>}
+            {pts.map((p, i) => p && (hollow(i) ? <circle key={i} data-point="current" cx={p[0]} cy={p[1]} r="3.6" fill={SURFACE} stroke={s.color} strokeWidth="2" /> : <circle key={i} cx={p[0]} cy={p[1]} r="2.6" fill={s.color} />))}
+            {lastI != null && lastI >= 0 && <text x={g.center(lastI) + 8} y={pts[lastI][1] + 3} fontSize="10.5" fontWeight="600" fill={s.color} data-end-label={s.layer} {...(s.end_note && data.labels[lastI].current ? { textAnchor: 'end', x: g.center(lastI) - 8, y: pts[lastI][1] + (pts[lastI - 1] && pts[lastI - 1][1] < pts[lastI][1] ? 16 : -8) } : {})}>{fmtValue(s.line ? 'count' : 'rate', s.values[lastI])}{s.end_note && data.labels[lastI].current ? ` · ${s.end_note}` : ''}</text>}
           </g>
         );
       })}
@@ -93,7 +98,7 @@ export function Chart({ data, show, height, hover, pinned, onHover, onPin, stack
   );
 }
 
-function HoverCard({ data, index, pinned, geom }) {
+export function HoverCard({ data, index, pinned, geom }) {
   const l = data.labels[index];
   const left = Math.min(92, Math.max(0, ((geom.center(index) - geom.padL) / geom.plotW) * 100));
   return (

@@ -277,7 +277,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
-        {section === 'dashboard' && view === 'scorecard' && me && <ScorecardView businessId={businessId} isOwner={isOwner} toolsSlot={toolsSlot} onOpen={go} />}
+        {section === 'dashboard' && view === 'scorecard' && me && <ScorecardView businessId={businessId} isOwner={isOwner} canEdit={canEdit} toolsSlot={toolsSlot} />}
 
         {section === 'pipeline' && view === 'partners' && (
           <PartnersView businessId={businessId} partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}

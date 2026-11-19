@@ -193,7 +193,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     try { await starRow(r); } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
   };
 
-  // A window opened from another Pipeline view (Top targets) goes back there when it closes.
+  // A window opened from another Pipeline view (Top targets, People) goes back there when it closes.
   const returnTo = useRef(null);
   const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
   const closePanel = useCallback(() => {
