@@ -19,15 +19,15 @@ export const NOTE_MAX = 140;
 export async function loadWeekly(supabase, businessId, { weeks, now = Date.now() } = {}) {
   const n = clampWeeks(weeks);
   const today = laDateString(new Date(now));
-  const list = weekList(today, n), windows = weeklyWindows(today, n);
+  const list = weekList(today, n), windows = weeklyWindows(today, n), goalWeeks = [...list, addDays(list[list.length - 1], 7)];
   const [rows, counts, partnerData, flow, goals, firstTouched, manualRows, members, synced] = await Promise.all([
     loadFunnelRows(supabase, businessId),
     selectAllPages(() => supabase.from('sales_email_daily_counts').select('day, mailbox, delivered, hard_bounced, spam_blocked, opened, replied').eq('business_id', businessId).gte('day', list[0])
       .order('day').order('mailbox').order('sequence_id').order('step')),
     loadPartnerData(supabase, businessId),
     selectAllPages(() => supabase.from('sales_flow_events').select('id, kind, at, undone_at').eq('business_id', businessId).eq('kind', 'pin').order('at').order('id')),
-    targetsFor(supabase, businessId, 'week', list),
-    firstTouchedGoals(supabase, businessId, list),
+    targetsFor(supabase, businessId, 'week', goalWeeks),
+    firstTouchedGoals(supabase, businessId, goalWeeks),
     selectAllPages(() => supabase.from('sales_manual_metrics').select('metric_key, week_start, value, entered_by, entered_at, note').eq('business_id', businessId).gte('week_start', list[0]).order('week_start').order('metric_key')),
     loadMembers(supabase, businessId),
     Promise.all(Object.entries(SYNCED).flatMap(([key, metric]) => windows.map(async w => [`${key}|${w.from}|${w.to}`, await lastSyncedValue(supabase, businessId, metric, w.from, w.to)]))),

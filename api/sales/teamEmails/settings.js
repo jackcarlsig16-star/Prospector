@@ -1,8 +1,8 @@
 import { getSupabase } from '../goalsShared.js';
 import { hasRole } from '../../lib/requireAuth.js';
 import { getGrant, canSendTeamEmail } from '../../lib/microsoftGrants.js';
-import { KINDS, RECONNECT_NOTE, MAX_RECIPIENTS, EMAIL_RE, loadSettings, loadMembers, senderOf, sendTeamEmail, liveRecipients, recipientCounts, allowedDomains, domainOf } from './send.js';
-import { visitorEmailJob, hlJobs, schedulerLine, VISITOR_EMAIL_JOB } from './jobs.js';
+import { KINDS, RECONNECT_NOTE, MAX_RECIPIENTS, EMAIL_RE, WEEKLY_PENDING_ERROR, loadSettings, loadMembers, senderOf, sendTeamEmail, liveRecipients, recipientCounts, allowedDomains, domainOf } from './send.js';
+import { visitorEmailJob, weeklyEmailJob, hlJobs, schedulerLine, VISITOR_EMAIL_JOB, WEEKLY_EMAIL_JOB } from './jobs.js';
 import { schedulerState, laClock } from './scheduler.js';
 import { pullRunsThisMonth } from './jobs.js';
 import { composeAlert, lookalikesOf, ALERT_COLS } from './clientAlert.js';
@@ -43,6 +43,8 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
     // Settings copy quotes these numbers, never a constant.
     // FIX email-simplify-v1 E2: the funnel tables switch (default OFF); absent while its migration has not run.
     ...(settings.funnel_tables_pending ? {} : { funnel_tables: !!settings.funnel_tables }),
+    // weekly-funnel-v1 W7: the weekly funnel email's switch (default OFF); absent while its migration has not run.
+    ...(settings.weekly_pending ? {} : { weekly_on: !!settings.weekly_on }),
     weekend_on: !!settings.weekend_on, pull_runs_month: await pullRunsThisMonth(supabase, businessId, now),
     domains, max: MAX_RECIPIENTS, counts: await recipientCounts(supabase, businessId, settings, grant), total: live.length,
     sends: sends.map(s => ({ id: s.id, at: s.created_at, kind: s.kind, test: s.test, recipients: s.recipients, status: s.status, error: s.error })),
@@ -62,10 +64,11 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
 export async function updateTeamEmails(supabase, { businessId, userId, body = {}, isOwner, grantOf = getGrant }) {
   if (!isOwner) return ownerOnly;
   const keys = Object.keys(body);
-  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on', 'funnel_tables'].includes(k));
-  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on, weekend_on and / or funnel_tables' });
+  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on', 'funnel_tables', 'weekly_on'].includes(k));
+  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on, weekend_on, funnel_tables and / or weekly_on' });
   if ('funnel_tables' in body && (await loadSettings(supabase, businessId))?.funnel_tables_pending) return reply(503, { error: 'Run supabase/migrations/20261111_email_simplify_v1.sql first (funnel_tables is missing)', migration_pending: true });
-  for (const k of ['visitor_on', 'client_on', 'weekend_on', 'funnel_tables']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
+  if ('weekly_on' in body && (await loadSettings(supabase, businessId))?.weekly_pending) return reply(503, { error: WEEKLY_PENDING_ERROR, migration_pending: true });
+  for (const k of ['visitor_on', 'client_on', 'weekend_on', 'funnel_tables', 'weekly_on']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
   if ('sender_user_id' in body) {
     const id = body.sender_user_id;
     if (!UUID.test(id || '')) return reply(400, { error: 'sender_user_id must be a member' });
@@ -187,6 +190,11 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
     const r = await visitorEmailJob(supabase, businessId, { pull: null, deps, test: true });
     return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, new_rows: r.new_rows ?? 0, strip: r.strip ?? 0, funnel: r.funnel ?? 0, subject: r.subject ?? null });
   }
+  if (body.kind === 'weekly') {
+    const r = await weeklyEmailJob(supabase, businessId, { deps, test: true });
+    if (r.reason === WEEKLY_PENDING_ERROR) return reply(503, { error: WEEKLY_PENDING_ERROR, migration_pending: true });
+    return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, strips: r.strips ?? 0, goals: r.goals ?? 0, subject: r.subject ?? null });
+  }
   if (body.kind === 'client') {
     if (!UUID.test(body.opportunity_id || '')) return reply(400, { error: 'opportunity_id must be a client' });
     const row = must(await supabase.from('sales_opportunities').select(ALERT_COLS).eq('business_id', businessId).eq('id', body.opportunity_id).is('archived_at', null).maybeSingle());
@@ -203,23 +211,30 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
 // whether today's went out. Once it has, a plain call is refused (409); { again: true } (owner only - the explicit second
 // confirm) sends a second copy. The day's slot row records it: detail.manual = { by, name, at, status, recipients, again }
 // beside the scheduled fields, so the Needs attention line can say "Sent Thu 10:30 (manual, Jack)".
-export async function sendNow(supabase, { businessId, userId = null, isAdmin, isOwner = false, check = false, again = false, deps, now = Date.now(), job = visitorEmailJob }) {
-  if (!isAdmin) return reply(403, { error: 'Only an owner or admin can send the visitor email now' });
+// weekly-funnel-v1 W7: kind 'weekly' = this week's funnel email through the same door (its own job and slot name).
+const NOW_KINDS = {
+  visitor: { jobName: VISITOR_EMAIL_JOB, job: visitorEmailJob, words: "Today's visitor email", what: 'the visitor email' },
+  weekly: { jobName: WEEKLY_EMAIL_JOB, job: weeklyEmailJob, words: "Today's weekly funnel email", what: 'the weekly funnel email' },
+};
+export async function sendNow(supabase, { businessId, userId = null, isAdmin, isOwner = false, kind = 'visitor', check = false, again = false, deps, now = Date.now(), job = null }) {
+  const which = NOW_KINDS[kind];
+  if (!which) return reply(400, { error: `kind must be ${Object.keys(NOW_KINDS).join(' or ')}` });
+  if (!isAdmin) return reply(403, { error: `Only an owner or admin can send ${which.what} now` });
   if (again && !isOwner) return reply(403, { error: 'Only the owner can send a second copy' });
   const slot = `${laClock(now).date} 07:00`;
-  const row = must(await supabase.from('sales_job_slots').select('status, detail, finished_at').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).eq('slot', slot).maybeSingle());
+  const row = must(await supabase.from('sales_job_slots').select('status, detail, finished_at').eq('job', which.jobName).eq('scope', businessId).eq('slot', slot).maybeSingle());
   const sentAlready = row?.status === 'ok' && row.detail?.status === 'sent';
   const already = sentAlready ? { sent_at: row.detail.manual?.status === 'sent' ? row.detail.manual.at : row.finished_at, recipients: row.detail.manual?.status === 'sent' ? row.detail.manual.recipients : row.detail.recipients, manual: row.detail.manual || null } : null;
   if (check) return reply(200, { sent_today: sentAlready, ...(already || {}) });
-  if (sentAlready && !again) return reply(409, { error: `Today's visitor email already went out to ${already.recipients} recipient${already.recipients === 1 ? '' : 's'}`, ...already });
+  if (sentAlready && !again) return reply(409, { error: `${which.words} already went out to ${already.recipients} recipient${already.recipients === 1 ? '' : 's'}`, ...already });
   const name = userId ? (await loadMembers(supabase, businessId)).find(m => m.userId === userId)?.firstName || null : null;
-  const r = await job(supabase, businessId, { now, pull: null, deps });
+  const r = await (job || which.job)(supabase, businessId, { now, pull: null, deps });
   const error = r.error || r.reason || null;
   const manual = { by: userId, name, at: new Date(now).toISOString(), status: r.status, recipients: r.recipients ?? 0, again: !!again, ...(error ? { error } : {}) };
   const detail = sentAlready
     ? { ...row.detail, manual }
     : { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, via: 'send_now', manual, ...(error ? { error } : {}) };
-  must(await supabase.from('sales_job_slots').upsert({ job: VISITOR_EMAIL_JOB, scope: businessId, slot, status: sentAlready || r.status === 'sent' ? 'ok' : 'error', detail, finished_at: new Date(now).toISOString() }, { onConflict: 'job,scope,slot' }).select('job'));
+  must(await supabase.from('sales_job_slots').upsert({ job: which.jobName, scope: businessId, slot, status: sentAlready || r.status === 'sent' ? 'ok' : 'error', detail, finished_at: new Date(now).toISOString() }, { onConflict: 'job,scope,slot' }).select('job'));
   return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, again: !!again, ...(error ? { error } : {}) });
 }
 
@@ -235,4 +250,4 @@ export const editRecipientRoute = run(req => editRecipient(ctx(req).supabase, { 
 export const removeRecipientRoute = run(req => removeRecipient(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const undoChangeRoute = run(req => undoChange(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const sendTestRoute = run(req => sendTest(ctx(req).supabase, { ...ctx(req), body: req.body || {} }));
-export const sendNowRoute = run(req => sendNow(ctx(req).supabase, { ...ctx(req), isAdmin: hasRole(req, req.params.businessId, 'admin'), check: req.body?.check === true, again: req.body?.again === true }));
+export const sendNowRoute = run(req => sendNow(ctx(req).supabase, { ...ctx(req), isAdmin: hasRole(req, req.params.businessId, 'admin'), kind: req.body?.kind ?? 'visitor', check: req.body?.check === true, again: req.body?.again === true }));

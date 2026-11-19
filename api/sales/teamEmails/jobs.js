@@ -1,17 +1,21 @@
 import { WEEKDAYS, EVERY_DAY, laClock } from './scheduler.js';
 import { getGrant } from '../../lib/microsoftGrants.js';
-import { sendTeamEmail, loadSettings, loadMembers, senderOf } from './send.js';
+import { sendTeamEmail, loadSettings, loadMembers, senderOf, WEEKLY_PENDING_ERROR } from './send.js';
 import { loadVisitorData, loadRankedBook, loadCumulative, buildVisitorEmail, dayWindowFor } from './visitorEmail.js';
 import { dueAlerts, sendClientAlert } from './clientAlert.js';
 import { visitorsTrend } from '../visitTrend.js';
 import { loadFunnel } from '../funnelRoutes.js';
 import { FUNNEL_WINDOWS } from './visitorEmail.js';
+import { loadWeekly } from '../weeklyRoutes.js';
+import { buildWeeklyEmail } from './weeklyEmail.js';
 
 // homelover-team-emails-v1 T3 - HomeLover's jobs. Times are LA wall clock (REVISABLE). apollo-sync is the 06:00 Apollo
 // sync moved off node-cron (its next-run drifted by an hour when the process stayed up across a DST change).
 export const PULL_TIMEOUT_MS = 5 * 60e3;
 export const EMAIL_CATCHUP_MIN = 300; // 07:00 -> 12:00 LA (REVISABLE, FIX visitor-email-top10-v1 V3a)
 export const VISITOR_EMAIL_JOB = 'team-visitor-email';
+export const WEEKLY_EMAIL_JOB = 'team-weekly-email';
+export const FRIDAY = [5];
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const timeLabel = iso => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -83,6 +87,26 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
   return { ...sent, rows: mail.rows, new_rows: mail.new_rows, more: mail.more, overall: mail.overall, strip: mail.strip, funnel: mail.funnel, subject: mail.subject, pull: p };
 }
 
+// weekly-funnel-v1 W7 - the Friday 07:00 weekly funnel email: the registry route's body (loadWeekly - stored rows only,
+// 0 Apollo, 0 Claude), built and sent through the one send path to the visitor email's list. OFF until the owner turns
+// its switch on (a test goes to the sender whatever the switch says); the weekend switch plays no part.
+export async function weeklyEmailJob(supabase, businessId, { now = Date.now(), deps, test = false } = {}) {
+  const settings = await loadSettings(supabase, businessId);
+  if (!settings) return { status: 'skipped', reason: 'no team email settings' };
+  if (settings.weekly_pending) return { status: 'skipped', reason: WEEKLY_PENDING_ERROR };
+  if (!settings.weekly_on && !test) return { status: 'skipped', reason: 'weekly funnel email is off' };
+  const weekly = (await loadWeekly(supabase, businessId, { now })).body;
+  const mail = buildWeeklyEmail(weekly);
+  const sent = await sendTeamEmail(supabase, businessId, { kind: 'weekly', subject: mail.subject, html: mail.html, text: mail.text, slot: laClock(now).date, test }, deps);
+  return { ...sent, rows: mail.rows, strips: mail.strips, goals: mail.goals, entered: mail.entered, subject: mail.subject };
+}
+// The days the weekly email runs for a workspace: Friday while its switch is on, never otherwise (so an OFF switch
+// claims no slot and is never "missed").
+export async function weeklyDaysFor(supabase, businessId) {
+  const settings = await loadSettings(supabase, businessId);
+  return settings?.weekly_on && !settings.weekly_pending ? FRIDAY : [];
+}
+
 export async function clientAlertsJob(supabase, businessId, { now = Date.now(), deps } = {}) {
   const settings = await loadSettings(supabase, businessId);
   if (!settings?.client_on) return [];
@@ -115,10 +139,14 @@ export function hlJobs(d) {
       const r = await visitorEmailJob(supabase, scope, { now, pull: d.pull, people: d.people, recompute: d.recompute, deps: d.deps });
       return { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, pull_calls: r.pull?.calls ?? 0, pull_credits: r.pull?.credits ?? 0, people_credits: r.pull?.people?.credits ?? 0 };
     } },
+    { name: WEEKLY_EMAIL_JOB, at: '07:00', days: FRIDAY, days_for: weeklyDaysFor, scope: 'team', catchup_min: EMAIL_CATCHUP_MIN, run: async ({ supabase, scope, now }) => {
+      const r = await weeklyEmailJob(supabase, scope, { now, deps: d.deps });
+      return { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, goals: r.goals ?? 0 };
+    } },
     { name: 'client-alerts', scope: 'team', run: ({ supabase, scope, now }) => clientAlertsJob(supabase, scope, { now, deps: d.deps }) },
   ];
 }
 
-const DAYS_LABEL = (days, perScope) => (perScope ? 'Mon-Fri (+ Sat-Sun by the weekend switch)' : days.length === 7 ? 'daily' : days.join() === '1,2,3,4,5' ? 'Mon-Fri' : days.join(','));
+const DAYS_LABEL = (days, perScope) => (days.join() === '5' ? 'Fri (by its switch)' : perScope ? 'Mon-Fri (+ Sat-Sun by the weekend switch)' : days.length === 7 ? 'daily' : days.join() === '1,2,3,4,5' ? 'Mon-Fri' : days.join(','));
 // The one startup line Render's log shows: "HomeLover scheduler on: apollo-sync 06:00 daily, ... (America/Los_Angeles)".
 export const schedulerLine = jobs => `${jobs.map(j => (j.at ? `${j.name} ${j.at} ${DAYS_LABEL(j.days, !!j.days_for)}` : `${j.name} each minute`)).join(', ')} (America/Los_Angeles)`;

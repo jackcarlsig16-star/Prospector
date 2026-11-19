@@ -19,6 +19,11 @@ import { loadPartnerData, peopleFirstTouched } from './partnerMetrics.js';
 import { parseAsk, mergeVocab } from '../scout/retrieve.js';
 import { VOCABULARY, glossary } from './scoutEntities.js';
 import { salesIntents, salesReads, weeklyLine } from './scoutIntents.js';
+import { buildWeeklyEmail, rangeOf, SCORECARD_URL } from './teamEmails/weeklyEmail.js';
+import { weeklyEmailJob, weeklyDaysFor, hlJobs, schedulerLine, WEEKLY_EMAIL_JOB, FRIDAY } from './teamEmails/jobs.js';
+import { tick, dueSlots } from './teamEmails/scheduler.js';
+import { loadSettings, WEEKLY_PENDING_ERROR, KINDS } from './teamEmails/send.js';
+import { teamEmailState, updateTeamEmails, sendTest, sendNow } from './teamEmails/settings.js';
 
 const B = '00000000-0000-4000-8000-0000000000b1';
 const u = n => `${n}0000000-0000-4000-8000-000000000000`;
@@ -221,7 +226,9 @@ test('W5: a typed number - last write wins with who and when, null clears, only 
   const cleared = await save(u('c'), { metric_key: 'linkedin_accepted', week_start: LAST, value: null });
   assert.equal(cleared.status, 200);
   body = (await loadWeekly(sb, B, { now: NOW })).body;
-  assert.equal(at(body, 'linkedin_accepted', LAST), null); assert.equal(of(body, 'linkedin_accepted').entered.last_week.by, 'Cy');
+  // a cleared cell is empty again: the row keeps who cleared it, the route no longer says anyone entered it
+  assert.equal(at(body, 'linkedin_accepted', LAST), null); assert.equal(of(body, 'linkedin_accepted').entered.last_week, null);
+  assert.equal(sb.db.sales_manual_metrics.find(r => r.metric_key === 'linkedin_accepted').entered_by, u('c'));
   assert.equal((await save(u('c'), { metric_key: 'linkedin_posts', week_start: MON, value: 2 })).status, 200);
   const closed = await save(u('c'), { metric_key: 'linkedin_posts', week_start: '2026-11-02', value: 2 });
   assert.equal(closed.status, 409); assert.equal(closed.body.code, 'week_closed');
@@ -262,4 +269,157 @@ test('W8: the three asks route to the weekly intent alone; its lines carry the n
   const g = await glossary(seed({ sales_settings: [{ business_id: B, score_weights: null, buyer_titles: [] }] }), { businessId: B });
   const line = g.lines.find(l => l.startsWith('Weekly funnel'));
   assert.ok(line && line.includes('Monday to Sunday') && line.includes('Pace = this week to date') && line.includes('never projected') && !hasPii(line));
+});
+
+// ── Stage 3 ─────────────────────────────────────────────────────────────────
+test('Stage 3: next week\'s goal rides the route (a goal can be set a week ahead); first-touched carries its last goal forward', async () => {
+  const sb = seed();
+  sb.db.sales_metric_targets.push({ business_id: B, period: 'week', period_start: addDays(MON, 7), metric_key: 'human_open_rate', goal: 0.18 });
+  const body = (await loadWeekly(sb, B, { now: NOW })).body;
+  assert.deepEqual(of(body, 'human_open_rate').next_week, { week_start: '2026-11-23', goal: 0.18 });
+  assert.deepEqual(of(body, 'delivered').next_week, { week_start: '2026-11-23', goal: null });
+  assert.deepEqual(of(body, 'people_first_touched').next_week, { week_start: '2026-11-23', goal: 100, carried: true });
+  assert.equal(of(body, 'human_open_rate').this_week.goal, 0.2); assert.equal(of(body, 'human_open_rate').series.length, 12);
+});
+
+const pc = r => `${(r * 100).toFixed(1)}%`;
+test('W7 builder: the registry rows in their groups to the digit, a 12-cell strip per row with this week hollow, the pace rule once, LinkedIn entered by / not entered, the subject from observed values; tables only - no SVG, image, script, stylesheet or address', async () => {
+  const body = (await loadWeekly(seed(), B, { now: NOW })).body;
+  const mail = buildWeeklyEmail(body);
+  const open = of(body, 'human_open_rate').this_week, visited = of(body, 'companies_visited').this_week.to_date, meetings = of(body, 'meetings_set').this_week.to_date;
+  assert.equal(mail.subject, `Weekly funnel · Nov 16–19 — opens ${pc(open.to_date)} (goal 20.0%) · ${visited} ${visited === 1 ? 'company' : 'companies'} visited · ${meetings} ${meetings === 1 ? 'meeting' : 'meetings'}`);
+  assert.equal(rangeOf('2026-11-30', '2026-12-04'), 'Nov 30 – Dec 4'); assert.equal(rangeOf('2026-11-16', '2026-11-16'), 'Nov 16');
+  assert.deepEqual([mail.rows, mail.groups, mail.entered, mail.not_entered], [20, 4, 1, 3]);
+  assert.equal(mail.goals, body.metrics.filter(m => m.this_week.goal != null).length);
+  for (const bad of ['<svg', '<img', '<script', '<style', '<link', 'url(', '@']) { assert.ok(!mail.html.includes(bad), `html has ${bad}`); }
+  assert.ok(!mail.text.includes('@'));
+  // every link is the app's own
+  assert.ok([...mail.html.matchAll(/href="([^"]+)"/g)].every(m => m[1].startsWith(SCORECARD_URL.split('/?')[0])));
+  assert.ok(mail.html.includes('Open the Scorecard →') && mail.text.includes(`Open the Scorecard → ${SCORECARD_URL}`));
+  // the pace rule: once per part
+  assert.equal(mail.html.split(WORDING.pace.replace(/'/g, '&#39;')).length - 1, 1); assert.equal(mail.text.split(WORDING.pace).length - 1, 1);
+  // groups in order, every row named, the digits the route's
+  const pos = GROUPS.map(g => mail.text.indexOf(`\n${g.toUpperCase()}`));
+  assert.ok(pos.every((p, i) => p > 0 && (i === 0 || p > pos[i - 1])));
+  const lines = mail.text.split('\n');
+  const rowOf = m => lines.filter(l => l.startsWith(m.name.padEnd(28)))[m.key === 'linkedin_replies' ? 1 : 0];
+  const val = (m, v) => (v == null ? '—' : m.unit === 'rate' ? pc(v) : Number(v).toLocaleString('en-US'));
+  for (const m of body.metrics) {
+    const l = rowOf(m);
+    assert.ok(l, `no text row for ${m.key}`);
+    assert.ok(l.slice(29, 44).startsWith(val(m, m.last_week.value)), `${m.key} last week: ${l}`);
+    assert.ok(l.slice(44, 67).startsWith(val(m, m.this_week.to_date)), `${m.key} this week: ${l}`);
+    assert.equal(l.slice(44, 67).includes('pace ~'), m.this_week.pace != null, `${m.key} pace`);
+    assert.ok(mail.html.includes(`>${m.name.replace('→', '→')}</div>`), `${m.key} not in html`);
+  }
+  const d = of(body, 'delivered');
+  assert.match(rowOf(d), new RegExp(`^Delivered\\s+${d.last_week.value} / 150\\s+${d.this_week.to_date} \\(pace ~${d.this_week.pace}\\)\\s+[▲▼—] `));
+  assert.ok(rowOf(d).includes(`400 (${Math.round(d.this_week.progress * 100)}%)`));
+  assert.ok(mail.html.includes('✓ met') || mail.html.includes('✕ missed'));
+  assert.ok(!rowOf(of(body, 'human_open_rate')).includes('pace'));
+  // the text columns line up: every row's Last week starts at the same column
+  assert.ok(lines.filter(l => l.startsWith('Metric ')).every(l => l.indexOf('Last week') === 29 && l.indexOf('This week') === 44 && l.indexOf('Change') === 67 && l.indexOf('Goal') === 84));
+  // strips: one table of 12 cells per row that has a number; exactly one hollow (outlined) bar in each when this week has a value
+  const strips = mail.html.split('table-layout:fixed;margin-top:6px').slice(1).map(x => x.slice(0, x.indexOf('</table>')));
+  assert.equal(strips.length, mail.strips); assert.equal(mail.strips, body.metrics.filter(m => m.series.some(x => x.value != null)).length);
+  assert.ok(strips.every(x => x.split('<td ').length - 1 === 12 && /width="8%"/.test(x)));
+  assert.equal(strips.filter(x => x.split('border:1px solid #').length - 1 === 1).length, body.metrics.filter(m => m.this_week.to_date != null).length);
+  assert.match(rowOf(d).slice(103), /^[·▁▂▃▄▅▆▇█]{12}$/);
+  // LinkedIn: who typed it and when, or "not entered"
+  assert.ok(mail.text.includes('  last week entered by Cy Nov 16')); assert.equal(mail.text.split('  not entered').length - 1, 3);
+  assert.ok(mail.html.includes('last week entered by Cy Nov 16')); assert.equal(mail.html.split('>not entered<').length - 1, 3);
+  assert.ok(mail.html.includes('typed by a member'));
+});
+
+const MAILS = { owner: 'ana' + String.fromCharCode(64) + 'example.test', t1: 'team-one' + String.fromCharCode(64) + 'example.test', t2: 'team-two' + String.fromCharCode(64) + 'example.test', out: 'x' + String.fromCharCode(64) + 'other.test' };
+const team = (weekly_on, extra = {}) => seed({
+  sales_team_email_settings: [{ business_id: B, sender_user_id: null, visitor_on: true, client_on: true, client_alert_since: '2026-11-01T00:00:00Z', weekend_on: false, funnel_tables: false, weekly_on }],
+  sales_team_email_recipients: [
+    { id: 'r1', business_id: B, address: MAILS.t1, visitor_email: true, client_alert: true, added_at: '2026-11-04T01:00:00Z', archived_at: null },
+    { id: 'r2', business_id: B, address: MAILS.t2, visitor_email: false, client_alert: true, added_at: '2026-11-04T01:01:00Z', archived_at: null },
+    { id: 'r3', business_id: B, address: MAILS.out, visitor_email: true, client_alert: true, added_at: '2026-11-04T01:02:00Z', archived_at: null },
+  ],
+  sales_team_email_sends: [], sales_team_email_changes: [], sales_job_slots: [], visit_pull_runs: [], ...extra,
+});
+function graph() {
+  const calls = [];
+  const grant = { scopes: ['Calendars.Read', 'Mail.Read', 'openid', 'User.Read', 'Mail.Send'], error: null, account_email: MAILS.owner, connected_at: '2026-11-03T00:00:00Z' };
+  return { calls, grant, deps: { now: () => NOW, getGrant: async () => grant, accessTokenFor: async () => 'tok', fetch: async (url, init) => { calls.push(Buffer.from(init.body, 'base64').toString('utf8')); return { status: 202, ok: true, json: async () => ({}) }; } } };
+}
+const toOf = mime => mime.split('\r\n').find(l => l.startsWith('To: ')).slice(4).split(', ');
+const FRI = Date.parse('2026-11-20T15:00:00Z'); // Fri Nov 20, 07:00 PST
+
+test('W7 job: OFF sends nothing; a test goes to the sending mailbox whatever the switch says; ON sends to the visitor email\'s list through the one send path, logged as kind weekly with a count and no address', async () => {
+  assert.ok(KINDS.includes('weekly'));
+  const off = team(false), g = graph();
+  assert.deepEqual(await weeklyEmailJob(off, B, { now: NOW, deps: g.deps }), { status: 'skipped', reason: 'weekly funnel email is off' });
+  assert.equal(g.calls.length, 0); assert.equal(off.db.sales_team_email_sends.length, 0);
+  const t = await weeklyEmailJob(off, B, { now: NOW, deps: g.deps, test: true });
+  assert.deepEqual([t.status, t.recipients, t.rows], ['sent', 1, 20]);
+  assert.deepEqual(toOf(g.calls[0]), [MAILS.owner]);
+  assert.match(t.subject, /^Weekly funnel · Nov 16–19 — opens /);
+  assert.deepEqual(off.db.sales_team_email_sends.map(r => [r.kind, r.test, r.recipients, r.status, r.slot]), [['weekly', true, 1, 'sent', '2026-11-19']]);
+  const on = team(true), g2 = graph();
+  const r = await weeklyEmailJob(on, B, { now: NOW, deps: g2.deps });
+  assert.deepEqual([r.status, r.recipients], ['sent', 1]);
+  assert.deepEqual(toOf(g2.calls[0]), [MAILS.t1]); // the visitor list: not the client-only address, not the outside domain
+  assert.match(on.db.sales_team_email_sends[0].error, /dropped: outside domain \(1\)/);
+  assert.ok(!JSON.stringify(on.db.sales_team_email_sends).includes(String.fromCharCode(64)));
+  assert.ok(g2.calls[0].includes('multipart/alternative'));
+});
+
+test('W7 schedule: Friday 07:00 LA only, only while the switch is on (an OFF switch claims no slot and is never "missed"), once per slot; the weekend switch plays no part', async () => {
+  const list = hlJobs({ runApolloSync: async () => ({}), pull: async () => ({}), deps: {} });
+  const job = list.find(j => j.name === WEEKLY_EMAIL_JOB);
+  assert.deepEqual([job.at, job.days, job.days_for, job.scope], ['07:00', FRIDAY, weeklyDaysFor, 'team']);
+  assert.match(schedulerLine(list), /team-weekly-email 07:00 Fri \(by its switch\)/);
+  assert.ok(dueSlots(list, FRI).some(d => d.job.name === WEEKLY_EMAIL_JOB));
+  assert.ok(!dueSlots(list, NOW).some(d => d.job.name === WEEKLY_EMAIL_JOB)); // a Thursday
+  assert.ok(!dueSlots(list, FRI + 86400e3).some(d => d.job.name === WEEKLY_EMAIL_JOB)); // Saturday, weekend switch or not
+  assert.deepEqual(await weeklyDaysFor(team(false), B), []); assert.deepEqual(await weeklyDaysFor(team(true), B), FRIDAY);
+  assert.deepEqual(await weeklyDaysFor(team(true, { sales_team_email_settings: [{ business_id: B, visitor_on: true, client_on: true, weekend_on: true, funnel_tables: false, weekly_on: false }] }), B), []);
+  const quiet = () => {};
+  const run = async sb => { const g = graph(); const jobs = hlJobs({ deps: { ...g.deps, now: () => FRI } }).filter(j => j.name === WEEKLY_EMAIL_JOB); await tick(sb, { jobs, scopes: async () => [B], now: FRI, log: quiet }); await tick(sb, { jobs, scopes: async () => [B], now: FRI + 60e3, log: quiet }); await tick(sb, { jobs, scopes: async () => [B], now: FRI + 6 * 3600e3, log: quiet }); return g; };
+  const opts = { unique: { sales_job_slots: r => `${r.job}|${r.scope}|${r.slot}` } };
+  const off = fakeSupabase(team(false).db, opts);
+  assert.equal((await run(off)).calls.length, 0); assert.equal(off.db.sales_job_slots.length, 0);
+  const on = fakeSupabase(team(true).db, opts);
+  const g = await run(on);
+  assert.equal(g.calls.length, 1);
+  assert.deepEqual(on.db.sales_job_slots.map(r => [r.job, r.slot, r.status, r.detail.status, r.detail.recipients, r.detail.rows]), [[WEEKLY_EMAIL_JOB, '2026-11-20 07:00', 'ok', 'sent', 1, 20]]);
+  assert.match(on.db.sales_team_email_sends[0].subject, /^Weekly funnel · Nov 16–20/);
+});
+
+test('W7 Settings: the state carries the switch (OFF) and the weekly count; only the owner turns it on; test send + Send now by kind (a second Send now the same day is refused); before the migration: no switch, 503, nothing sent', async () => {
+  const sb = team(false), g = graph();
+  const grantOf = async () => g.grant;
+  const st = (await teamEmailState(sb, B, u('a'), { isOwner: true, grantOf, now: NOW })).body;
+  assert.equal(st.weekly_on, false); assert.deepEqual(st.counts.weekly, { count: 1, dropped: 1, capped: 0 });
+  assert.equal((await updateTeamEmails(sb, { businessId: B, userId: u('c'), body: { weekly_on: true }, isOwner: false, grantOf })).status, 403);
+  assert.equal((await updateTeamEmails(sb, { businessId: B, userId: u('a'), body: { weekly_on: 'yes' }, isOwner: true, grantOf })).status, 400);
+  const turned = await updateTeamEmails(sb, { businessId: B, userId: u('a'), body: { weekly_on: true }, isOwner: true, grantOf });
+  assert.equal(turned.status, 200); assert.equal(turned.body.weekly_on, true); assert.equal(g.calls.length, 0); // the switch never sends
+  const t = await sendTest(sb, { businessId: B, body: { kind: 'weekly' }, isOwner: true, deps: g.deps });
+  assert.deepEqual([t.status, t.body.status, t.body.recipients, t.body.rows], [200, 'sent', 1, 20]); assert.deepEqual(toOf(g.calls[0]), [MAILS.owner]);
+  assert.equal((await sendTest(sb, { businessId: B, body: { kind: 'weekly' }, isOwner: false, deps: g.deps })).status, 403);
+  assert.equal((await sendNow(sb, { businessId: B, userId: u('a'), isAdmin: true, isOwner: true, kind: 'monthly', deps: g.deps, now: NOW })).status, 400);
+  assert.deepEqual((await sendNow(sb, { businessId: B, userId: u('a'), isAdmin: true, isOwner: true, kind: 'weekly', check: true, deps: g.deps, now: NOW })).body, { sent_today: false });
+  const now1 = await sendNow(sb, { businessId: B, userId: u('a'), isAdmin: true, isOwner: true, kind: 'weekly', deps: g.deps, now: NOW });
+  assert.deepEqual([now1.status, now1.body.status, now1.body.recipients], [200, 'sent', 1]); assert.deepEqual(toOf(g.calls[1]), [MAILS.t1]);
+  assert.deepEqual(sb.db.sales_job_slots.map(r => [r.job, r.slot, r.status, r.detail.via, r.detail.manual.name]), [[WEEKLY_EMAIL_JOB, '2026-11-19 07:00', 'ok', 'send_now', 'Ana']]);
+  const again = await sendNow(sb, { businessId: B, userId: u('a'), isAdmin: true, isOwner: true, kind: 'weekly', deps: g.deps, now: NOW + 60e3 });
+  assert.equal(again.status, 409); assert.match(again.body.error, /^Today's weekly funnel email already went out to 1 recipient$/); assert.equal(g.calls.length, 2);
+  // the visitor email's Send now is untouched by a weekly slot
+  assert.deepEqual((await sendNow(sb, { businessId: B, userId: u('a'), isAdmin: true, isOwner: true, check: true, deps: g.deps, now: NOW })).body, { sent_today: false });
+  // before the migration: the column is missing
+  const base = team(false), g3 = graph();
+  const pending = { ...base, from: tb => (tb === 'sales_team_email_settings' ? { ...base.from(tb), select: cols => (/weekly_on/.test(cols) ? { eq: () => ({ maybeSingle: async () => ({ data: null, error: { code: '42703', message: 'column sales_team_email_settings.weekly_on does not exist' } }) }) } : base.from(tb).select(cols)) } : base.from(tb)) };
+  const ps = await loadSettings(pending, B);
+  assert.equal(ps.weekly_pending, true); assert.equal(ps.funnel_tables, false); assert.equal(ps.funnel_tables_pending, undefined);
+  assert.ok(!('weekly_on' in (await teamEmailState(pending, B, u('a'), { isOwner: true, grantOf, now: NOW })).body));
+  assert.deepEqual(await weeklyEmailJob(pending, B, { now: NOW, deps: g3.deps, test: true }), { status: 'skipped', reason: WEEKLY_PENDING_ERROR });
+  assert.equal((await sendTest(pending, { businessId: B, body: { kind: 'weekly' }, isOwner: true, deps: g3.deps })).status, 503);
+  assert.equal((await updateTeamEmails(pending, { businessId: B, userId: u('a'), body: { weekly_on: true }, isOwner: true, grantOf })).status, 503);
+  assert.deepEqual(await weeklyDaysFor(pending, B), []);
+  assert.equal(g3.calls.length, 0);
 });

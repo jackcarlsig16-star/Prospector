@@ -23,6 +23,7 @@ const wm = (key, name, group, unit, kind, values, { goals = {}, same = null, pac
     key, name, group, source, unit, kind, direction: 'up', goalable: true, goal_key: key, hint, series,
     this_week: { week_start: WEEKS[11], to_date: cur.value, same_point_last_week: same, delta: cur.value == null || same == null ? null : cur.value - same, pace, goal: cur.goal, progress: cur.value != null && cur.goal ? cur.value / cur.goal : null },
     last_week: { week_start: WEEKS[10], value: prev.value, goal: prev.goal, hit: prev.value == null || prev.goal == null ? null : prev.value >= prev.goal },
+    next_week: { week_start: '2026-11-09', goal: null },
     ...extra,
   };
 };
@@ -42,6 +43,8 @@ const WEEKLY = {
   ],
 };
 WEEKLY.metrics[5].series[11].carried = true;
+WEEKLY.metrics[5].next_week = { week_start: '2026-11-09', goal: 100, carried: true };
+WEEKLY.metrics[1].next_week = { week_start: '2026-11-09', goal: 0.18 };
 const byKey = k => WEEKLY.metrics.find(x => x.key === k);
 
 const metric = (value, extra = {}) => ({ value, goal: null, ...extra });
@@ -106,7 +109,7 @@ test('1440: the rows are the route\'s, in its four groups, to the digit - Last w
   expect(screen.getByText(/November · week 1 of 5/)).toBeInTheDocument();
   expect([...document.querySelectorAll('[data-group], [data-row]')].map(r => r.getAttribute('data-group') || r.getAttribute('data-row'))).toEqual(
     ['Outbound', 'delivered', 'human_open_rate', 'replies', 'total_in_sequence', 'Site', 'companies_visited', 'Pipeline', 'people_first_touched', 'LinkedIn', 'linkedin_requests', 'linkedin_replies']);
-  expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(['Metric', 'Last weekOct 26 – Nov 1', 'This week · paceNov 2 – Nov 5 · day 4 of 7', 'Changevs same point last wk', 'Goalthis week · progress', '12 weekssince Aug 17', 'Novemberto date / goal']);
+  expect(screen.getAllByRole('columnheader').map(h => h.textContent)).toEqual(['Metric', 'Last weekOct 26 – Nov 1', 'This week · paceNov 2 – Nov 5 · day 4 of 7', 'Changevs same point last wk', 'Goalthis week · progress · next', '12 weekssince Aug 17', 'Novemberto date / goal']);
   for (const m of WEEKLY.metrics.filter(x => x.kind !== 'manual')) {
     expect(digit(`${m.key}|last`)).toBe(valueText(m, m.last_week.value));
     expect(digit(`${m.key}|this`)).toBe(valueText(m, m.this_week.to_date));
@@ -306,4 +309,24 @@ test('390: no table - one tile per metric in the route\'s groups, each with its 
   expect(tile('human_open_rate').querySelector('[data-value]')).toHaveTextContent('2.7%');
   expect(document.querySelector('[data-goals-banner]')).toHaveTextContent('No November goals yet — the owner sets them on desktop.');
   expect(screen.getByText(/Read-only on this account · synced 3 h ago/)).toBeInTheDocument();
+});
+
+test('next week\'s goal can be typed ahead: the Goal cell carries a "next wk" line the owner types into (PUT goals/targets with next Monday); a reader sees it only once a goal is set', async () => {
+  const first = render(<ScorecardView businessId="b1" isOwner canEdit toolsSlot={null} />);
+  await screen.findByRole('table');
+  expect(document.querySelectorAll('[data-next-goal]')).toHaveLength(8);
+  expect(cell('human_open_rate|goal').querySelector('[data-next-goal]')).toHaveTextContent('next wk 18.0%');
+  expect(cell('people_first_touched|goal').querySelector('[data-next-goal]')).toHaveTextContent('next wk 100 · carried');
+  expect(cell('delivered|goal').querySelector('[data-next-goal]')).toHaveTextContent('next wk set goal');
+  fireEvent.click(screen.getByRole('button', { name: 'Delivered goal, Nov 9' }));
+  const input = screen.getByRole('textbox', { name: 'Delivered goal, Nov 9' });
+  fireEvent.change(input, { target: { value: '500' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'week', period_start: '2026-11-09', metric_key: 'delivered', goal: 500 }));
+  await waitFor(() => expect(goalsApi.weekly).toHaveBeenCalledTimes(2));
+  first.unmount();
+  render(<ScorecardView businessId="b1" isOwner={false} canEdit={false} toolsSlot={null} />);
+  await screen.findByRole('table');
+  expect([...document.querySelectorAll('[data-next-goal]')].map(e => e.textContent)).toEqual(['next wk 18.0%', 'next wk 100 · carried']);
+  expect(screen.queryByRole('button', { name: /goal, Nov 9$/ })).toBeNull();
 });

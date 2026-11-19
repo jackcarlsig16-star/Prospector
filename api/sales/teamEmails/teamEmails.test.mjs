@@ -100,7 +100,7 @@ test('T-b: team emails show "Reconnect to allow team emails" for a grant without
   assert.equal(r.body.ready, false);
   assert.equal(r.body.banner, RECONNECT_NOTE);
   assert.equal(RECONNECT_NOTE, 'Reconnect to allow team emails');
-  assert.deepEqual(r.body.counts, { visitor: { count: 2, dropped: 1, capped: 0 }, client: { count: 2, dropped: 1, capped: 0 } });
+  assert.deepEqual(r.body.counts, { visitor: { count: 2, dropped: 1, capped: 0 }, client: { count: 2, dropped: 1, capped: 0 }, weekly: { count: 2, dropped: 1, capped: 0 } });
   assert.equal(r.body.recipients, undefined);
   assert.ok(!JSON.stringify(r.body).includes('@'));
 });
@@ -566,7 +566,7 @@ test('REV2 T2: add / edit / remove validate the domain, the 25 cap and duplicate
 
 test('rulings (2): one startup line, and the only node-cron schedule left in server.js is the SFDC compliance sync', () => {
   const list = hlJobs({ runApolloSync: async () => ({}), pull: async () => ({}), deps: {} });
-  assert.equal(schedulerLine(list), 'apollo-sync 06:00 daily, visitor-pull 06:30 Mon-Fri (+ Sat-Sun by the weekend switch), team-visitor-email 07:00 Mon-Fri (+ Sat-Sun by the weekend switch), client-alerts each minute (America/Los_Angeles)');
+  assert.equal(schedulerLine(list), 'apollo-sync 06:00 daily, visitor-pull 06:30 Mon-Fri (+ Sat-Sun by the weekend switch), team-visitor-email 07:00 Mon-Fri (+ Sat-Sun by the weekend switch), team-weekly-email 07:00 Fri (by its switch), client-alerts each minute (America/Los_Angeles)');
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.deepEqual(server.match(/cron\.schedule\(\s*'[^']*'/g), ["cron.schedule('0 */6 * * *'"]);
   assert.equal((server.match(/HomeLover scheduler on: /g) || []).length, 1);

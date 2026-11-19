@@ -21,7 +21,7 @@ export const SYNCED = { total_in_sequence: 'prospects_in_cadence', sequences_run
 export const WORDING = {
   week: 'A week runs Monday to Sunday, Pacific time.',
   pace: 'Pace = this week to date ÷ the share of the week gone (whole days, today included), for counts only - rates and levels are never projected. This week is always read against the same point last week, never against a full week.',
-  goals: 'A week goal is typed by the owner before or during its week; a week that has ended takes no new goal.',
+  goals: 'A week goal is typed by the owner before or during its week (next week can be set ahead); a week that has ended takes no new goal.',
   manual: 'LinkedIn numbers are typed by a member for this week or last week; a cell nobody typed is empty, not zero.',
 };
 export const WEEK_ENDED_ERROR = 'That week has ended - a goal is set before or during its week';
@@ -91,17 +91,18 @@ export function weeklyWindows(today, n = WEEKS_DEFAULT) {
 // ctx: { now, pulse: { counts, opens, deliveredAt, events, visits: [], people, now }, funnel: funnelContext(rows),
 // partnerData, synced: Map 'key|from|to' -> value, pins: [iso], manual: Map 'key|week' -> row }.
 // goals: Map 'week|goalKey' -> number; firstTouched: Map week -> { goal, carried } (the Scorecard's carried rule);
-// names: Map user id -> first name.
+// names: Map user id -> first name. goals and firstTouched also carry next week (a goal can be set a week ahead).
 export function buildWeekly(ctx, { today, weeks = WEEKS_DEFAULT, goals = new Map(), firstTouched = new Map(), names = new Map() }) {
   ctx.memo = ctx.memo || new Map();
-  const list = weekList(today, weeks), mon = laMonday(today), last = addDays(mon, -7), same = samePointLastWeek(today);
+  const list = weekList(today, weeks), mon = laMonday(today), last = addDays(mon, -7), next = addDays(mon, 7), same = samePointLastWeek(today);
   const goalOf = (x, w) => {
     if (!x.goalable) return { goal: null };
     if (x.goalKey === 'partners_first_touched') { const g = firstTouched.get(w); return { goal: g?.goal ?? null, ...(g?.carried ? { carried: true } : {}) }; }
     return { goal: goals.get(`${w}|${x.goalKey}`) ?? null };
   };
   const hit = (x, value, goal) => (value == null || goal == null ? null : x.direction === 'up' ? value >= goal : value <= goal);
-  const entry = (x, w) => { const r = ctx.manual.get(`${x.key}|${w}`); return r ? { by: names.get(r.entered_by) || 'a member', at: r.entered_at, note: r.note || null } : null; };
+  // A cleared cell (value null) is empty again: nobody "entered" it.
+  const entry = (x, w) => { const r = ctx.manual.get(`${x.key}|${w}`); return r && r.value != null ? { by: names.get(r.entered_by) || 'a member', at: r.entered_at, note: r.note || null } : null; };
   const metrics = METRICS.map(x => {
     const series = list.map(w => ({ week_start: w, value: x.value(ctx, w, w === mon ? today : addDays(w, 6)), ...goalOf(x, w), ...(w === mon ? { current: true } : {}) }));
     const cur = series[series.length - 1], prev = series[series.length - 2];
@@ -111,6 +112,7 @@ export function buildWeekly(ctx, { today, weeks = WEEKS_DEFAULT, goals = new Map
       series,
       this_week: { week_start: mon, to_date: cur.value, same_point_last_week: at, delta: cur.value == null || at == null ? null : cur.value - at, pace: paceOf(x, cur.value, today), goal: cur.goal, progress: cur.value != null && cur.goal ? cur.value / cur.goal : null },
       last_week: prev ? { week_start: last, value: prev.value, goal: prev.goal, hit: hit(x, prev.value, prev.goal) } : null,
+      next_week: { week_start: next, ...goalOf(x, next) },
       ...(x.kind === 'manual' ? { entered: { this_week: entry(x, mon), last_week: entry(x, last) } } : {}),
     };
   });

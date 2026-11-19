@@ -8,10 +8,11 @@ import { laInstant } from './visitorEmail.js';
 // Outlook"): two internal emails, to the owner-edited recipient list only, at the sending mailbox's own domain only.
 // No caller can name an address - sendTeamEmail refuses any option that isn't in ALLOWED; addresses are read here,
 // filtered by domain, capped, and only their COUNT ever leaves this module (logs, rows, replies).
-export const KINDS = ['visitor', 'client'];
+export const KINDS = ['visitor', 'client', 'weekly'];
 export const RECONNECT_NOTE = 'Reconnect to allow team emails';
 export const MAX_RECIPIENTS = 25;
-const FLAG = { visitor: 'visitor_email', client: 'client_alert' };
+// weekly-funnel-v1 W7: the weekly funnel email goes to the visitor email's list (the same recipients, the same domain rule).
+const FLAG = { visitor: 'visitor_email', client: 'client_alert', weekly: 'visitor_email' };
 const ALLOWED = new Set(['kind', 'subject', 'html', 'text', 'slot', 'refId', 'test']);
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const lower = e => String(e || '').trim().toLowerCase();
@@ -22,13 +23,20 @@ export const EMAIL_RE = /^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/
 // FIX email-simplify-v1 E2: funnel_tables arrives with supabase/migrations/20261111_email_simplify_v1.sql; until that
 // file has run the column is missing, the settings read without it and say so (funnel_tables_pending), and the email
 // builds with the tables off - the default either way.
+// weekly-funnel-v1 W7: weekly_on arrives with supabase/migrations/20261121_weekly_funnel_v1_stage3.sql (the same file
+// lets the send log take kind 'weekly'); until it has run the settings read without it and say so (weekly_pending),
+// the switch reads OFF and a weekly send is refused before anything leaves.
 const SETTINGS_COLS = 'business_id, sender_user_id, visitor_on, client_on, client_alert_since, allowed_domains, weekend_on, updated_at';
-const missingColumn = e => ['42703', 'PGRST204'].includes(e?.code) || /funnel_tables/.test(String(e?.message || ''));
+const missingColumn = e => ['42703', 'PGRST204'].includes(e?.code) || /funnel_tables|weekly_on/.test(String(e?.message || ''));
+export const WEEKLY_PENDING_ERROR = 'Run supabase/migrations/20261121_weekly_funnel_v1_stage3.sql first (the weekly funnel email is not set up)';
 export async function loadSettings(supabase, businessId) {
-  const r = await supabase.from('sales_team_email_settings').select(`${SETTINGS_COLS}, funnel_tables`).eq('business_id', businessId).maybeSingle();
+  const read = cols => supabase.from('sales_team_email_settings').select(cols).eq('business_id', businessId).maybeSingle();
+  const r = await read(`${SETTINGS_COLS}, funnel_tables, weekly_on`);
   if (!r.error || !missingColumn(r.error)) return must(r);
-  const old = must(await supabase.from('sales_team_email_settings').select(SETTINGS_COLS).eq('business_id', businessId).maybeSingle());
-  return old && { ...old, funnel_tables_pending: true };
+  const noWeekly = await read(`${SETTINGS_COLS}, funnel_tables`);
+  if (!noWeekly.error || !missingColumn(noWeekly.error)) { const row = must(noWeekly); return row && { ...row, weekly_pending: true }; }
+  const old = must(await read(SETTINGS_COLS));
+  return old && { ...old, funnel_tables_pending: true, weekly_pending: true };
 }
 
 // Every member with a user id: { userId, role, email (profile first, else the invite), firstName }.
@@ -114,6 +122,7 @@ export async function sendTeamEmail(supabase, businessId, opts, deps = DEPS) {
   if (!subject || !html || !text) throw new Error('subject, html and text are required');
   const now = deps.now ? deps.now() : Date.now();
   const [settings, members] = await Promise.all([loadSettings(supabase, businessId), loadMembers(supabase, businessId)]);
+  if (kind === 'weekly' && settings?.weekly_pending) throw new Error(WEEKLY_PENDING_ERROR);
   const sender = senderOf(settings, members);
   let grantAt = null;
   const log = async (status, n, error = null) => {

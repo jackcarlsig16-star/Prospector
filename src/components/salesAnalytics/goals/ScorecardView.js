@@ -13,7 +13,7 @@ import { cardStyle, labelStyle, subStyle, numStyle, EditableNumber, ErrorNote, N
 // weekly-funnel-v1 Stage 2 - Dashboard › Scorecard, the weekly funnel. The rows are the registry's (GET goals/weekly:
 // Outbound · Site · Pipeline · LinkedIn), every number the route's own digit: Last week · This week read as PACE (to
 // date, the same point last week, "on pace for ~n" for counts only) · Change (▲ / ▼ by the metric's direction, beside
-// the signed amount) · this week's Goal (the owner types it in place) + progress · a 12-week line (goal dotted, this
+// the signed amount) · this week's Goal (the owner types it in place; next week's can be typed ahead) + progress · a 12-week line (goal dotted, this
 // week hollow) that opens the full chart · the Month column (dashboard-v3: to date / goal + a ring, from GET
 // goals/scorecard, for the rows that have a month). A LinkedIn cell is typed by a Member for this week or last week; an
 // empty one is "—". Print = this table alone, white ground. Under 760 px: one tile per metric with its line, no table.
@@ -160,6 +160,11 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
     );
   };
   const weekGoalCell = m => goalCell({ name: fullName(m), rate: isRate(m), goal: m.this_week.goal, carried: !!m.series[m.series.length - 1].carried, goalKey: m.goal_key, period: 'week', start: weekly.week_start });
+  // Next week's goal can be typed ahead (the route takes next Monday); a reader sees the line only once one is set.
+  const nextGoalLine = m => {
+    const cell = m.next_week && goalCell({ name: fullName(m), rate: isRate(m), goal: m.next_week.goal, carried: !!m.next_week.carried, goalKey: m.goal_key, period: 'week', start: m.next_week.week_start });
+    return cell ? <span data-next-goal style={{ ...small, display: 'inline-flex', alignItems: 'baseline', gap: 5 }}>next wk {cell}</span> : null;
+  };
   const monthGoalCell = (r, cell, extraStyle) => goalCell({ name: r.name, rate: r.rate, goal: cell.goal, carried: cell.carried, goalKey: goalKeyOf(r), period: 'month', start: month, slash: true, extraStyle });
   // A typed cell (LinkedIn): a Member types this week's or last week's number; nobody's number is "—", never 0.
   const manualCell = (m, which) => {
@@ -240,6 +245,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
             {spark(m)}
           </div>
           {p != null ? <Bar p={p} status={statusOf(p)} width="100%" /> : pick === 'month' ? monthGoalCell(mr, mc) : pick === 'this' ? weekGoalCell(m) : null}
+          {pick === 'this' && nextGoalLine(m)}
         </div>
       );
     };
@@ -261,7 +267,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
   }
 
   const th = { textAlign: 'right', fontWeight: 500, height: 40, padding: '0 10px', borderBottom: `1px solid ${SA.border}`, whiteSpace: 'nowrap', background: SA.surface, verticalAlign: 'middle' };
-  const td = { height: 52, padding: '4px 10px', borderBottom: `1px solid ${SA.track}`, whiteSpace: 'nowrap', textAlign: 'right', color: SA.soft, verticalAlign: 'middle' };
+  const td = { height: 58, padding: '5px 10px', borderBottom: `1px solid ${SA.track}`, whiteSpace: 'nowrap', textAlign: 'right', color: SA.soft, verticalAlign: 'middle' };
   const tint = { background: `color-mix(in srgb, ${SA.accent} 6%, transparent)` };
   const faint = <span style={{ ...numStyle, color: SA.faint, fontSize: 15, fontWeight: 500 }}>—</span>;
   const COLS = 7;
@@ -298,7 +304,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
           {tw.delta == null ? faint : <span style={stack}>{changeMark(m)}<span style={small}>vs {valueText(m, tw.same_point_last_week)}</span></span>}
         </td>
         <td data-cell={`${m.key}|goal`} style={td}>
-          <span style={stack}>{goal || (tw.progress == null ? faint : null)}{tw.progress != null && <Bar p={tw.progress} status={statusOf(tw.progress)} />}</span>
+          <span style={stack}>{goal || (tw.progress == null ? faint : null)}{tw.progress != null && <Bar p={tw.progress} status={statusOf(tw.progress)} />}{nextGoalLine(m)}</span>
         </td>
         <td data-cell={`${m.key}|spark`} onClick={toggle} style={{ ...td, cursor: 'pointer' }}>{spark(m)}</td>
         <td data-cell={`${m.key}|month`} style={td}>
@@ -334,7 +340,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
               <th scope="col" data-week={lastWeek} style={th}><span style={labelStyle}>Last week</span><br /><span style={{ fontSize: 11, color: SA.muted }}>{md(lastWeek)} – {md(addDays(lastWeek, 6))}</span></th>
               <th scope="col" data-week={weekly.week_start} data-this-week style={{ ...th, background: SA.surface2, boxShadow: `inset 0 -2px 0 ${SA.accent}` }}><span style={{ ...labelStyle, color: SA.text }}>This week · pace</span><br /><span style={{ fontSize: 11, color: SA.muted }}>{md(weekly.week_start)} – {md(weekly.today)} · day {weekly.elapsed.days} of 7</span></th>
               <th scope="col" style={th}><span style={labelStyle}>Change</span><br /><span style={{ fontSize: 11, color: SA.muted }}>vs same point last wk</span></th>
-              <th scope="col" style={th}><span style={labelStyle}>Goal</span><br /><span style={{ fontSize: 11, color: SA.muted }}>this week · progress</span></th>
+              <th scope="col" style={th}><span style={labelStyle}>Goal</span><br /><span style={{ fontSize: 11, color: SA.muted }}>this week · progress · next</span></th>
               <th scope="col" style={th}><span style={labelStyle}>{weekly.weeks.length} weeks</span><br /><span style={{ fontSize: 11, color: SA.muted }}>since {md(weekly.weeks[0])}</span></th>
               <th scope="col" style={th}><span style={labelStyle}>{monthName(month)}</span><br /><span style={{ fontSize: 11, color: SA.muted }}>to date / goal</span></th>
             </tr></thead>

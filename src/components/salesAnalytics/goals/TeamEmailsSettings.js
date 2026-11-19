@@ -6,7 +6,10 @@ import { connectMicrosoft } from '../../ConnectionsPage';
 
 // homelover-team-emails-v1 T2 (REV2) - Sales › Settings › Team emails. The owner edits everything; everyone else
 // reads (counts only - the server never hands a non-owner an address). Every list change can be undone for 10 s.
-const KIND_LABEL = { visitor: 'Visitor email', client: 'New-client alert' };
+const KIND_LABEL = { visitor: 'Visitor email', client: 'New-client alert', weekly: 'Weekly funnel email' };
+// weekly-funnel-v1 W7: the Friday weekly funnel email - its own switch (OFF until the owner turns it on), the visitor
+// email's list, the same test send and Send to team now. Its row is absent until its migration has run.
+const NOW_WORDS = { visitor: "today's visitor email", weekly: "this week's funnel email" };
 const STATUS_LABEL = { sent: 'Sent', failed: 'Failed', needs_reconnect: 'Needs reconnect', skipped: 'Not sent' };
 const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const small = { fontSize: 13, color: SA.muted };
@@ -22,7 +25,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const [note, setNote] = useState(null); // { text, changeId? }
   const [clients, setClients] = useState([]);
   const [testClient, setTestClient] = useState('');
-  const [sendNow, setSendNow] = useState(null); // FIX visitor-email-top10-v1 follow-up: { step: 'ask' | 'again' | 'again2', sent_at?, recipients? }
+  const [sendNow, setSendNow] = useState(null); // FIX visitor-email-top10-v1 follow-up: { kind, step: 'ask' | 'again' | 'again2', sent_at?, recipients? }
   const [weekendAsk, setWeekendAsk] = useState(null); // visitor-trend-v1 T4: 'ask' | 'sure' - two confirms before weekends turn on
   const undoTimer = useRef(null);
 
@@ -49,8 +52,8 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   };
   const undo = id => act('undo', () => goalsApi.undoTeamEmailChange(businessId, id), r => flash(`Undone · ${n(r.count, 'address', 'addresses')} on the list`));
   // "Send to team now" (owner): ask the server whether today's went out, then one confirm - or, if it did, two.
-  const openSendNow = () => act('send-now-check', () => goalsApi.teamEmailSendNow(businessId, { check: true }), r => setSendNow(r.sent_today ? { step: 'again', sent_at: r.sent_at, recipients: r.recipients } : { step: 'ask' }));
-  const doSendNow = again => { setSendNow(null); act('send-now', () => goalsApi.teamEmailSendNow(businessId, again ? { again: true } : {}), r => flash(r.status === 'sent' ? `Sent to the team (${n(r.recipients, 'recipient', 'recipients')})${again ? ' - a second copy' : ''}` : `Not sent: ${STATUS_LABEL[r.status] || r.status}${r.error ? ` · ${r.error}` : ''}`)); };
+  const openSendNow = kind => act(`send-now-${kind}`, () => goalsApi.teamEmailSendNow(businessId, { kind, check: true }), r => setSendNow(r.sent_today ? { kind, step: 'again', sent_at: r.sent_at, recipients: r.recipients } : { kind, step: 'ask' }));
+  const doSendNow = again => { const { kind } = sendNow; setSendNow(null); act(`send-now-${kind}`, () => goalsApi.teamEmailSendNow(businessId, again ? { kind, again: true } : { kind }), r => flash(r.status === 'sent' ? `Sent to the team (${n(r.recipients, 'recipient', 'recipients')})${again ? ' - a second copy' : ''}` : `Not sent: ${STATUS_LABEL[r.status] || r.status}${r.error ? ` · ${r.error}` : ''}`)); };
 
   if (!data) return error ? <ErrorNote message={error} /> : <span style={small}>Loading…</span>;
   const isSender = data.sender?.user_id === meId;
@@ -67,14 +70,14 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   );
 
   const emailRow = kind => {
-    const on = kind === 'visitor' ? data.visitor_on : data.client_on;
+    const on = data[`${kind}_on`];
     const c = data.counts[kind];
     return (
       <div key={kind} data-team-email-kind={kind} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: `1px solid ${SA.border}` }}>
         <div style={{ flex: '1 1 260px', display: 'grid', gap: 2 }}>
           <b style={{ fontSize: 14, color: SA.text, fontWeight: 600 }}>{KIND_LABEL[kind]}</b>
           <span style={small}>
-            {kind === 'visitor' ? `${data.weekend_on ? 'Every day' : 'Weekdays'} at 7:00 AM PT · ` : 'Once per new client · '}
+            {kind === 'visitor' ? `${data.weekend_on ? 'Every day' : 'Weekdays'} at 7:00 AM PT · ` : kind === 'weekly' ? 'Fridays at 7:00 AM PT · the Scorecard’s rows with a 12-week strip each · the visitor email’s list · ' : 'Once per new client · '}
             {on ? n(c.count, 'recipient', 'recipients') : 'Off'}
             {c.dropped ? ` · ${c.dropped} outside ${domains} skipped` : ''}{c.capped ? ` · ${c.capped} over the ${data.max} cap` : ''}
           </span>
@@ -95,9 +98,9 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
                 r => flash(r.status === 'sent' ? `Test sent to your mailbox (${n(r.recipients, 'recipient', 'recipients')})` : `Test not sent: ${STATUS_LABEL[r.status] || r.status}`))}>
               {busy === `test-${kind}` ? 'Sending…' : 'Send a test to me only'}
             </Btn>
-            {kind === 'visitor' && (
-              <Btn disabled={!!busy || !data.ready || !on} title="Today's visitor email to the whole recipient list, now" style={{ height: 36 }} onClick={openSendNow}>
-                {busy === 'send-now-check' || busy === 'send-now' ? 'Sending…' : 'Send to team now'}
+            {NOW_WORDS[kind] && (
+              <Btn disabled={!!busy || !data.ready || !on} title={`${NOW_WORDS[kind][0].toUpperCase()}${NOW_WORDS[kind].slice(1)} to the whole recipient list, now`} style={{ height: 36 }} onClick={() => openSendNow(kind)}>
+                {busy === `send-now-${kind}` ? 'Sending…' : 'Send to team now'}
               </Btn>
             )}
           </>
@@ -156,9 +159,9 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const sendNowDialog = sendNow && (
     <div role="dialog" aria-label="Send to team now" data-send-now-dialog style={{ display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.border}`, background: SA.inset }}>
       <span style={{ fontSize: 14, color: SA.text }}>
-        {sendNow.step === 'ask' && `Send today's visitor email to ${n(data.counts.visitor.count, 'recipient', 'recipients')}?`}
-        {sendNow.step === 'again' && `Today's visitor email already went out at ${when(sendNow.sent_at)} to ${n(sendNow.recipients, 'recipient', 'recipients')}. Send again?`}
-        {sendNow.step === 'again2' && `This sends a second copy to ${n(data.counts.visitor.count, 'recipient', 'recipients')}. Are you sure?`}
+        {sendNow.step === 'ask' && `Send ${NOW_WORDS[sendNow.kind]} to ${n(data.counts[sendNow.kind].count, 'recipient', 'recipients')}?`}
+        {sendNow.step === 'again' && `${NOW_WORDS[sendNow.kind][0].toUpperCase()}${NOW_WORDS[sendNow.kind].slice(1)} already went out at ${when(sendNow.sent_at)} to ${n(sendNow.recipients, 'recipient', 'recipients')}. Send again?`}
+        {sendNow.step === 'again2' && `This sends a second copy to ${n(data.counts[sendNow.kind].count, 'recipient', 'recipients')}. Are you sure?`}
       </span>
       <div style={{ display: 'flex', gap: 8 }}>
         {sendNow.step === 'ask' && <Btn primary style={{ height: 32 }} onClick={() => doSendNow(false)}>Send now</Btn>}
@@ -228,7 +231,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
     <section aria-label="Team emails" data-team-emails style={{ ...cardStyle, padding: 20, display: 'grid', gap: 16, maxWidth: 900 }}>
       <div style={{ display: 'grid', gap: 4 }}>
         <h2 style={{ ...h3Style, fontSize: 18 }}>Team emails</h2>
-        <span style={small}>Two internal emails to the HomeLover team, sent from one member’s Microsoft 365 mailbox. Nothing here emails anyone outside {domains || 'the company'}.</span>
+        <span style={small}>{'weekly_on' in data ? 'Three' : 'Two'} internal emails to the HomeLover team, sent from one member’s Microsoft 365 mailbox. Nothing here emails anyone outside {domains || 'the company'}.</span>
       </div>
       {banner}
       {sender}
@@ -238,7 +241,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
             : `Scheduler: not running in this server process (Render runs it; its startup log line reads "HomeLover scheduler on: ${data.scheduler.line}")`}
         </span>
       )}
-      <div>{['visitor', 'client'].map(emailRow)}{weekendRow}{funnelRow}</div>
+      <div>{['visitor', 'client', ...('weekly_on' in data ? ['weekly'] : [])].map(emailRow)}{weekendRow}{funnelRow}</div>
       {weekendDialog}
       {sendNowDialog}
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}

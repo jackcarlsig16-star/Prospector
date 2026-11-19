@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import TeamEmailsSettings from './TeamEmailsSettings';
 import { goalsApi } from './goalsApi';
 import { connectMicrosoft } from '../../ConnectionsPage';
@@ -88,7 +88,7 @@ test('Send to team now: owner only; confirm then send; already sent -> Send agai
   fireEvent.click(await screen.findByRole('button', { name: 'Send to team now' }));
   expect(await screen.findByRole('dialog', { name: 'Send to team now' })).toHaveTextContent("Send today's visitor email to 2 recipients?");
   fireEvent.click(screen.getByRole('button', { name: 'Send now' }));
-  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', {}));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { kind: 'visitor' }));
   expect(await screen.findByText(/Sent to the team \(2 recipients\)/)).toBeInTheDocument();
   expect(screen.queryByRole('dialog', { name: 'Send to team now' })).toBeNull();
   unmount();
@@ -103,7 +103,7 @@ test('Send to team now: owner only; confirm then send; already sent -> Send agai
   expect(screen.getByRole('dialog', { name: 'Send to team now' })).toHaveTextContent('This sends a second copy to 2 recipients. Are you sure?');
   expect(goalsApi.teamEmailSendNow).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button', { name: 'Yes, send a second copy' }));
-  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { again: true }));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { kind: 'visitor', again: true }));
   expect(await screen.findByText(/Sent to the team \(4 recipients\) - a second copy/)).toBeInTheDocument();
 });
 
@@ -121,7 +121,7 @@ test('Send to team now: a Member never sees the button; Cancel closes the dialog
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(screen.queryByRole('dialog', { name: 'Send to team now' })).toBeNull();
   expect(goalsApi.teamEmailSendNow).toHaveBeenCalledTimes(1);
-  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { check: true });
+  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { kind: 'visitor', check: true });
 });
 
 // visitor-trend-v1 Stage 2 (T4 / R4): the weekend switch - its copy quotes the month's measured pull runs from the state
@@ -202,4 +202,54 @@ test('E2: funnel tables switch - the label and note, PATCH funnel_tables only, r
   render(<TeamEmailsSettings businessId="b1" isOwner meId="u-o" />);
   await screen.findByText('Team emails');
   expect(document.querySelector('[data-funnel-row]')).toBeNull();
+});
+
+// weekly-funnel-v1 W7: the Friday weekly funnel email - its row appears once the state carries weekly_on (the
+// migration has run); OFF by default; the owner turns it on (PATCH weekly_on only), sends a test to themselves, or sends
+// this week's to the team now (disabled while OFF); a member reads On / Off.
+test('W7: Weekly funnel email - absent before the migration; OFF with the Friday schedule and the list count; PATCH weekly_on only; test { kind: weekly }; Send to team now by kind; a member reads', async () => {
+  goalsApi.teamEmails.mockResolvedValue(owner);
+  const first = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  await screen.findByText('Team emails');
+  expect(document.querySelector('[data-team-email-kind="weekly"]')).toBeNull();
+  expect(screen.getByText(/^Two internal emails/)).toBeInTheDocument();
+  first.unmount();
+  const off = { ...owner, weekly_on: false, counts: { ...owner.counts, weekly: { count: 2, dropped: 0, capped: 0 } } };
+  goalsApi.teamEmails.mockResolvedValue(off);
+  goalsApi.updateTeamEmails.mockResolvedValue({});
+  const second = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  await screen.findByText(/^Three internal emails/);
+  const row = document.querySelector('[data-team-email-kind="weekly"]');
+  expect(row).toHaveTextContent('Weekly funnel email');
+  expect(row).toHaveTextContent('Fridays at 7:00 AM PT');
+  expect(row).toHaveTextContent('Off');
+  expect(within(row).getByRole('checkbox')).not.toBeChecked();
+  expect(within(row).getByRole('button', { name: 'Send to team now' })).toBeDisabled();
+  goalsApi.teamEmailTest.mockResolvedValue({ status: 'sent', recipients: 1, rows: 20 });
+  fireEvent.click(within(row).getByRole('button', { name: 'Send a test to me only' }));
+  await waitFor(() => expect(goalsApi.teamEmailTest).toHaveBeenCalledWith('b1', { kind: 'weekly' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Test sent to your mailbox (1 recipient)');
+  fireEvent.click(within(document.querySelector('[data-team-email-kind="weekly"]')).getByRole('checkbox'));
+  await waitFor(() => expect(goalsApi.updateTeamEmails).toHaveBeenCalledWith('b1', { weekly_on: true }));
+  expect(goalsApi.teamEmailSendNow).not.toHaveBeenCalled();
+  second.unmount();
+  goalsApi.teamEmails.mockResolvedValue({ ...off, weekly_on: true });
+  goalsApi.teamEmailSendNow.mockImplementation(async (_id, body = {}) => (body.check ? { sent_today: false } : { status: 'sent', recipients: 2, rows: 20 }));
+  const third = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  await screen.findByText(/^Three internal emails/);
+  const on = document.querySelector('[data-team-email-kind="weekly"]');
+  expect(on).toHaveTextContent('2 recipients');
+  fireEvent.click(within(on).getByRole('button', { name: 'Send to team now' }));
+  expect(await screen.findByRole('dialog', { name: 'Send to team now' })).toHaveTextContent("Send this week's funnel email to 2 recipients?");
+  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { kind: 'weekly', check: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Send now' }));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { kind: 'weekly' }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Sent to the team (2 recipients)');
+  third.unmount();
+  goalsApi.teamEmails.mockResolvedValue({ ...base, weekly_on: true, counts: { ...base.counts, weekly: { count: 2, dropped: 0, capped: 0 } } });
+  render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
+  await screen.findByText(/^Three internal emails/);
+  const read = document.querySelector('[data-team-email-kind="weekly"]');
+  expect(within(read).queryByRole('checkbox')).toBeNull(); expect(within(read).queryByRole('button')).toBeNull();
+  expect(read).toHaveTextContent('On');
 });
