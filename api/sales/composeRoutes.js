@@ -2,7 +2,7 @@ import { getSupabase, laStartOfDayMs } from './goalsShared.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 import { laDateString } from './laDate.js';
-import { cleanText, scrubAddresses } from './scrubText.js';
+import { cleanText, scrubAddresses, hasPii } from './scrubText.js';
 import { companyBrief, BRIEF_TYPES } from './companyBrief.js';
 import { lintDraft, mergeRules } from './composeLint.js';
 
@@ -69,8 +69,26 @@ export async function composeStatus(supabase, businessId, { now = Date.now() } =
   return reply(200, { used, max: s.cap, ...costs, custom_prompt: s.custom_prompt, rules: s.rules });
 }
 
-export async function composeEmail(supabase, { businessId, userId, userName, type, id, now = Date.now(), call = callAnthropic }) {
+// scout-v3.1 C2 - the optional recipient: { person_key, name, title }. The system prompt is untouched; the recipient is
+// handed over in the user message as a given fact (the frozen prompt forbids a name that is not in the Brief, and a
+// person from a list need not be one of the Brief's people lines). Names and titles only - never an address or phone.
+export function personOf(p) {
+  if (p == null) return { person: null };
+  if (typeof p !== 'object' || typeof p.name !== 'string' || !p.name.trim()) return { error: 'person must be { person_key?, name, title? }' };
+  // checked on what was sent, before cleanText would scrub an address out of it
+  if (hasPii(`${p.name} ${typeof p.title === 'string' ? p.title : ''}`)) return { error: "person can't hold an email address or phone number" };
+  const name = cleanText(p.name, 120), title = typeof p.title === 'string' && p.title.trim() ? cleanText(p.title, 160) : null;
+  return { person: { person_key: typeof p.person_key === 'string' ? p.person_key.slice(0, 200) : null, name, title } };
+}
+export const askLine = (company, person) => (person
+  ? `Write the first email to ${person.name}${person.title ? `, ${person.title},` : ''} at ${company}. Greet them by their first name, ${firstName(person.name)}. They are the recipient; the other people in the Brief are not.`
+  : `Write the first email to ${company}.`);
+
+export async function composeEmail(supabase, { businessId, userId, userName, type, id, person: to = null, now = Date.now(), call = callAnthropic }) {
   if (!BRIEF_TYPES.includes(type)) return reply(400, { error: `type must be one of ${BRIEF_TYPES.join('|')}` });
+  const who = personOf(to);
+  if (who.error) return reply(400, { error: who.error });
+  const person = who.person;
   try {
     const s = await settingsFor(supabase, businessId);
     const used = await composeUsedToday(supabase, businessId, now);
@@ -81,7 +99,7 @@ export async function composeEmail(supabase, { businessId, userId, userName, typ
     const signOff = firstName(userName);
     const data = await call({
       system: composeSystem({ prompt: s.prompt, rules: s.rules, signOff }),
-      messages: [{ role: 'user', content: `${brief.markdown}\n\nWrite the first email to ${brief.company.name}.` }],
+      messages: [{ role: 'user', content: `${brief.markdown}\n\n${askLine(brief.company.name, person)}` }],
       max_tokens: COMPOSE_MAX_TOKENS, model: MODELS.STANDARD, thinking: false, timeoutMs: 60000,
       supabase, businessId, userId, callType: 'intent_compose',
     });
@@ -90,7 +108,7 @@ export async function composeEmail(supabase, { businessId, userId, userName, typ
     const draft = parseDraft(text);
     const lint = lintDraft({ subject: draft.subject, body: draft.body, claims: draft.claims, refs: brief.lines, rules: s.rules, signOff });
     const cost = estimateCostUsd(data.usage?.model || MODELS.STANDARD, data.usage) ?? null;
-    return reply(200, { draft: { subject: draft.subject, body: draft.body, why: draft.why }, claims: draft.claims, lint, cost_usd: cost != null ? Math.round(cost * 1e4) / 1e4 : null, cap: { used: used + 1, max: s.cap }, brief: { company: brief.company, lines: brief.lines, upside_owned: brief.upside_owned, no_double_touch: brief.no_double_touch }, sign_off: signOff });
+    return reply(200, { draft: { subject: draft.subject, body: draft.body, why: draft.why }, claims: draft.claims, lint, cost_usd: cost != null ? Math.round(cost * 1e4) / 1e4 : null, cap: { used: used + 1, max: s.cap }, brief: { company: brief.company, lines: brief.lines, upside_owned: brief.upside_owned, no_double_touch: brief.no_double_touch }, sign_off: signOff, ...(person ? { person } : {}) });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
 
@@ -112,7 +130,7 @@ export async function lintPasted(supabase, { businessId, userName, type = null, 
 }
 
 export async function composeRoute(req, res) {
-  send(res, await composeEmail(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, userName: req.auth.user.name, type: req.params.type, id: req.params.id }));
+  send(res, await composeEmail(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, userName: req.auth.user.name, type: req.params.type, id: req.params.id, person: req.body?.person ?? null }));
 }
 export async function composeLintRoute(req, res) {
   const { type = null, id = null, ...body } = req.body || {};

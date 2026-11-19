@@ -130,7 +130,7 @@ test('intents route to the existing reads: tasks -> openTodos (mine), hot target
   assert.ok(n.lines.some(l => /^\[r\d+\] /.test(l) && l.slice(l.indexOf('] ') + 2) === `Equifax · employer · intent 55 P2 · next: Send agreement`));
   assert.ok(n.lines.some(l => /^\[r\d+\] Equifax · touch: Last touch: 3 days ago$/.test(l)));
   assert.ok(n.lines.some(l => /^\[r\d+\] Equifax kickoff · 2026-10-28/.test(l)) && !n.pack.includes('312-555') && [...n.items.values()].some(i => i.entity === 'call_notes' && i.id === u('8')));
-  assert.ok(n.stats.reads.some(r => r.startsWith('goals/brief/employer/')) && n.stats.reads.some(r => /call notes since 2026-10-26/.test(r)));
+  assert.ok(n.stats.reads.some(r => r === 'goals/brief/employer' || r.startsWith('goals/brief/employer ')) && n.stats.reads.some(r => /call notes since 2026-10-26/.test(r)));
   assert.equal((await findCompany(sb, A, 'hilton')).type, 'employer');
   assert.equal((await findCompany(sb, A, 'Hilton Partners')).type, 'partner');
   assert.equal(await findCompany(sb, A, 'Nobody Inc'), null);

@@ -1,4 +1,4 @@
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
 import { addDays } from './goalsShared.js';
 import { findCompany, findPerson, salesReads } from './scoutIntents.js';
 import { normName } from './intakeMatch.js';
@@ -11,7 +11,10 @@ import { loadPerson } from './personWrite.js';
 //   mark contacted  the person's status + a done to-do (employer) or an email touch with no stage move (partner) - R1
 //   not a fit     prospect status 'dead' · target reject · employer / partner fit deprioritize - R2
 //   snooze        prospect snooze_until · partner snooze signal; employers / targets / to-dos can't - R5-R7
-//   draft email / add task / copy for Claude open something and write nothing - R3, R4, R12
+//   draft email / copy for Claude write nothing - R3, R12
+// scout-v3.1: draft email = the Write-email call itself (composeEmail, its cap, its usage row) addressed to the person
+// of the row, returned as text - never sent (C2). Task verbs go through applyTodo with expect, the card's plan id as
+// batch_id and the event's own Undo (C4): add (typed), done, reassign (the assign verb), snooze, due, drop.
 // Stage moves, sends, deletes, client adds and Apollo writes have no verb here. salesWrites is swapped by tests.
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const lazy = (file, name) => async (...a) => (await import(file))[name](...a);
@@ -32,6 +35,10 @@ export const salesWrites = {
   prospect: viaRoute('./huddleRoutes.js', 'updateProspectRoute'),
   todoOn: lazy('./companyPanel.js', 'todoOn'),
   todoUndoCreate: lazy('./todoWrite.js', 'undoCreate'),
+  todo: lazy('./todoWrite.js', 'applyTodo'),
+  todoLoad: lazy('./todoWrite.js', 'loadTodo'),
+  todoEventUndo: lazy('./todoWrite.js', 'undoTodoEvent'),
+  compose: lazy('./composeRoutes.js', 'composeEmail'),
   rejectTarget: lazy('./targetsRoutes.js', 'rejectTarget'),
   deprioritize: lazy('./fitActions.js', 'deprioritize'),
 };
@@ -68,6 +75,17 @@ const block = (t, reason) => ({ ...base(t), skipped: reason, blocked: true });
 const NO_RECORD = 'no company record';
 const named = async (sb, businessId, names) => (await Promise.all(names.map(n => findCompany(sb, businessId, n)))).filter(Boolean).map(c => ({ key: `${Object.keys(KIND).find(k => KIND[k] === c.type)}:${c.id}`, entity: Object.keys(KIND).find(k => KIND[k] === c.type), id: c.id, title: cleanText(c.name, 160), company: null }));
 const prospectPatch = async (ctx, contactId, body) => salesWrites.prospect({ params: { businessId: ctx.businessId, contactId }, body, auth: ctx.auth });
+// C4 - a to-do row of the answer, read fresh for the card; the act sends what the card showed as expect.
+const todoOf = async (sb, ctx, t) => { const row = await salesWrites.todoLoad(sb, ctx.businessId, t.id); return row && row.kind === 'todo' && !row.prospect_contact_id ? row : null; };
+const GONE = 'that to-do is no longer open';
+async function todoAct(sb, ctx, x, patch, kind, expect) {
+  try {
+    const { event } = await salesWrites.todo(sb, { businessId: ctx.businessId, todoId: x.todo, patch, kind, expect, actor: ctx.auth.user.id, origin: 'scout', batchId: ctx.planId, now: new Date(ctx.now) });
+    return event ? { undo: { todo_event: event.id } } : { skipped: 'nothing to change' };
+  } catch (e) { if (e.status === 409) return { skipped: 'changed meanwhile' }; throw e; }
+}
+const todoUndo = (sb, ctx, h) => salesWrites.todoEventUndo(sb, { businessId: ctx.businessId, eventId: h.todo_event, actor: ctx.auth.user.id, now: new Date(ctx.now) });
+const taskTitle = row => cleanText(row.text, 140);
 const REASONS = [[/outside (the )?u\.?s/, 'mostly_outside_us', 'Mostly outside US'], [/too small/, 'too_small', 'Too small'], [/wrong industry/, 'wrong_industry', 'Wrong industry'], [/housing perk/, 'has_housing_perk', 'Has housing perk'], [/upside/, 'upside_owns', 'Upside owns']];
 
 // person-owner-v1 O5 - what a typed assign names, when no row of the answer was picked: a company ("assign Cloudflare
@@ -95,13 +113,20 @@ async function assignTargets(sb, ctx, args) {
 }
 
 const assign = {
-  id: 'assign', label: 'Assign', done: 'Assigned', lead: /^(?:re)?assign\b|^unassign\b/, accepts: ['people', ...COMPANY_ENTITIES], needs: 'member',
+  id: 'assign', label: 'Assign', done: 'Assigned', lead: /^(?:re)?assign\b|^unassign\b/, accepts: ['people', 'todos', ...COMPANY_ENTITIES], needs: 'member',
   async plan(sb, ctx, targets, args) {
     const list = targets.length ? targets : await assignTargets(sb, ctx, args);
     const members = await salesMembers(sb, ctx.businessId);
     const nameOf = id => (id ? members.find(m => m.id === id)?.name.split(/\s+/)[0] || 'another member' : 'Unassigned');
     const rows = [], seen = new Set();
     for (const t of list) {
+      if (t.entity === 'todos') {
+        const todo = await todoOf(sb, ctx, t);
+        if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+        const row = { ...base(t, taskTitle(todo)), kind: 'task', from: nameOf(todo.owner_user_id), to: nameOf(args.owner_user_id) };
+        rows.push((todo.owner_user_id || null) === (args.owner_user_id || null) ? { ...row, skipped: `already ${row.to}` } : { ...row, exec: { todo: todo.id, from: todo.owner_user_id || null } });
+        continue;
+      }
       if (t.entity === 'people') {
         // O5 (D5 revised): a person row assigns the PERSON, never their company.
         const p = await loadPerson(sb, ctx.businessId, t.id);
@@ -125,6 +150,7 @@ const assign = {
     return { rows };
   },
   async act(sb, ctx, x, args) {
+    if (x.todo) return todoAct(sb, ctx, x, { owner_user_id: args.owner_user_id ?? null }, 'reassign', { owner_user_id: x.from });
     if (x.person) {
       // one batch per card (the plan id), so a card of people is one batch of events
       try {
@@ -144,7 +170,8 @@ const assign = {
     return { undo: { flow_event: ok(r).event?.id || null } };
   },
   async undo(sb, ctx, x, h) {
-    if (h?.person_event) await salesWrites.personUndo(sb, { businessId: ctx.businessId, eventId: h.person_event, actor: ctx.auth.user.id });
+    if (h?.todo_event) await todoUndo(sb, ctx, h);
+    else if (h?.person_event) await salesWrites.personUndo(sb, { businessId: ctx.businessId, eventId: h.person_event, actor: ctx.auth.user.id });
     else if (h?.partner_event) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.id, eventId: h.partner_event, byUser: ctx.auth.user.id });
     else if (h?.flow_event) ok(await salesWrites.flowUndo(sb, { businessId: ctx.businessId, eventId: h.flow_event, byUser: ctx.auth.user.id }));
     else throw new Error('nothing recorded to undo');
@@ -236,7 +263,13 @@ const snooze = {
     const rows = [];
     if (!targets.length) targets = await named(sb, ctx.businessId, args?.names || []);
     for (const t of targets) {
-      if (t.entity === 'todos') { rows.push(block(t, "snoozing a task isn't available yet - change its due date in Actions")); continue; }
+      if (t.entity === 'todos') {
+        const todo = await todoOf(sb, ctx, t);
+        if (!todo || todo.status !== 'open') rows.push(block(t, GONE));
+        else if (todo.snooze_until === date) rows.push({ ...base(t, taskTitle(todo)), kind: 'task', from: date, to: date, skipped: `already snoozed until ${date}` });
+        else rows.push({ ...base(t, taskTitle(todo)), kind: 'task', from: todo.snooze_until ? `snoozed until ${todo.snooze_until}` : 'not snoozed', to: `until ${date}`, note: date < ctx.today ? "that's in the past - confirm or edit" : 'hidden from the open list until then', exec: { todo: todo.id, before: todo.snooze_until || null, date } });
+        continue;
+      }
       if (t.entity === 'people') {
         const prospect = await prospectOf(sb, ctx.businessId, t.id);
         if (!prospect) rows.push(block(t, 'only sequenced people can be snoozed for now'));
@@ -254,21 +287,25 @@ const snooze = {
     return { rows, to: date, nearest: rows.some(r => /deprioritize/.test(r.skipped || '')) ? 'not_fit' : null };
   },
   async act(sb, ctx, x) {
+    if (x.todo) return todoAct(sb, ctx, x, { snooze_until: x.date }, 'snooze', { snooze_until: x.before });
     if (x.partner) return { undo: { partner_event: (await salesWrites.partnerSignal(sb, { businessId: ctx.businessId, goalId: x.partner, signal: { type: 'snooze', days: x.days }, byUser: ctx.auth.user.id, meta: { origin: 'scout' } })).event.id } };
     const r = await prospectPatch(ctx, x.contact_id, { snooze_until: x.date, expect: { snooze_until: x.before } });
     if (r.status === 409) return { skipped: 'changed meanwhile' };
     ok(r); return { undo: { snooze_until: x.before } };
   },
   async undo(sb, ctx, x, h) {
-    if (x.partner) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.partner, eventId: h.partner_event, byUser: ctx.auth.user.id });
+    if (x.todo) await todoUndo(sb, ctx, h);
+    else if (x.partner) await salesWrites.partnerUndo(sb, { businessId: ctx.businessId, goalId: x.partner, eventId: h.partner_event, byUser: ctx.auth.user.id });
     else ok(await prospectPatch(ctx, x.contact_id, { snooze_until: h.snooze_until, expect: { snooze_until: x.date } }));
   },
 };
 
-// Draft email opens the Write email panel for the record's company (its one draft call counts under the Write email
-// cap; the panel's reply carries the cost). The panel takes no recipient (the draft is written to the company from its
-// Brief and never holds an address), so a person row opens their company's panel and the line names who to address.
-// The clipboard bundle (0 AI) is its own verb: Copy draft bundle.
+// scout-v3.1 C2 - Draft email writes the draft inline: ONE Write-email call (composeEmail - its daily cap, its usage row,
+// its cost) addressed to the person of the row when there is one (their first name in the greeting; the company facts
+// stay the Brief's), returned as { subject, body, cost } - never a send. A draft that holds an address or phone shape
+// is withheld with the reason. `open` still names the Write email panel, prefilled, for "Open in Write email".
+// The inline draft is asked for by the client (args.inline): a client that does not ask gets the panel opened, as
+// before, and no call is made here - so the screen that opens the panel never pays for two drafts.
 const draft = {
   id: 'draft', label: 'Draft email', lead: /^(?:draft|write)\b/, accepts: ['people', ...COMPANY_ENTITIES],
   async plan(sb, ctx, targets, args) {
@@ -276,7 +313,20 @@ const draft = {
     if (list.length !== 1) return { cant: { reason: list.length ? 'I open one draft at a time - name one record.' : 'Tell me who the draft is for.', nearest: 'draft' } };
     const { company, person } = await resolve(sb, ctx.businessId, list[0]);
     if (!company) return { cant: { reason: `${list[0].title} has ${NO_RECORD}, so there is no Write email panel to open - add the company to the pipeline first.`, nearest: person ? 'bundle' : null } };
-    return { open: { panel: 'compose', type: company.type, id: company.id, name: company.name, to: person ? list[0].title : null }, line: person ? `Opened Write email for ${company.name} · address it to ${list[0].title}` : `Opened Write email for ${company.name} — nothing sent` };
+    if (!args.inline) return { open: { panel: 'compose', type: company.type, id: company.id, name: company.name, to: person ? list[0].title : null }, line: person ? `Opened Write email for ${company.name} · address it to ${list[0].title}` : `Opened Write email for ${company.name} — nothing sent` };
+    let to = null;
+    if (person) {
+      const row = await salesReads.peopleActivity(sb, ctx.businessId, { window: 'all', snoozed: 'all' }).then(r => (r.status === 200 ? r.body.rows.find(p => p.key === list[0].id) : null));
+      to = { person_key: list[0].id, name: cleanText(row?.name || list[0].title, 120), title: row?.title ? cleanText(row.title, 160) : null };
+    }
+    const r = await salesWrites.compose(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, userName: ctx.auth.user.name, type: company.type, id: company.id, person: to, now: ctx.now });
+    if (r.status === 429) return { cant: { reason: r.body.error, nearest: 'bundle' } };
+    if (r.status !== 200) throw Object.assign(new Error(r.body?.error || 'The draft failed - try again'), { status: r.status });
+    const about = { to, company: { type: company.type, id: company.id, name: company.name }, cost: { usd: r.body.cost_usd ?? null }, cap: r.body.cap || null };
+    const open = { panel: 'compose', type: company.type, id: company.id, name: company.name, to: to?.name || null };
+    const d = r.body.draft;
+    if (hasPii(`${d.subject}\n${d.body}`)) return { draft: { ...about, withheld: true, reason: 'Draft withheld: it held an address or phone shape. Regenerate, or open Write email.' }, open, line: 'Draft withheld — nothing sent' };
+    return { draft: { ...about, subject: d.subject, body: d.body, lint: r.body.lint ? { ok: r.body.lint.ok, issues: r.body.lint.issues.length } : null }, open: { ...open, prefill: { subject: d.subject, body: d.body } }, line: `Drafted to ${to?.name || company.name} — nothing sent` };
   },
 };
 
@@ -294,10 +344,11 @@ const bundle = {
   },
 };
 
-// R4: task writes wait for the to-do history; "+ Task" and "add a task ..." open quick capture prefilled.
+// C4: a typed "add a task to call MetLife Thursday" is a card (Task · Linked to · Owner · Due) -> Confirm -> one
+// to-do through todoOn (origin scout, the record link, the person key) -> the create event's Undo.
 const TASK_LEAD = /^(?:\+ ?task\b|(?:add|create|make|new)\b(?: (?:a|an|the|me))*(?: (?:task|to-?do|todo))?(?: (?:to|for|that says|:))?)\s*/;
 const addTask = {
-  id: 'add_task', label: 'Add task', lead: /^(?:add|create|make|new)\b.*\b(?:task|to-?do|todo)\b|^\+ ?task\b/, free: true,
+  id: 'add_task', label: 'Add task', done: 'Added', lead: /^(?:add|create|make|new)\b.*\b(?:task|to-?do|todo)\b|^\+ ?task\b/, free: true,
   async plan(sb, ctx, targets, args) {
     const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
     const hit = list[0] ? await resolve(sb, ctx.businessId, list[0]) : null;
@@ -308,9 +359,53 @@ const addTask = {
     text = cleanText(text.replace(/\s+/g, ' ').trim(), 200);
     if (!text || /^(?:for |on )?(?:this|that|it|them|those|these|him|her)$/i.test(text)) text = list[0] ? `Follow up with ${list[0].title}` : '';
     if (!text) return { cant: { reason: 'Tell me what the task is, like "add a task to call MetLife Thursday".', nearest: 'add_task' } };
-    return { open: { quick_capture: { text: text[0].toUpperCase() + text.slice(1), due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null, person_key: list[0]?.entity === 'people' ? list[0].id : null } }, line: 'Opened quick capture — save it there' };
+    const task = text[0].toUpperCase() + text.slice(1);
+    // a person row reached only through its company's name ("call Cloudflare") links the company, not that person
+    const typed = String(args.raw || '').toLowerCase();
+    const viaCompany = !!list[0]?.company?.name && typed.includes(list[0].company.name.toLowerCase()) && !typed.includes(String(list[0].title).toLowerCase());
+    const person_key = list[0]?.entity === 'people' && !viaCompany ? list[0].id : null;
+    // "+ Task" on a row (a menu pick: no typed words) stays quick capture, prefilled - REVISABLE (C4).
+    if (!String(args.raw || '').trim()) return { open: { quick_capture: { text: task, due_date: args.date || null, past: !!args.when?.past, link: company ? { type: company.type, id: company.id, name: company.name } : null, person_key } }, line: 'Opened quick capture — save it there' };
+    const due = args.date || ctx.today;
+    const weekday = args.when && /^(?:(?:until|till|til|by|on|due|for)\s+)?(?:sun|mon|tue|wed|thu|fri|sat)/i.test(args.when.phrase);
+    const dueNote = args.when?.past ? "that date is in the past - confirm or edit" : weekday ? `"${args.when.phrase}" read as the next one` : args.date ? null : 'no date said - due today';
+    const me = (await salesMembers(sb, ctx.businessId)).find(m => m.id === ctx.auth.user.id)?.name.split(/\s+/)[0] || 'you';
+    return {
+      fields: { task, linked_to: company?.name || null, owner: me, due, due_note: dueNote },
+      rows: [{ key: 'todos:new', kind: 'task', title: task, from: null, to: `open to-do · due ${due}`, note: [company ? `linked to ${company.name}` : 'not linked to a record', dueNote].filter(Boolean).join(' · '), exec: { create: { text: task, due_date: due, link: company ? { type: company.type, id: company.id } : null, person_key } } }],
+    };
   },
+  async act(sb, ctx, x) {
+    const c = x.create;
+    const todo = await salesWrites.todoOn(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: c.link?.type || null, id: c.link?.id || null, text: c.text, today: ctx.today, dueDate: c.due_date, now: new Date(ctx.now), origin: 'scout', personKey: c.person_key, batchId: ctx.planId });
+    return { undo: { todo_event: todo.event_id } };
+  },
+  async undo(sb, ctx, x, h) { await todoUndo(sb, ctx, h); },
 };
+
+// C4 - the task-row verbs: each a card, each through applyTodo with expect, each undone by its event.
+const taskVerb = ({ id, label, done, lead, needs, to, patch, kind, expectOf, fromOf, ready }) => ({
+  id, label, done, lead, needs, accepts: ['todos'], pill: false,
+  async plan(sb, ctx, targets, args) {
+    const no = ready ? ready(args) : null;
+    if (no) return { cant: { reason: no, nearest: id } };
+    const rows = [];
+    for (const t of targets) {
+      const todo = await todoOf(sb, ctx, t);
+      if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+      const row = { ...base(t, taskTitle(todo)), kind: 'task', from: fromOf(todo), to: to(args) };
+      rows.push(row.from === row.to ? { ...row, skipped: `already ${row.to}` } : { ...row, ...(args.when?.past ? { note: "that date is in the past - confirm or edit" } : {}), exec: { todo: todo.id, expect: expectOf(todo) } });
+    }
+    return { rows, to: needs === 'date' ? args.date : null };
+  },
+  act: (sb, ctx, x, args) => todoAct(sb, ctx, x, patch(args), kind, x.expect),
+  undo: (sb, ctx, x, h) => todoUndo(sb, ctx, h),
+});
+const TASK_WORD = '(?:task|tasks|to-?dos?|todos?)';
+const taskDone = taskVerb({ id: 'task_done', label: 'Mark done', done: 'Marked done', lead: new RegExp(`^(?:mark\\b.*\\b(?:done|complete|completed|finished)\\b|(?:complete|finish|check off|close out)\\b.*\\b${TASK_WORD}\\b|done with\\b)`), to: () => 'done', fromOf: () => 'open', patch: () => ({ status: 'done' }), kind: 'done', expectOf: t => ({ status: t.status }) });
+const taskDrop = taskVerb({ id: 'task_drop', label: 'Drop task', done: 'Dropped', lead: new RegExp(`^(?:drop\\b|cancel\\b.*\\b${TASK_WORD}\\b)`), to: () => 'dropped', fromOf: () => 'open', patch: () => ({ status: 'dropped' }), kind: 'drop', expectOf: t => ({ status: t.status }) });
+const STAGE_WORD = '(?:stage|stages|pipeline|contacted|meeting|proposal|client|signed|won|lost)';
+const taskDue = taskVerb({ id: 'task_due', label: 'Change due date', done: 'Moved', needs: 'date', lead: new RegExp(`^(?:(?:move|push|change|set|reschedule)\\b(?!.*\\b${STAGE_WORD}\\b).*\\b(?:due|date|${TASK_WORD})\\b|due\\b|reschedule\\b)`), ready: a => (a.date ? null : 'Say the new date, like "move the first task to Friday".'), to: a => `due ${a.date}`, fromOf: t => (t.due_date ? `due ${String(t.due_date).slice(0, 10)}` : 'no date'), patch: a => ({ due_date: a.date }), kind: 'due', expectOf: t => ({ due_date: t.due_date ?? null }) });
 
 const PACK_ENTITIES = ['people', ...COMPANY_ENTITIES];
 const copy = {
@@ -324,7 +419,8 @@ const copy = {
   },
 };
 
-export const salesVerbs = [assign, notFit, contacted, draft, bundle, snooze, addTask, copy];
+// Order = which lead wins: "mark ... contacted / not a fit" before "mark ... done".
+export const salesVerbs = [assign, notFit, contacted, taskDone, taskDue, taskDrop, draft, bundle, snooze, addTask, copy];
 
 const PACK_TYPE = { ...KIND, people: 'person' };
 export async function salesPack(sb, ctx, { q, records }) {

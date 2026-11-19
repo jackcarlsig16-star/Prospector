@@ -86,6 +86,29 @@ export function rankTodos(rows, today, userId) {
   return [...rows].sort((a, b) => group(a) - group(b) || String(a.due_date || '').localeCompare(String(b.due_date || '')) || (b.owner_user_id === userId) - (a.owner_user_id === userId) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.id).localeCompare(String(b.id)));
 }
 const heatFilter = (rows, ask) => (ask.band && ask.bandKind === 'heat' ? rows.filter(p => p.heat_band === HEAT_OF[ask.band]) : rows);
+// scout-v3.1 C3 - count-fill: the ask names a count and a band, and the band alone yields fewer -> the next bands of the
+// SAME read fill the list up to the count (hot -> warm -> cold for people, P1 -> P2 -> P3 for companies), each row
+// keeping its real band, never past the rows the read holds. The pill and the read line say so, in words:
+// "5 people · 1 hot · 4 warm to make 5". -> { rows, fill | null }.
+const HEAT_ORDER = ['hot', 'warm', 'cold'];
+export const INTENT_ORDER = ['P1', 'P2', 'P3'];
+const INTENT_WORD = { P1: 'hot', P2: 'warm', P3: 'cool' };
+export function fillWords(noun, asked, counts) {
+  const got = counts.reduce((n, c) => n + c.n, 0);
+  return `${got} ${noun} · ${counts.map((c, i) => `${c.n} ${c.band}${i > 0 && i === counts.length - 1 ? ` to make ${got}` : ''}`).join(' · ')}${got < asked ? ` (${asked} asked - that is every one on file)` : ''}`;
+}
+export function fillPeople(all, ask) {
+  const strict = heatFilter(all, ask);
+  const band = ask.band && ask.bandKind === 'heat' ? HEAT_OF[ask.band] : null;
+  if (!band || !ask.limit || strict.length >= ask.limit) return { rows: strict, fill: null };
+  const rows = [...strict], counts = [{ band, n: strict.length }];
+  for (const next of HEAT_ORDER.slice(HEAT_ORDER.indexOf(band) + 1)) {
+    if (rows.length >= ask.limit) break;
+    const more = all.filter(p => p.heat_band === next).slice(0, ask.limit - rows.length);
+    if (more.length) { rows.push(...more); counts.push({ band: next, n: more.length }); }
+  }
+  return counts.length > 1 ? { rows, fill: { asked: ask.limit, strict: strict.length, counts, text: fillWords('people', ask.limit, counts) } } : { rows: strict, fill: null };
+}
 // scout-v3 D1: a person is a ROW - name over title, the company link over its stage, heat on the one scale, last
 // visit, last email. company.id is null when the person has no company record (ruling K4).
 export const personRow = p => ({ kind: 'person', key: p.key, name: p.name, title: p.title || null, company: p.company ? { entity: ENTITY_OF[readType(p.company.type)] || null, type: readType(p.company.type), id: p.company.id || null, name: p.company.name, stage: p.company.stage || null } : null, heat: p.heat ?? null, heat_band: p.heat_band || null, last_visit: p.visits?.last_visit ? day(p.visits.last_visit) : null, last_path: p.visits?.top_page || null, last_email: p.last_email ? { at: day(p.last_email.at), what: p.last_email.what } : null, status: p.status || null, sequenced: String(p.key).startsWith('prospect:') });
@@ -177,7 +200,9 @@ export const salesIntents = [
   // carried by a pronoun from the part before) narrows it to that company's to-dos - by link, else by its name in the text.
   { id: 'todos', example: 'show me my open tasks', title: 'Tasks', rule: TODO_RULE, match: ask => ask.entity === 'todos',
     async run(sb, { businessId, auth, ask, today }) {
-      const { rows, total } = await salesReads.openTodosFor(sb, businessId, ask.mine ? auth.user.id : null);
+      // C5: "Cyrus's tasks" reads that member's open to-dos
+      const whose = ask.member ? ask.member.id : ask.mine ? auth.user.id : null;
+      const { rows, total } = await salesReads.openTodosFor(sb, businessId, whose);
       let kept = rows.filter(r => !ask.since || (r.due_date && day(r.due_date) >= ask.since && (!ask.until || day(r.due_date) <= ask.until)) || (!r.due_date && day(r.created_at) >= ask.since));
       let of = '';
       if (ask.company.length) {
@@ -190,7 +215,7 @@ export const salesIntents = [
       kept = rankTodos(kept, today, auth.user.id).slice(0, 40);
       const linkName = await linkNames(sb, businessId, kept);
       const owner = r => (r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned');
-      return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})${of}`, total: matched, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
+      return { read: `openTodos (${total} open${ask.member ? `, ${ask.member.name}'s` : ask.mine ? ', mine' : ''})${of}`, total: matched, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
         row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), owner_user_id: r.owner_user_id || null, link: linkName.get(`${readType(r.link_type)}:${r.link_id}`) || null },
         text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}${day(r.due_date) < today ? ' (overdue)' : ''}` : 'no date', owner(r), r.steps?.length ? `${r.steps.filter(x => x.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
@@ -204,15 +229,26 @@ export const salesIntents = [
       const ranked = [...rows].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (b.visitors || 0) - (a.visitors || 0)).slice(0, 40);
       return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} · ${rows.length} companies`, items: ranked.map(c => ({ company: c.company, row: c.type ? { kind: 'company', type: c.type, id: c.id, name: c.company, score: c.score ?? null, band: c.band || null } : null, entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'ranked', example: 'hot targets Brad referred', match: ask => COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
+  { id: 'ranked', example: 'hot targets Brad referred', match: ask => !isTopTargets(ask) && COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.member || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
     async run(sb, { businessId, auth, ask, now }) {
       const segment = { partners: 'partners', employers: 'employers', targets: 'targets' }[ask.entity] || 'all';
-      const query = { segment, band: ask.band || '', source: ask.source || '', owner: ask.mine ? auth.user.id : '', sort: ask.sort === 'date' ? 'newest' : 'rank' };
+      const query = { segment, band: ask.band || '', source: ask.source || '', owner: ask.member ? ask.member.id : ask.mine ? auth.user.id : '', sort: ask.sort === 'date' ? 'newest' : 'rank' };
       const r = await salesReads.listScores(sb, businessId, query, { now });
-      let rows = r.body.rows;
-      if (ask.since) rows = rows.filter(x => x.last_touch_at && day(x.last_touch_at) >= ask.since && (!ask.until || day(x.last_touch_at) <= ask.until));
+      const touched = list => (ask.since ? list.filter(x => x.last_touch_at && day(x.last_touch_at) >= ask.since && (!ask.until || day(x.last_touch_at) <= ask.until)) : list);
+      let rows = touched(r.body.rows);
+      // C3: fewer than the count asked in that band -> the next bands of the same read fill it
+      let fill = null;
+      if (ask.limit && INTENT_ORDER.includes(ask.band) && rows.length < ask.limit) {
+        const counts = [{ band: INTENT_WORD[ask.band], n: rows.length }];
+        for (const next of INTENT_ORDER.slice(INTENT_ORDER.indexOf(ask.band) + 1)) {
+          if (rows.length >= ask.limit) break;
+          const more = touched((await salesReads.listScores(sb, businessId, { ...query, band: next }, { now })).body.rows).slice(0, ask.limit - rows.length);
+          if (more.length) { rows = [...rows, ...more]; counts.push({ band: INTENT_WORD[next], n: more.length }); }
+        }
+        if (counts.length > 1) fill = { asked: ask.limit, strict: counts[0].n, counts, text: fillWords('companies', ask.limit, counts) };
+      }
       rows = rows.slice(0, 40);
-      return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown`, items: rows.map(x => ({ company: x.name, row: { kind: 'company', type: x.type, id: x.id, name: x.name, score: x.score ?? null, band: x.band || null, owner: x.owner || null, stage: x.stage || null }, entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
+      return { fill, total: fill ? rows.length : undefined, read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown${fill ? ` · filled: ${fill.text}` : ''}`, items: rows.map(x => ({ company: x.name, row: { kind: 'company', type: x.type, id: x.id, name: x.name, score: x.score ?? null, band: x.band || null, owner: x.owner || null, stage: x.stage || null }, entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
     } },
   // FIX scout-ask-routing-v1 A2: people whose company is on the site (or who were identified there) in the window,
   // hottest first - "who's our hottest person visiting the website". Sits between 'visitors' (companies) and 'people'.
@@ -224,9 +260,11 @@ export const salesIntents = [
       const since = ask.since || addDays(today, -6);
       const up = awake(r.body.rows, today);
       let rows = up.rows.filter(p => (p.visits && p.visits.visits_7d > 0 && (!p.visits.seen_to || p.visits.seen_to >= since)) || (p.identified_at && p.identified_at >= since));
-      rows = heatFilter(rows, ask);
+      if (ask.follow?.people) rows = rows.filter(p => ask.follow.people.includes(p.key));
       rows.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.visits?.last_visit || b.identified_at || '').localeCompare(String(a.visits?.last_visit || a.identified_at || '')));
-      return { read: `people whose company visited (${ask.since_kind || '7 d'}) · ${rows.length} · by heat${up.hidden}`, total: rows.length, items: rows.slice(0, 25).map(personItem) };
+      const f = fillPeople(rows, ask);
+      rows = f.rows;
+      return { read: `people whose company visited (${ask.since_kind || '7 d'}) · ${rows.length} · by heat${up.hidden}${f.fill ? ` · filled: ${f.fill.text}` : ''}`, total: rows.length, fill: f.fill, items: rows.slice(0, 25).map(personItem) };
     } },
   { id: 'people', example: 'who opened our emails', title: 'People', rule: PEOPLE_RULE, match: ask => !isPeopleVisiting(ask) && (ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails)),
     async run(sb, { businessId, ask, today }) {
@@ -234,10 +272,14 @@ export const salesIntents = [
       const r = await salesReads.peopleActivity(sb, businessId, { window: win });
       if (r.status !== 200) return { read: `goals/people/activity (${r.status})`, items: [] };
       const up = awake(r.body.rows, today);
-      let rows = heatFilter(up.rows, ask);
+      let rows = up.rows;
       if (ask.flags.replied) rows = rows.filter(p => p.emails.replied > 0); else if (ask.flags.clicked) rows = rows.filter(p => p.emails.clicked > 0); else if (ask.flags.opened) rows = rows.filter(p => p.emails.opened > 0);
-      if (ask.terms.length) rows = rows.filter(p => ask.terms.some(t => `${p.name} ${p.title || ''} ${p.company?.name || ''}`.toLowerCase().includes(t)));
-      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)${up.hidden}`, total: rows.length, items: rows.slice(0, 40).map(personItem) };
+      // C1: a follow-up about the people of the last answer reads those people, not the question's leftover words
+      if (ask.follow?.people) rows = rows.filter(p => ask.follow.people.includes(p.key));
+      else if (ask.terms.length) rows = rows.filter(p => ask.terms.some(t => `${p.name} ${p.title || ''} ${p.company?.name || ''}`.toLowerCase().includes(t)));
+      const f = fillPeople(rows, ask);
+      rows = f.rows;
+      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)${up.hidden}${f.fill ? ` · filled: ${f.fill.text}` : ''}`, total: rows.length, fill: f.fill, items: rows.slice(0, 40).map(personItem) };
     } },
   // email-funnel-v1 F7: the two rates and the funnel steps straight from the funnel route (funnelMath, the one function),
   // so Scout's answer carries the same numbers as the daily email and the Web visitors page.

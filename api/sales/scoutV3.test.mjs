@@ -135,7 +135,8 @@ const fakeWrites = () => {
     partnerSignal: async (sb, a) => { log.push(['partnerSignal', a.goalId, a.signal, a.meta]); return { event: { id: `pe-${a.signal.type}` } }; },
     partnerUndo: async (sb, a) => { log.push(['partnerUndo', a.eventId]); return {}; },
     prospect: async a => { log.push(['prospect', a.params.contactId, a.body]); return { status: 200, body: {} }; },
-    todoOn: async (sb, a) => { log.push(['todoOn', a.type, a.id, a.text, a.done]); return { id: 'todo-1' }; },
+    todoOn: async (sb, a) => { log.push(['todoOn', a.type, a.id, a.text, a.done]); return { id: 'todo-1', event_id: 'tev-1' }; },
+    compose: async () => { log.push(['compose']); throw new Error('no draft call is expected without inline'); },
     todoUndoCreate: async (_sb, a) => { log.push(['todoUndoCreate', a.todoId]); return {}; },
     rejectTarget: async (sb, a) => { log.push(['rejectTarget', a.targetId, a.body]); return { status: 200, body: { dropped: ['t1'] } }; },
     deprioritize: async (sb, a) => { log.push(['deprioritize', a.type, a.id, a.body]); return { status: 200, body: { event: { id: 'flow-fit' } } }; },
@@ -256,7 +257,7 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
   const emp = await go('snooze Cloudflare until Thursday', [row('employers', u('3'), 'Cloudflare')]);
   assert.match(emp.p.body.cant.reason, /snooze exists for partners and people; deprioritize is the other option/);
   assert.deepEqual(emp.p.body.cant.nearest, { id: 'not_fit', label: 'Not a fit' });
-  assert.match((await go('snooze this until Thursday', [row('todos', u('6'), 'Call Hilton')])).p.body.cant.reason, /isn't available yet/);
+  assert.match((await go('snooze this until Thursday', [row('todos', u('6'), 'Call Hilton')])).p.body.cant.reason, /no longer open/);
   const past = await go('snooze Dana Mayer until Nov 3', [dana]);
   assert.equal(past.p.body.when.past, true); assert.match(past.p.body.rows[0].note, /in the past - confirm or edit/);
 
@@ -264,6 +265,7 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
   const d1 = await go('draft an email to Cloudflare', [row('employers', u('3'), 'Cloudflare')]);
   assert.deepEqual(d1.p.body.open, { panel: 'compose', type: 'employer', id: u('3'), name: 'Cloudflare', to: null });
   assert.equal(d1.p.body.line, 'Opened Write email for Cloudflare — nothing sent');
+  assert.equal(d1.p.body.draft, undefined, 'scout-v3.1: no draft call unless the client asks for the inline draft');
   // FIX scout-action-feedback-v1: a person's Draft email opens their company's panel and the line names them; the
   // clipboard bundle is its own verb; a person with no company record can't draft, Copy draft bundle is the nearest.
   const d2 = await go('draft an email to Dana Mayer', [dana]);
@@ -277,11 +279,10 @@ test('the verb matrix: mark contacted = the person\'s status + a done to-do and 
   assert.match(d3.p.body.cant.reason, /^Lee Stone has no company record, so there is no Write email panel to open/);
   assert.deepEqual(d3.p.body.cant.nearest, { id: 'bundle', label: 'Copy draft bundle' });
   assert.deepEqual((await go('copy draft bundle for Lee Stone', [lee])).p.body.open, { copy: 'bundle', type: 'target', records: [{ entity: 'people', id: lee.id }], person: 'Lee Stone' });
-  const t = await go('add a task to call Cloudflare Thursday', []);
-  assert.deepEqual(t.p.body.open, { quick_capture: { text: 'Call Cloudflare', due_date: '2026-11-12', past: false, link: { type: 'employer', id: u('3'), name: 'Cloudflare' }, person_key: null } });
-  assert.equal(t.p.body.line, 'Opened quick capture — save it there');
-  const t2 = await go('add a task for this', [lee]);
-  assert.deepEqual(t2.p.body.open.quick_capture, { text: 'Follow up with Lee Stone', due_date: null, past: false, link: null, person_key: 'prospect:c2' });
+  // scout-v3.1 C4: "+ Task" picked on a row (no typed words) is still quick capture, prefilled; a typed task is a card
+  const t = await plan(sb, registry, { auth: ana, body: { scope: A, verb: 'add_task', keys: ['people:prospect:c2'], rows: [lee] } });
+  assert.deepEqual(t.body.open.quick_capture, { text: 'Follow up with Lee Stone', due_date: null, past: false, link: null, person_key: 'prospect:c2' });
+  assert.equal(t.body.line, 'Opened quick capture — save it there');
   const c = await go('copy this for Claude', [dana]);
   assert.deepEqual(c.p.body.open, { pack: { records: [{ entity: 'people', id: 'prospect:c1' }] } });
   assert.equal(log.length, 0, 'opens write nothing');

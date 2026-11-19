@@ -372,11 +372,12 @@ async function targetRow(supabase, businessId, id) {
   if (!row) throw err(404, 'target not found');
   return row;
 }
-export async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now, origin = 'panel', personKey = null }) {
+// scout-v3.1 C4: dueDate (default today), no record (type null = an unlinked to-do) and a batch id for a card's rows.
+export async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now, origin = 'panel', personKey = null, dueDate = today, batchId = null }) {
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
-  const r = await applyTodo(supabase, { businessId, actor: userId, origin, now: now || new Date(), create: {
-    week_start: week, kind: 'todo', status: done ? 'done' : 'open', text, due_date: today, link_type: LINK_TYPE[type], link_id: id,
+  const r = await applyTodo(supabase, { businessId, actor: userId, origin, batchId, now: now || new Date(), create: {
+    week_start: week, kind: 'todo', status: done ? 'done' : 'open', text, due_date: dueDate, ...(type ? { link_type: LINK_TYPE[type], link_id: id } : {}),
     owner_user_id: userId, created_by: userId, sort_order: 0, contacts: [], ...(personKey ? { person_key: personKey } : {}), ...(done ? { completed_at: now.toISOString() } : {}),
   } });
   // the event rides on the row (not a column): the caller hands its id to the screen for Undo

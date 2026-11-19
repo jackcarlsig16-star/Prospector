@@ -10,7 +10,8 @@ import { recomputeScores } from './intentScoreRun.js';
 import { DEFAULT_WEIGHTS } from './intentScore.js';
 import { scoreOf, listViews, saveView, deleteView, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { setVisitPriority } from './visitPriority.js';
-import { composeEmail, lintPasted, composeStatus, COMPOSE_DAILY_CAP } from './composeRoutes.js';
+import { composeEmail, lintPasted, composeStatus, COMPOSE_DAILY_CAP, composeSystem, DEFAULT_COMPOSE_PROMPT, askLine, personOf } from './composeRoutes.js';
+import { mergeRules } from './composeLint.js';
 
 const NOW = Date.parse('2026-10-27T18:00:00Z');
 const DAY = 864e5;
@@ -120,4 +121,29 @@ test('lintPasted: the same rules on a pasted draft against the company Brief (a 
   const ok = await lintPasted(db, { businessId: B, userName: 'Jack Carlson', body: { subject: 'Hi', body: 'Short and plain.\n\nJack' }, now: NOW });
   assert.deepEqual([ok.body.lint.ok, ok.body.refs], [true, 0]);
   assert.equal((await lintPasted(db, { businessId: B, userName: 'Jack', body: { body: 5 } })).status, 400);
+});
+
+// scout-v3.1 C2 - the optional recipient. The system prompt is the frozen one, byte for byte; only the user turn's last
+// line changes: it names the person and their first name for the greeting. Names and titles only.
+test('composeEmail with a person: the user turn addresses that person (first name for the greeting), the system prompt is unchanged, the reply carries the person; a person holding an address is refused before any call', async () => {
+  const db = fakeSupabase(seed());
+  const calls = [];
+  const call = async args => { calls.push(args); return { stop_reason: 'end_turn', usage: { input_tokens: 900, output_tokens: 200 }, content: [{ type: 'text', text: JSON.stringify({ subject: 'Quick idea for Quarry Labs', body: 'Hi Danilea,\n\nSaw the relocation program at Quarry Labs.\n\nWorth 15 minutes? [Tue 10am] [Thu 2pm]\n\nJack', why_this_company: 'relocation', claims: [] }) }] }; };
+  const plain = await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack Carlson', type: 'target', id: ID.quarry, now: NOW, call });
+  const r = await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack Carlson', type: 'target', id: ID.quarry, person: { person_key: 'prospect:c9', name: 'Danilea Cruz', title: 'VP People' }, now: NOW, call });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(calls[1].system, calls[0].system, 'the system prompt is the same with or without a person');
+  assert.equal(calls[0].system, composeSystem({ prompt: DEFAULT_COMPOSE_PROMPT, rules: mergeRules(null), signOff: 'Jack' }));
+  assert.ok(calls[0].messages[0].content.endsWith('Write the first email to Quarry Labs.'));
+  assert.ok(calls[1].messages[0].content.endsWith('Write the first email to Danilea Cruz, VP People, at Quarry Labs. Greet them by their first name, Danilea. They are the recipient; the other people in the Brief are not.'));
+  assert.equal(calls[1].messages[0].content.split('\n\n').slice(0, -1).join('\n\n'), calls[0].messages[0].content.split('\n\n').slice(0, -1).join('\n\n'), 'the Brief is the same');
+  assert.deepEqual(r.body.person, { person_key: 'prospect:c9', name: 'Danilea Cruz', title: 'VP People' });
+  assert.equal(plain.body.person, undefined);
+  assert.match(r.body.draft.body, /^Hi Danilea,/);
+  assert.equal(askLine('Acme', { name: 'Lee Stone', title: null }), 'Write the first email to Lee Stone at Acme. Greet them by their first name, Lee. They are the recipient; the other people in the Brief are not.');
+  const at = String.fromCharCode(64);
+  assert.equal((await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack', type: 'target', id: ID.quarry, person: { name: `lee${at}example.test` }, now: NOW, call })).status, 400);
+  assert.equal((await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack', type: 'target', id: ID.quarry, person: { title: 'VP' }, now: NOW, call })).status, 400);
+  assert.equal(calls.length, 2, 'a refused person makes no call');
+  assert.deepEqual(personOf(null), { person: null });
 });

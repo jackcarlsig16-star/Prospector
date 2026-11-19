@@ -17,12 +17,14 @@ const phraseIn = (text, phrase) => new RegExp(`(^|[^a-z])${phrase.replace(/[.*+?
 
 // Merged vocabulary of the modules in scope (static words + the glossary's dynamic ones).
 export function mergeVocab(parts) {
-  const out = { entities: {}, bands: {}, sources: {}, stems: {} };
+  const out = { entities: {}, bands: {}, sources: {}, stems: {}, members: [] };
   for (const v of parts.filter(Boolean)) {
     for (const [k, words] of Object.entries(v.entities || {})) out.entities[k] = [...new Set([...(out.entities[k] || []), ...words])];
     Object.assign(out.bands, v.bands || {});
     Object.assign(out.sources, v.sources || {});
     Object.assign(out.stems, v.stems || {});
+    // scout-v3.1 C5: the members' names ride with the vocabulary, so a first name is never a company candidate
+    for (const m of v.members || []) if (m?.name && !out.members.some(x => x.id === m.id)) out.members.push({ id: m.id, name: m.name });
   }
   return out;
 }
@@ -93,9 +95,14 @@ export function parseAsk(q, vocab, { today }) {
   const time = sinceOf(text, today);
   const sort = /\b(by|on) score\b|\bhighest score\b/.test(text) ? 'score' : /\bnewest|latest|most recent|by date\b/.test(text) ? 'date' : /\bby heat\b|\bhottest\b/.test(text) || superlative ? 'heat' : null;
   const quoted = [...raw.matchAll(/"([^"]{2,80})"|“([^”]{2,80})”/g)].map(m => m[1] || m[2]);
+  // C5: a member's first name ("Cyrus", "Cyrus's") is a member token - the ask is about that member's records.
+  const firstOf = m => String(m.name).trim().split(/\s+/)[0].toLowerCase();
+  const memberOf = tok => (vocab.members || []).find(m => firstOf(m) === tok.toLowerCase().replace(/['’]s?$/, '')) || null;
+  let member = null;
   const caps = [];
   for (const tok of raw.replace(/[",.?!;:()]/g, ' ').split(/\s+/)) {
     const last = caps[caps.length - 1];
+    if (/^\p{Lu}[\p{L}\p{N}&'’.-]*$/u.test(tok) && memberOf(tok)) { member ||= memberOf(tok); if (last) caps.push(null); continue; }
     if (/^\p{Lu}[\p{L}\p{N}&'’.-]*$/u.test(tok) && !CAP_STOP.has(tok) && !vocabWords.has(tok.toLowerCase())) { if (last) last.push(tok); else caps.push([tok]); }
     else if (last) caps.push(null);
   }
@@ -118,8 +125,9 @@ export function parseAsk(q, vocab, { today }) {
   const pronoun = /\b(them|they|their|these|those companies|that company)\b/.test(text);
   // A3: a band word on a people ask is a heat band (hot / warm / cold), on a company ask the intent band (P1-P4).
   const bandKind = !band ? null : entity === 'people' || flags.opened || flags.replied || flags.clicked ? 'heat' : 'intent';
-  const terms = words.filter(w => !STOP.has(w) && !vocabWords.has(w) && w.length > 1 && !/^\d+$/.test(w));
-  return { q: raw, limit, pronoun, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
+  const memberWords = member ? new Set([firstOf(member), `${firstOf(member)}s`]) : new Set();
+  const terms = words.filter(w => !STOP.has(w) && !vocabWords.has(w) && !memberWords.has(w) && w.length > 1 && !/^\d+$/.test(w));
+  return { q: raw, limit, pronoun, member: member ? { id: member.id, name: firstOf(member)[0].toUpperCase() + firstOf(member).slice(1) } : null, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
 }
 
 const refOf = (entity, id) => `${entity}:${id}`;
@@ -129,6 +137,7 @@ const refOf = (entity, id) => `${entity}:${id}`;
 // each) match an intent of their own and the two differ (by intents or entity). `signature(ask)` is the caller's view of
 // the modules in scope ('' when no intent matches). At most PARTS_MAX parts; `cut` counts the rest.
 export const PARTS_MAX = 5;
+export const FOLLOW_MAX = 10;
 const SEPARATOR = /\s*;\s*|\s+(?:and\s+then|and\s+also|and\s+show(?:\s+me)?|then(?:\s+show(?:\s+me)?)?|also\s+show(?:\s+me)?)\s+/i;
 export function splitAsk(q, vocab, { today, signature }) {
   const raw = String(q || '').trim();
@@ -151,7 +160,12 @@ export function splitAsk(q, vocab, { today, signature }) {
 // Each record is cited by a short label [r1]…[rN] (numbered in the order it enters the pack) - a uuid token costs the
 // model ~25 output tokens a record; the label maps back to the record here, never in the prompt.
 // -> { ask, pack, items: Map(label -> item), stats, glossary, businesses }
-export async function buildContext(supabase, registry, { auth, scope, q, now = Date.now() }) {
+// scout-v3.1 C6: a read line names the read and its counts - never a record id (a uuid, a person key, a member id).
+const UUID_G = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+export const publicRead = read => String(read || '').replace(/"owner":"[^"]+"/g, '"owner":"a member"').replace(/\/(?:prospect|person|contact):[^\s·+]+/g, '/person').replace(new RegExp(`/?${UUID_G.source}`, 'gi'), '').replace(/ {2,}/g, ' ').trim();
+
+// follow = what a follow-up resolved to (followUp.js): { rows: [{ entity, id, title, company }], company?: true }.
+export async function buildContext(supabase, registry, { auth, scope, q, now = Date.now(), follow = null }) {
   const businesses = await scopedBusinesses(supabase, auth, scope);
   const today = laDateString(new Date(now));
   const many = businesses.length > 1;
@@ -174,9 +188,19 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     const ask = parseAsk(text, vocab, { today });
     // D2 / R11: a pronoun carries the previous part's companies ("... and show my tasks for them").
     if (ask.pronoun && !ask.company.length && carry.length) { ask.company = carry.slice(0, 3); ask.carried = true; }
+    // C1: a follow-up's rows become this ask's filter - the people themselves on a people ask, their companies on a
+    // task ask (or "that company"), else the records by name (a company, or a person for the brief).
+    if (follow?.rows.length && split.parts.length === 1) {
+      const people = follow.rows.filter(r => r.entity === 'people'), companies = follow.rows.filter(r => r.entity !== 'people' && r.entity !== 'todos');
+      const uniq = list => [...new Set(list.filter(Boolean))].slice(0, FOLLOW_MAX);
+      const aboutPeople = ask.entity === 'people' || ask.flags.opened || ask.flags.replied || ask.flags.clicked;
+      ask.pronoun = false; ask.resolved = true;
+      if (people.length && aboutPeople && !follow.company) ask.follow = { people: people.map(r => String(r.id)) };
+      else ask.company = uniq([...companies.map(r => r.title), ...people.map(r => (follow.company || ask.entity === 'todos' ? r.company?.name : r.title))]);
+    }
     let found = []; // { item, b, priority }
     const partReads = [], matched = [], rules = [], titles = [];
-    let total = null, brief = null;
+    let total = null, brief = null, fill = null;
     const add = (list, b, entity, priority) => { for (const it of list || []) found.push({ item: { entity, ...it }, b, priority }); };
     for (const { b, m } of per) {
       const ctx = { businessId: b.id, business: b, auth, ask, today, now };
@@ -189,6 +213,7 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
         const title = typeof i.title === 'function' ? i.title(ask) : i.title; if (title) titles.push({ title, context: !!i.context });
         if (typeof r.total === 'number' && !(i.context && hit.length > 1)) total = (total || 0) + r.total;
         if (r.brief) brief = r.brief;
+        if (r.fill) fill = r.fill;
       }
       if (!hit.length) {
         if (ask.search) for (const e of m.entities) {
@@ -238,8 +263,8 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
       }
     }
     if (multi && !partLabels.length && matched.length) push('(no rows for this part)');
-    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.join(' · '), labels: partLabels, count: total ?? partLabels.length, brief: ask.flags.brief && brief ? brief : null });
+    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.map(publicRead).join(' · '), labels: partLabels, count: total ?? partLabels.length, fill, brief: ask.flags.brief && brief ? brief : null });
   }
   const intent = matchedAll.length ? [...new Set(matchedAll)].join('+') : 'none';
-  return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
+  return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads: reads.map(publicRead), dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
 }

@@ -4,6 +4,7 @@ import { laDateString } from '../sales/laDate.js';
 import { addDays } from '../sales/goalsShared.js';
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { scoutDeps, getScoutSupabase, scopedBusinesses } from './registry.js';
+import { resolveFollowUp } from './followUp.js';
 
 // scout-v3 S1 - Scout acts, the model never writes. A typed command or a menu pick -> POST /api/scout/plan (no write):
 // parseCommand reads the verb, the targets (resolved against the rows of the answer on screen) and the arguments, and
@@ -50,22 +51,11 @@ export function parseDate(text, today) {
   return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31 ? out(`${today.slice(0, 4)}-${pad(mm)}-${pad(dd)}`) : null;
 }
 
-// The rows a command points at, from the answer on screen: explicit keys (a menu pick); "all / those / them / all
-// five"; "the first 3"; "row 2"; a row's own name or its company's ("the Cloudflare ones"); "this / it" when one row.
-const COUNT_WORD = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
-export function resolveTargets(text, rows, keys) {
+// The rows a command points at, from the answer on screen: explicit keys (a menu pick), else the follow-up rule
+// (followUp.js - names, ordinals, "the first 3", pronouns). entities = the kinds the verb accepts.
+export function resolveTargets(text, rows, keys, { entities = null } = {}) {
   if (Array.isArray(keys) && keys.length) return { rows: rows.filter(r => keys.includes(r.key)), how: 'picked' };
-  const t = ` ${String(text || '').toLowerCase().replace(/['’]/g, '')} `;
-  const named = rows.filter(r => [r.title, r.company?.name].filter(Boolean).some(n => String(n).length > 2 && t.includes(String(n).toLowerCase().replace(/['’]/g, ''))));
-  if (named.length) return { rows: named, how: 'named' };
-  const first = /\b(?:first|top)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten)\b/.exec(t);
-  if (first) return { rows: rows.slice(0, COUNT_WORD[first[1]] || Number(first[1])), how: 'first' };
-  const nth = /\b(?:row|number|#)\s*(\d{1,2})\b/.exec(t);
-  if (nth) return { rows: rows.slice(Number(nth[1]) - 1, Number(nth[1])), how: 'row' };
-  const pronoun = /\b(all|those|these|them|everyone|every one|each)\b/.test(t);
-  if (pronoun) return { rows, how: 'all', pronoun: true };
-  if (/\b(this|that|it|him|her|this one|that one)\b/.test(t)) return { rows: rows.length === 1 ? rows : [], how: 'one', pronoun: true };
-  return { rows: [], how: 'none' };
+  return resolveFollowUp(text, rows, { entities });
 }
 
 // A command = the text opens with a verb's lead words (after "please", "scout," ...). -> { verb } | { refused } | null
@@ -113,9 +103,10 @@ export async function plan(supabase, registry, { auth, body = {}, now = actDeps.
   const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, 200).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name || ''), 160) } : null }));
   const today = laDateString(new Date(now));
   const members = mod.members ? await mod.members(supabase, business.id) : [];
-  const target = resolveTargets(cmd.text, rows, body.keys);
+  const target = resolveTargets(text || cmd.text, rows, body.keys, { entities: verb.accepts || null });
   const usable = target.rows.filter(r => !verb.accepts || verb.accepts.includes(r.entity));
-  const args = { ...(body.args && typeof body.args === 'object' ? body.args : {}) };
+  if (target.ambiguous) return reply(200, cant(verbs, `Which one? Say it like "the second one" or use a name.`, verb.id));
+  const args = { ...(body.args && typeof body.args === 'object' ? body.args : {}), inline: body.inline === true };
   if (verb.needs === 'member' && !('owner_user_id' in args)) {
     const to = /\bto\s+(me|myself|nobody|no one|unassigned|[a-z][a-z-]+)\b/.exec(cmd.text) || (/^unassign\b/.test(cmd.text) ? [null, 'nobody'] : null);
     const who = to && (['me', 'myself'].includes(to[1]) ? members.find(m => m.id === auth.user.id) : ['nobody', 'no one', 'unassigned'].includes(to[1]) ? { id: null, name: 'Unassigned' } : members.find(m => m.name.toLowerCase().split(/\s+/)[0] === to[1]));
@@ -136,6 +127,8 @@ export async function plan(supabase, registry, { auth, body = {}, now = actDeps.
   try { p = await verb.plan(supabase, ctx, usable, { ...args, text: cmd.text, raw: text }); }
   catch (e) { return reply(e.status || 500, { error: e.message }); }
   if (p.cant) return reply(200, cant(verbs, p.cant.reason, p.cant.nearest));
+  // C2: an inline draft (text + cost; nothing to confirm, nothing sent) - checked once more for an address or phone shape
+  if (p.draft) return reply(200, { verb: verb.id, label: verb.label, draft: p.draft.withheld || !hasPii(`${p.draft.subject}\n${p.draft.body}`) ? p.draft : { ...p.draft, subject: undefined, body: undefined, withheld: true, reason: 'Draft withheld: it held an address or phone shape.' }, open: p.open || null, line: p.line });
   if (p.open) return reply(200, { verb: verb.id, label: verb.label, open: p.open, line: p.line });
   if (p.rows.length > BATCH_MAX) return reply(200, cant(verbs, `That is ${p.rows.length} rows. Narrow it to ${BATCH_MAX} or fewer.`, verb.id));
   if (p.rows.length && p.rows.every(r => r.blocked)) return reply(200, cant(verbs, p.rows[0].skipped, p.nearest || null));
@@ -143,7 +136,7 @@ export async function plan(supabase, registry, { auth, body = {}, now = actDeps.
   cancelPlans(auth.user.id);
   plans.set(id, { id, user_id: auth.user.id, business_id: business.id, verb, args, rows: p.rows, created_at: now, acted_at: null, undone_at: null });
   const will = p.rows.filter(r => !r.skipped).length;
-  const card = { plan_id: id, verb: verb.id, label: verb.label, to: p.to ?? args.owner_name ?? args.date ?? null, when: args.when || null, rows: p.rows.map(publicRow), summary: { will, skipped: p.rows.length - will }, note: p.note || null, expires_at: new Date(now + PLAN_TTL_MS).toISOString() };
+  const card = { plan_id: id, verb: verb.id, label: verb.label, to: p.to ?? args.owner_name ?? args.date ?? null, when: args.when || null, rows: p.rows.map(publicRow), summary: { will, skipped: p.rows.length - will }, note: p.note || null, ...(p.fields ? { fields: p.fields } : {}), expires_at: new Date(now + PLAN_TTL_MS).toISOString() };
   if (hasPii(card.rows.map(r => [r.title, r.from, r.to, r.skipped, r.note].filter(Boolean).join(' · ')).join(' · '))) { plans.delete(id); return reply(500, { error: 'The card was blocked: it held an address or phone shape' }); }
   return reply(200, card);
 }

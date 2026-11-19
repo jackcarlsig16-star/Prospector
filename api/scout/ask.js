@@ -5,6 +5,7 @@ import { laStartOfDayMs } from '../sales/goalsShared.js';
 import { scoutDeps, getScoutSupabase } from './registry.js';
 import { buildContext } from './retrieve.js';
 import { cancelPlans } from './actions.js';
+import { resolveFollowUp, resolvedLine } from './followUp.js';
 
 // scout-v2 REV2 Stage 1 (D1 POST, D4, D5) - POST /api/scout/ask { q, scope, thread?, filters? } -> { answer_md, items,
 // usage, context_stats }. The server builds everything (retrieve.js) and calls Claude once with a SERVER system prompt:
@@ -16,6 +17,7 @@ export const MAX_TOKENS = 1200;
 export const LIST_MAX = 15; // records named in the prose; the rest ride in the table (Jack, Stage 3)
 export const CALL_TYPE = 'scout_ask';
 export const Q_MAX = 500, THREAD_MAX = 6, TURN_MAX = 2000, ACTIONS_MAX = 5;
+export const ROWS_MAX = 200;
 export const SYSTEM = [
   'You are Scout, the assistant inside Prospector, a sales workspace. You answer questions about the user\'s own records.',
   'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: a label like [r1] followed by its fields.',
@@ -28,6 +30,8 @@ export const SYSTEM = [
   'Plain prose or bullets. No headings. No em dashes or en dashes: use a comma or a colon instead.',
   // scout-v3 S3: the rows are shown as a table under the answer, so the prose never restates them.
   'Name each record once. Never write "---". Do not add a "Records" list: the cited records are shown as rows.',
+  // scout-v3.1 C6: the label IS the name on screen.
+  'A label like [r3] is shown to the user as that record\'s name. So never write a record\'s name next to its label: write the label alone, where the name would go.',
 ].join('\n');
 // scout-v3 D2: a multi-part ask - one summary sentence, then one "@@ n" block per part, in order, holding only that
 // part's labels (the server renders them as the section's rows with its count and rule) or one line when it has none.
@@ -60,8 +64,18 @@ export function resolveRefs(text, items) {
     if (!used.has(label)) used.set(label, it);
     return it.title;
   }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ');
-  for (const [, label] of (more?.[2] || '').matchAll(TOKEN)) { const it = items.get(label); if (it && !used.has(label)) used.set(label, it); }
-  return { answer_md: answer.trim(), items: [...used.values()] };
+  return { answer_md: onceEach(answer, [...used.values()].map(it => it.title)).trim(), items: withMore(more, items, used) };
+}
+const withMore = (more, items, used) => { for (const [, label] of (more?.[2] || '').matchAll(TOKEN)) { const it = items.get(label); if (it && !used.has(label)) used.set(label, it); } return [...used.values()]; };
+// C6 post-pass: the model wrote the name and then cited it ("Dana Mayer [r1]" -> "Dana Mayer Dana Mayer") - the name
+// stays once, with whatever wrapped the first one (bold, a list dash).
+export function onceEach(text, titles) {
+  let out = text;
+  for (const t of [...new Set(titles)].filter(x => x && x.length > 2).sort((a, b) => b.length - a.length)) {
+    const e = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    out = out.replace(new RegExp(`(\\*\\*|__)?${e}(\\*\\*|__)?[ \\t]*[:,(\\-–·]?[ \\t]*\\(?${e}\\)?`, 'g'), (m, a = '', b = '') => `${a}${t}${b}`);
+  }
+  return out;
 }
 
 // scout-v3 D2: the model's text + the context's parts -> { summary, sections: [{ title, count, rule, read, rows, line,
@@ -70,7 +84,7 @@ export function resolveRefs(text, items) {
 // dropped; a block that cites none falls back to the part's own rows); count, rule and read come from the intents.
 const BLOCK = /^[ \t]*@@[ \t]*(\d+)[ \t]*$/m;
 export function sectioned(text, ctx) {
-  const meta = p => ({ title: p.title || cleanText(p.q, 80), count: p.count, rule: p.rule, read: p.read, brief: p.brief });
+  const meta = p => ({ title: p.title || cleanText(p.q, 80), count: p.count, rule: p.rule, read: p.read, brief: p.brief, ...(p.fill ? { fill: p.fill } : {}) });
   if (ctx.parts.length < 2) {
     const r = resolveRefs(text, ctx.items), p = ctx.parts[0];
     return { ...r, summary: r.answer_md, sections: [{ ...meta(p), count: r.items.length, total: Math.max(p.count, r.items.length), rows: r.items, line: null }] };
@@ -102,7 +116,19 @@ export function validateAsk(body = {}) {
   const scope = body.scope === 'all' ? 'all' : typeof body.scope === 'string' && body.scope ? body.scope : null;
   // D11: an action is a sub-line of the answer it acted on ("→ assigned 3 to Ana · undone"), never its own turn.
   const withActions = t => [cleanText(t.content, TURN_MAX), ...(t.actions || []).slice(-ACTIONS_MAX).map(a => `→ ${cleanText(a, 200)}`)].join('\n');
-  return { q, thread: thread.map(t => ({ role: t.role, content: withActions(t) })), scope };
+  // scout-v3.1 C1: the rows of the answer on screen (every section, in display order), so a follow-up can point at them.
+  const rows = (Array.isArray(body.rows) ? body.rows : []).slice(0, ROWS_MAX).filter(r => r && typeof r.entity === 'string' && r.id != null).map(r => ({ key: `${r.entity}:${r.id}`, entity: r.entity, id: String(r.id), title: cleanText(String(r.title || ''), 160), company: r.company && typeof r.company === 'object' && r.company.name ? { type: r.company.type || null, id: r.company.id || null, name: cleanText(String(r.company.name), 160) } : null }));
+  return { q, thread: thread.map(t => ({ role: t.role, content: withActions(t) })), scope, rows };
+}
+
+// C1: what the follow-up points at. -> null (not a follow-up) | { cant } | { rows, line, company? }.
+export function followUpOf(q, rows) {
+  const r = resolveFollowUp(q, rows, { ask: true });
+  if (r.how === 'none') return null;
+  if (!rows.length) return ['ordinal', 'one'].includes(r.how) ? { cant: 'Ask for a list first, then point at a row, like "the second one".' } : null;
+  if (r.ambiguous) return { cant: 'Which one? Say it like "the second one" or use a name.' };
+  if (!r.rows.length) return r.how === 'ordinal' ? { cant: `The last answer has ${rows.length} row${rows.length === 1 ? '' : 's'}; that one is not among them.` } : null;
+  return { rows: r.rows, line: resolvedLine(r), phrase: r.phrase, ...(r.company ? { company: true } : {}) };
 }
 
 export async function ask(supabase, registry, { auth, body, now = askDeps.now() }) {
@@ -113,12 +139,15 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   const n = await asksToday(supabase, auth.user.id, now);
   if (n >= DAILY_CAP) return { status: 429, body: { error: `Scout has answered ${DAILY_CAP} questions for you today. It opens again tomorrow.`, cap: DAILY_CAP, used: n } };
   cancelPlans(auth.user.id); // S1: a new ask cancels an open confirm card
+  const follow = followUpOf(v.q, v.rows);
+  // nothing to point at (or more than one candidate): said plainly, no model call, no ask counted
+  if (follow?.cant) return { status: 200, body: { answer_md: follow.cant, summary: follow.cant, sections: [], items: [], usage: null, withheld: false, cant: { reason: follow.cant }, scope, cap: { used: n, max: DAILY_CAP } } };
   let ctx;
-  try { ctx = await buildContext(supabase, registry, { auth, scope, q: v.q, now }); }
+  try { ctx = await buildContext(supabase, registry, { auth, scope, q: v.q, now, follow }); }
   catch (e) { if (e.status) return { status: e.status, body: { error: e.message } }; throw e; }
   const system = `${SYSTEM}\n\nToday is ${laDateString(new Date(now))} (Pacific).${ctx.glossary.length ? `\n\nHouse vocabulary:\n${ctx.glossary.map(l => `- ${l}`).join('\n')}` : ''}`;
   const multi = ctx.parts.length > 1;
-  const user = `${v.q}${multi ? `\n\n${PARTS_RULE(ctx.parts.length)}${ctx.parts_cut ? ` The question had ${ctx.parts.length + ctx.parts_cut} parts; say that only the first ${ctx.parts.length} are answered.` : ''}` : ''}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
+  const user = `${v.q}${multi ? `\n\n${PARTS_RULE(ctx.parts.length)}${ctx.parts_cut ? ` The question had ${ctx.parts.length + ctx.parts_cut} parts; say that only the first ${ctx.parts.length} are answered.` : ''}` : ''}${follow ? `\n\nThis is a follow-up on the last answer: ${follow.line}. Answer about ${follow.rows.length === 1 ? 'that record' : 'those records'} only.` : ''}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
   const messages = [...v.thread.filter((t, i, a) => !(i === 0 && t.role === 'assistant')), { role: 'user', content: user }];
   if (!askDeps.callAnthropic) askDeps.callAnthropic = (await import('../businesses/shared.js')).callAnthropic;
   const data = await askDeps.callAnthropic({ system, messages, max_tokens: MAX_TOKENS, thinking: false, model: MODELS.STANDARD, supabase, businessId: scope === 'all' ? null : scope, userId: auth.user.id, callType: CALL_TYPE, timeoutMs: 60000 });
@@ -127,10 +156,12 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   let { answer_md, items, summary, sections } = sectioned(text, ctx);
   const withheld = hasPii(answer_md) || hasPii(JSON.stringify(sections.map(x => [x.line, x.rows.map(r => [r.title, r.subtitle])])));
   if (withheld) { answer_md = 'Answer withheld: it contained an address or phone number.'; summary = answer_md; items = []; sections = []; }
+  // C1: the summary says what the follow-up was read as ("the second one → Meagan Earl, Cloudflare").
+  else if (follow) { summary = `${follow.line}. ${summary}`; answer_md = `${follow.line}. ${answer_md}`; }
   const usage = { input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: data.usage ? estimateCostUsd(MODELS.STANDARD, data.usage) : null };
   // A6: the usage row has no json column, so the matched intent is logged beside it (the next real-ask report counts misses).
   console.log(`[scout/ask] intent=${ctx.stats.intent} reads=${ctx.stats.reads.length} lines=${ctx.lines.length} tokens=${usage.input_tokens}/${usage.output_tokens} user=${String(auth.user.id).slice(0, 8)}`);
-  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
+  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ...(follow && !withheld ? { resolved: { phrase: follow.phrase, line: follow.line, rows: follow.rows.map(r => ({ entity: r.entity, id: r.id, title: r.title })) } } : {}), ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
 }
 
 export async function askRoute(req, res) {
