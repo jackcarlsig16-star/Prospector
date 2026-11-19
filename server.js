@@ -900,6 +900,10 @@ app.post('/api/sales/:businessId/goals/company/:type/:id/bring-back', salesModul
 app.patch('/api/sales/:businessId/goals/company/:type/:id/fit', salesModuleRoute('./api/sales/fitActions.js', 'setFitRoute', 'goals/company/:type/:id/fit PATCH'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/pin', salesModuleRoute('./api/sales/pinWrite.js', 'pinRoute', 'goals/company/:type/:id/pin POST'));
 app.get('/api/sales/:businessId/goals/top-targets', salesModuleRoute('./api/sales/topTargets.js', 'topTargetsRoute', 'goals/top-targets'));
+// actions-v2 - Actions › Today: the ranked list, the Needs attention fixes and the work panel (one Write-email call per verb click).
+app.get('/api/sales/:businessId/goals/today/fixes', salesModuleRoute('./api/sales/todayRoutes.js', 'todayFixesRoute', 'goals/today/fixes'));
+app.get('/api/sales/:businessId/goals/today', salesModuleRoute('./api/sales/todayRoutes.js', 'todayRoute', 'goals/today'));
+app.post('/api/sales/:businessId/goals/today/:key/work', aiLimit, salesModuleRoute('./api/sales/todayRoutes.js', 'todayWorkRoute', 'goals/today/:key/work POST'));
 app.post('/api/sales/:businessId/goals/company/employer/:id/they-replied', salesModuleRoute('./api/sales/replyRules.js', 'theyRepliedRoute', 'goals/company/employer/:id/they-replied POST'));
 app.get('/api/sales/:businessId/goals/company/employer/:id/reply-suggestion', salesModuleRoute('./api/sales/replyRules.js', 'replySuggestionRoute', 'goals/company/employer/:id/reply-suggestion'));
 app.get('/api/sales/:businessId/goals/fit/:type/:id', salesModuleRoute('./api/sales/fitRadar.js', 'fitOfRoute', 'goals/fit/:type/:id'));

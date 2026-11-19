@@ -23,6 +23,7 @@ export const salesReads = {
   personDetail: lazy('./peopleActivityRoutes.js', 'personDetail'),
   topTargets: lazy('./topTargets.js', 'topTargets'),
   loadWeekly: lazy('./weeklyRoutes.js', 'loadWeekly'),
+  loadToday: lazy('./todayRoutes.js', 'loadToday'),
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets', 'accounts']);
 const day = v => (v ? String(v).slice(0, 10) : null);
@@ -223,9 +224,11 @@ export const salesIntents = [
       const matched = kept.length;
       kept = rankTodos(kept, today, auth.user.id).slice(0, 40);
       const linkName = await linkNames(sb, businessId, kept);
+      // actions-v2 A6: each to-do says what Scout can do on it - the verb Today's own ranking read picked for that row.
+      const verbOf = new Map((await salesReads.loadToday(sb, businessId)).view.groups.flatMap(g => g.rows).filter(r => r.kind === 'todo').map(r => [r.id, r.verb]));
       const owner = r => (r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned');
       return { read: `openTodos (${total} open${ask.member ? `, ${ask.member.name}'s` : ask.mine ? ', mine' : ''})${of}`, total: matched, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
-        row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), owner_user_id: r.owner_user_id || null, link: linkName.get(`${readType(r.link_type)}:${r.link_id}`) || null },
+        row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), owner_user_id: r.owner_user_id || null, link: linkName.get(`${readType(r.link_type)}:${r.link_id}`) || null, verb: verbOf.get(r.id) || 'next_steps' },
         text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}${day(r.due_date) < today ? ' (overdue)' : ''}` : 'no date', owner(r), r.steps?.length ? `${r.steps.filter(x => x.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people' && !ask.flags.email_site,

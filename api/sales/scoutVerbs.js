@@ -3,6 +3,8 @@ import { addDays } from './goalsShared.js';
 import { findCompany, findPerson, salesReads } from './scoutIntents.js';
 import { normName } from './intakeMatch.js';
 import { loadPerson } from './personWrite.js';
+import { readType } from './readType.js';
+import { linkFor } from './todoLink.js';
 
 // scout-v3 S1 + the Stage 0 rulings (R1-R9) - the sales module's verbs for Scout's plan / act / undo. Every write goes
 // through an EXISTING route or its function with that route's guards, and every reverse is that route's own Undo:
@@ -15,6 +17,9 @@ import { loadPerson } from './personWrite.js';
 // scout-v3.1: draft email = the Write-email call itself (composeEmail, its cap, its usage row) addressed to the person
 // of the row, returned as text - never sent (C2). Task verbs go through applyTodo with expect, the card's plan id as
 // batch_id and the event's own Undo (C4): add (typed), done, reassign (the assign verb), snooze, due, drop.
+// actions-v2 A3 / A4 / A6: Today's batches are verbs here too - finish (the to-do done + its person contacted, one Undo),
+// reply to-dos (Q6: one to-do per unanswered reply), assign to the company's owner, link the company a to-do names -
+// and "draft / what next / prep me" on a to-do row opens Today's work panel on that row (no call is made here).
 // Stage moves, sends, deletes, client adds and Apollo writes have no verb here. salesWrites is swapped by tests.
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const lazy = (file, name) => async (...a) => (await import(file))[name](...a);
@@ -41,6 +46,7 @@ export const salesWrites = {
   compose: lazy('./composeRoutes.js', 'composeEmail'),
   rejectTarget: lazy('./targetsRoutes.js', 'rejectTarget'),
   deprioritize: lazy('./fitActions.js', 'deprioritize'),
+  linkable: lazy('./todayRoutes.js', 'linkableRecords'),
 };
 const ok = r => { if (r.status >= 400) throw Object.assign(new Error(r.body?.error || 'failed'), { status: r.status, code: r.body?.code }); return r.body; };
 
@@ -308,8 +314,9 @@ const snooze = {
 // The inline draft is asked for by the client (args.inline): a client that does not ask gets the panel opened, as
 // before, and no call is made here - so the screen that opens the panel never pays for two drafts.
 const draft = {
-  id: 'draft', label: 'Draft email', lead: /^(?:draft|write)\b/, accepts: ['people', ...COMPANY_ENTITIES],
+  id: 'draft', label: 'Draft email', lead: /^(?:draft|write)\b/, accepts: ['people', 'todos', ...COMPANY_ENTITIES],
   async plan(sb, ctx, targets, args) {
+    if (targets.length === 1 && targets[0].entity === 'todos') return workOpen(targets[0], 'draft_email');
     const list = targets.length ? targets : await named(sb, ctx.businessId, args.names || []);
     if (list.length !== 1) return { cant: { reason: list.length ? 'I open one draft at a time - name one record.' : 'Tell me who the draft is for.', nearest: 'draft' } };
     const { company, person } = await resolve(sb, ctx.businessId, list[0]);
@@ -408,6 +415,112 @@ const taskDrop = taskVerb({ id: 'task_drop', label: 'Drop task', done: 'Dropped'
 const STAGE_WORD = '(?:stage|stages|pipeline|contacted|meeting|proposal|client|signed|won|lost)';
 const taskDue = taskVerb({ id: 'task_due', label: 'Change due date', done: 'Moved', needs: 'date', lead: new RegExp(`^(?:(?:move|push|change|set|reschedule)\\b(?!.*\\b${STAGE_WORD}\\b).*\\b(?:due|date|${TASK_WORD})\\b|due\\b|reschedule\\b)`), ready: a => (a.date ? null : 'Say the new date, like "move the first task to Friday".'), to: a => `due ${a.date}`, fromOf: t => (t.due_date ? `due ${String(t.due_date).slice(0, 10)}` : 'no date'), patch: a => ({ due_date: a.date }), kind: 'due', expectOf: t => ({ due_date: t.due_date ?? null }) });
 
+// actions-v2 A6 - a to-do row's work panel, opened from Scout: the same route the row's own verb calls.
+const workOpen = (t, verb) => ({ open: { panel: 'today_work', key: `todo:${t.id}`, verb }, line: `Opened the work panel on "${t.title}" — nothing sent` });
+const WORK_ASKS = [[/^(?:what should i do next|whats next|what next|next steps?)\b/, 'next_steps'], [/^prep(?:are)?(?: me)?\b/, 'prep_call']];
+const workPanel = {
+  id: 'work', label: 'Open the work panel', pill: false, free: true, accepts: ['todos'], lead: /^(?:what should i do next|whats next|what next|next steps?|prep(?:are)?(?: me)?)\b/,
+  async plan(sb, ctx, targets, args) {
+    // no to-do row pointed at: this is a question for the ask, not a command
+    if (targets.length !== 1) return targets.length ? { cant: { reason: 'I open one to-do at a time - name one, like "what should I do next on #4".' } } : { pass: true };
+    return workOpen(targets[0], WORK_ASKS.find(([re]) => re.test(args.text || ''))?.[1] || null);
+  },
+};
+
+// A3 - "Done and mark <person> contacted": the to-do done and its person's status in ONE row, ONE Undo. The person's
+// status goes the way Mark contacted goes (R1): no stage moves; only a sequenced person has a status to set.
+const taskFinish = {
+  id: 'task_finish', label: 'Done and mark contacted', done: 'Finished', pill: false, accepts: ['todos'], lead: /^finish\b/,
+  async plan(sb, ctx, targets) {
+    const rows = [];
+    for (const t of targets) {
+      const todo = await todoOf(sb, ctx, t);
+      if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+      const prospect = todo.person_key ? await prospectOf(sb, ctx.businessId, todo.person_key) : null;
+      const who = prospect?.name ? cleanText(prospect.name, 120) : null;
+      const mark = !!prospect && prospect.status !== 'contacted';
+      const note = mark ? "the company's stage is unchanged" : prospect ? `${who} is already contacted` : todo.person_key ? 'only sequenced people can be marked contacted - the to-do is marked done' : 'no person on this to-do - marked done only';
+      rows.push({ ...base(t, taskTitle(todo)), kind: 'task', from: 'open', to: mark ? `done · ${who} contacted` : 'done', note, exec: { todo: todo.id, expect: { status: todo.status }, contact_id: mark ? prospect.contact_id : null, before: mark ? prospect.status : null } });
+    }
+    return { rows };
+  },
+  async act(sb, ctx, x) {
+    const r = await todoAct(sb, ctx, x, { status: 'done' }, 'done', x.expect);
+    if (r.skipped || !x.contact_id) return r;
+    try {
+      const p = await prospectPatch(ctx, x.contact_id, { status: 'contacted', expect: { status: x.before } });
+      if (p.status === 409) return { ...r, to: 'done · the person changed meanwhile' };
+      ok(p);
+    } catch (e) { await todoUndo(sb, ctx, r.undo); throw e; }
+    return { undo: { ...r.undo, status: x.before } };
+  },
+  async undo(sb, ctx, x, h) {
+    if ('status' in h) ok(await prospectPatch(ctx, x.contact_id, { status: h.status, expect: { status: 'contacted' } }));
+    await todoUndo(sb, ctx, h);
+  },
+};
+
+// Q6 - "Add n to-dos" for the replies nobody answers: one open to-do per person (their key, their company's record).
+// origin stays 'scout': 'reply' is not an origin the table admits, and the row still reads as a reply owed.
+const replyTodos = {
+  id: 'reply_todos', label: 'Add reply to-dos', done: 'Added', pill: false, accepts: ['people'], lead: /^add\b.*\bto-?dos?\b.*\brepl/,
+  async plan(sb, ctx, targets) {
+    const rows = [];
+    for (const t of targets) {
+      const has = must(await sb.from('sales_week_goals').select('id').eq('business_id', ctx.businessId).eq('kind', 'todo').eq('status', 'open').eq('person_key', t.id)).length > 0;
+      if (has) { rows.push({ ...base(t), from: null, to: 'open to-do', skipped: 'already has an open to-do' }); continue; }
+      const { company } = await resolve(sb, ctx.businessId, t);
+      rows.push({ ...base(t), from: null, to: `open to-do · due ${ctx.today}`, note: company ? `linked to ${company.name}` : NO_RECORD, exec: { create: { text: `Reply to ${t.title}`, due_date: ctx.today, link: company ? { type: company.type, id: company.id } : null, person_key: t.id } } });
+    }
+    return { rows };
+  },
+  act: (sb, ctx, x) => addTask.act(sb, ctx, x),
+  undo: (sb, ctx, x, h) => todoUndo(sb, ctx, h),
+};
+
+// A4 - "Assign with Scout": each unowned to-do goes to the owner of the company it is linked to; a to-do whose
+// company has no owner (or that has no company) is listed and left Unassigned.
+const assignOwner = {
+  id: 'assign_owner', label: 'Assign to the company owner', done: 'Assigned', pill: false, accepts: ['todos'], lead: /^assign\b.*\bcompany(?:s|'s)? owners?\b/,
+  async plan(sb, ctx, targets) {
+    const members = await salesMembers(sb, ctx.businessId);
+    const nameOf = id => members.find(m => m.id === id)?.name.split(/\s+/)[0] || null;
+    const rows = [];
+    for (const t of targets) {
+      const todo = await todoOf(sb, ctx, t);
+      if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+      const row = { ...base(t, taskTitle(todo)), kind: 'task', from: nameOf(todo.owner_user_id) || 'Unassigned' };
+      if (todo.owner_user_id) { rows.push({ ...row, to: row.from, skipped: 'already has an owner' }); continue; }
+      const c = todo.link_id ? await loadCompany(sb, ctx.businessId, readType(todo.link_type), todo.link_id) : null;
+      const owner = c?.owner_user_id && nameOf(c.owner_user_id) ? c.owner_user_id : null;
+      rows.push(owner ? { ...row, to: nameOf(owner), note: `${c.name}'s owner`, exec: { todo: todo.id, to: owner } } : { ...row, to: 'Unassigned', skipped: c ? `${c.name} has no owner` : 'no company to take an owner from' });
+    }
+    return { rows };
+  },
+  act: (sb, ctx, x) => todoAct(sb, ctx, x, { owner_user_id: x.to }, 'reassign', { owner_user_id: null }),
+  undo: (sb, ctx, x, h) => todoUndo(sb, ctx, h),
+};
+
+// A4 - "Link n": an unlinked to-do whose text names exactly ONE record (todoLink's rule) is linked to it.
+const linkNamed = {
+  id: 'link_named', label: 'Link to the company named', done: 'Linked', pill: false, accepts: ['todos'], lead: /^link\b/,
+  async plan(sb, ctx, targets) {
+    const records = await salesWrites.linkable(sb, ctx.businessId);
+    const rows = [];
+    for (const t of targets) {
+      const todo = await todoOf(sb, ctx, t);
+      if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+      const row = { ...base(t, taskTitle(todo)), kind: 'task', from: 'no company' };
+      if (todo.link_type) { rows.push({ ...row, from: 'linked', to: 'linked', skipped: 'already linked' }); continue; }
+      const m = linkFor(todo.text, records);
+      rows.push(m?.link ? { ...row, to: cleanText(m.link.name, 160), exec: { todo: todo.id, link: { link_type: m.link.link_type, link_id: m.link.link_id } } } : { ...row, to: 'no company', skipped: m ? 'names more than one company' : 'names no company' });
+    }
+    return { rows };
+  },
+  act: (sb, ctx, x) => todoAct(sb, ctx, x, x.link, 'link', { link_type: null, link_id: null }),
+  undo: (sb, ctx, x, h) => todoUndo(sb, ctx, h),
+};
+
 const PACK_ENTITIES = ['people', ...COMPANY_ENTITIES];
 const copy = {
   id: 'copy', label: 'Copy for Claude', lead: /^copy\b|\bfor claude\b/, accepts: PACK_ENTITIES, free: true,
@@ -420,8 +533,8 @@ const copy = {
   },
 };
 
-// Order = which lead wins: "mark ... contacted / not a fit" before "mark ... done".
-export const salesVerbs = [assign, notFit, contacted, taskDone, taskDue, taskDrop, draft, bundle, snooze, addTask, copy];
+// Order = which lead wins: "mark ... contacted / not a fit" before "mark ... done"; the narrower assign and add first.
+export const salesVerbs = [assignOwner, assign, notFit, contacted, taskFinish, taskDone, taskDue, taskDrop, workPanel, draft, bundle, snooze, replyTodos, addTask, linkNamed, copy];
 
 const PACK_TYPE = { ...KIND, people: 'person' };
 export async function salesPack(sb, ctx, { q, records }) {

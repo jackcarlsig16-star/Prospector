@@ -84,7 +84,14 @@ export const askLine = (company, person) => (person
   ? `Write the first email to ${person.name}${person.title ? `, ${person.title},` : ''} at ${company}. Greet them by their first name, ${firstName(person.name)}. They are the recipient; the other people in the Brief are not.`
   : `Write the first email to ${company}.`);
 
-export async function composeEmail(supabase, { businessId, userId, userName, type, id, person: to = null, now = Date.now(), call = callAnthropic }) {
+// actions-v2 Q7: extra = { ask } rides in the user turn of the SAME call (the frozen system prompt untouched) and the
+// keys the model adds to its JSON object come back as `extra` - one call returns the draft and its next steps.
+export const jsonOf = text => { try { return JSON.parse(String(text || '').match(/\{[\s\S]*\}/)?.[0] || 'null'); } catch { return null; } };
+export async function composeCap(supabase, businessId, now = Date.now()) {
+  const [s, used] = await Promise.all([settingsFor(supabase, businessId), composeUsedToday(supabase, businessId, now)]);
+  return { used, max: s.cap };
+}
+export async function composeEmail(supabase, { businessId, userId, userName, type, id, person: to = null, extra = null, now = Date.now(), call = callAnthropic }) {
   if (!BRIEF_TYPES.includes(type)) return reply(400, { error: `type must be one of ${BRIEF_TYPES.join('|')}` });
   const who = personOf(to);
   if (who.error) return reply(400, { error: who.error });
@@ -99,7 +106,7 @@ export async function composeEmail(supabase, { businessId, userId, userName, typ
     const signOff = firstName(userName);
     const data = await call({
       system: composeSystem({ prompt: s.prompt, rules: s.rules, signOff }),
-      messages: [{ role: 'user', content: `${brief.markdown}\n\n${askLine(brief.company.name, person)}` }],
+      messages: [{ role: 'user', content: `${brief.markdown}\n\n${askLine(brief.company.name, person)}${extra?.ask ? `\n\n${extra.ask}` : ''}` }],
       max_tokens: COMPOSE_MAX_TOKENS, model: MODELS.STANDARD, thinking: false, timeoutMs: 60000,
       supabase, businessId, userId, callType: 'intent_compose',
     });
@@ -108,7 +115,7 @@ export async function composeEmail(supabase, { businessId, userId, userName, typ
     const draft = parseDraft(text);
     const lint = lintDraft({ subject: draft.subject, body: draft.body, claims: draft.claims, refs: brief.lines, rules: s.rules, signOff });
     const cost = estimateCostUsd(data.usage?.model || MODELS.STANDARD, data.usage) ?? null;
-    return reply(200, { draft: { subject: draft.subject, body: draft.body, why: draft.why }, claims: draft.claims, lint, cost_usd: cost != null ? Math.round(cost * 1e4) / 1e4 : null, cap: { used: used + 1, max: s.cap }, brief: { company: brief.company, lines: brief.lines, upside_owned: brief.upside_owned, no_double_touch: brief.no_double_touch }, sign_off: signOff, ...(person ? { person } : {}) });
+    return reply(200, { draft: { subject: draft.subject, body: draft.body, why: draft.why }, claims: draft.claims, lint, cost_usd: cost != null ? Math.round(cost * 1e4) / 1e4 : null, cap: { used: used + 1, max: s.cap }, brief: { company: brief.company, lines: brief.lines, upside_owned: brief.upside_owned, no_double_touch: brief.no_double_touch }, sign_off: signOff, ...(person ? { person } : {}), ...(extra ? { extra: jsonOf(text) } : {}) });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
 

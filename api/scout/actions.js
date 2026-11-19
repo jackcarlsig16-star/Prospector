@@ -130,6 +130,7 @@ export async function plan(supabase, registry, { auth, body = {}, now = actDeps.
   let p;
   try { p = await verb.plan(supabase, ctx, usable, { ...args, text: cmd.text, raw: text }); }
   catch (e) { return reply(e.status || 500, { error: e.message }); }
+  if (p.pass) return reply(200, { command: false });
   if (p.cant) return reply(200, cant(verbs, p.cant.reason, p.cant.nearest));
   // C2: an inline draft (text + cost; nothing to confirm, nothing sent) - checked once more for an address or phone shape
   if (p.draft) return reply(200, { verb: verb.id, label: verb.label, draft: p.draft.withheld || !hasPii(`${p.draft.subject}\n${p.draft.body}`) ? p.draft : { ...p.draft, subject: undefined, body: undefined, withheld: true, reason: 'Draft withheld: it held an address or phone shape.' }, open: p.open || null, line: p.line });
