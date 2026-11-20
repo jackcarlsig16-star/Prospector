@@ -9,6 +9,7 @@ import { triggerSync } from '../salesApi';
 import { openTasks } from '../tasks/LinkedTasks';
 import { timeAgo } from '../huddleView';
 import { ErrorNote, numStyle } from './goalsUi';
+import TodayFixes from './today/TodayFixes';
 
 // actions-home-attention-v1 D2/D3/D5 - the "Needs attention (n)" / "All clear"
 // button in the Actions frame row and its drawer: each sync source's state
@@ -17,6 +18,7 @@ import { ErrorNote, numStyle } from './goalsUi';
 // One read (GET goals/attention); the drawer opening re-reads the held moves.
 // A page-load pull / Tidy failure (pageLoadFailures, loop-quickfixes Q5) shows
 // as Failed "on page load" until the source reports OK again. Viewers read.
+// actions-v2 A4: "Fix the list" (TodayFixes) sits on top - its fixes count toward the number on the button.
 const WIDTH = 380;
 const STATUS = { ok: ['OK', SA.good], stale: ['Stale', SA.warn], failed: ['Failed', SA.bad], running: ['Running', SA.accent], not_connected: ['Not connected', SA.borderStrong] };
 const PAGE_LOAD = { apollo: 'apollo', visitors: 'visits', tidy: 'tidy' };
@@ -115,9 +117,10 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
+  const [fixN, setFixN] = useState(0);
 
   const load = useCallback(fresh => goalsApi.attention(businessId, { fresh }).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
-  useEffect(() => { load(false); }, [load]);
+  useEffect(() => { load(false); goalsApi.todayFixes(businessId).then(d => setFixN(d.n)).catch(() => {}); }, [load, businessId]);
   useEffect(() => {
     const close = () => setOpen(false);
     window.addEventListener(OPEN_TASKS, close);
@@ -168,7 +171,7 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
   };
 
   const sources = data ? withPageLoad(data.sources, pageLoadFailures) : [];
-  const n = data ? attentionN(sources, data.counts) : 0;
+  const n = data ? attentionN(sources, data.counts) + fixN : 0;
   const button = !data
     ? <Button variant="tertiary" disabled disabledReason="Checking…">Checking…</Button>
     : n
@@ -192,6 +195,7 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
             <div style={{ flex: '1 1 auto', overflowY: 'auto', padding: '8px 16px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               {error && <ErrorNote message={error} />}
               {!canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
+              <TodayFixes businessId={businessId} canEdit={canEdit} onCount={setFixN} />
               <section aria-label="Sync status">
                 <h3 className="ui-group-label" style={{ margin: '8px 0 0' }}>Sync status</h3>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>

@@ -6,7 +6,7 @@ import { triggerSync } from '../salesApi';
 // actions-home-attention-v1 Stage 2 - the Needs attention button + drawer. Made-up data; no emails or phones.
 jest.mock('./goalsApi', () => ({
   ...jest.requireActual('./goalsApi'),
-  goalsApi: { attention: jest.fn(), visitPull: jest.fn(), visitPeoplePull: jest.fn(), headcountFill: jest.fn(), runTidy: jest.fn() },
+  goalsApi: { attention: jest.fn(), todayFixes: jest.fn(), visitPull: jest.fn(), visitPeoplePull: jest.fn(), headcountFill: jest.fn(), runTidy: jest.fn() },
 }));
 jest.mock('../salesApi', () => ({ triggerSync: jest.fn() }));
 
@@ -20,7 +20,7 @@ const SOURCES = [
 ];
 const COUNTS = { overdue_todos: 2, overdue_waiting: 0, held_apollo: 1, held_outlook: 0, campaign_sends: 3, campaign_replies: 0 };
 const DATA = { today: '2026-10-22', sources: SOURCES, counts: COUNTS, n: 5 };
-beforeEach(() => { jest.clearAllMocks(); goalsApi.attention.mockResolvedValue(DATA); });
+beforeEach(() => { jest.clearAllMocks(); goalsApi.attention.mockResolvedValue(DATA); goalsApi.todayFixes.mockResolvedValue({ n: 0, items: [], feeds: [], today: '2026-10-22' }); });
 
 test('model: a page-load failure shows as Failed until the source is OK again; n = stale/failed lines + non-zero counts', () => {
   const out = withPageLoad([src('visitors', 'Website visitors', 'stale'), src('tidy', 'Tidy', 'ok')], { visits: 'Apollo 500', tidy: 'boom' });

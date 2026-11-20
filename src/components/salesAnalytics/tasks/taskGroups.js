@@ -25,10 +25,3 @@ export function buildTaskGroups({ todos, flags, filter, meId, today }) {
     { id: 'done', label: 'Done this week', items: rows.filter(t => t.st === 'done') },
   ];
 }
-
-// Badge: my open to-dos this week + open flags handed to me.
-export function badgeCount({ todos, flags, meId }) {
-  const ids = new Set(flags.filter(f => f.owner_user_id === meId).map(f => f.id));
-  for (const t of todos) if (t.owner_user_id === meId && !['done', 'dropped'].includes(todoStatus(t))) ids.add(t.id);
-  return ids.size;
-}

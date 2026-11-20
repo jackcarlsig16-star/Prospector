@@ -1,7 +1,6 @@
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
-import { pipelineMoves } from './todayModel';
 import { acceptSummary } from '../tasks/intakeBody';
-import { buildTaskGroups, badgeCount } from '../tasks/taskGroups';
+import { buildTaskGroups } from '../tasks/taskGroups';
 import { splitSnoozed, isSnoozed } from '../../../constants/todoSnooze';
 
 // todo-events-v1 - the client's half: the API helpers (expect out, the event id back, a 409 that reloads every list),
@@ -34,16 +33,9 @@ test('updateWeekGoal sends the row\'s updated_at as expect and returns the goal 
   global.fetch.mockImplementation(() => reply(200, { events: [{ id: 'e1' }] }));
   expect(await goalsApi.todoEvents('b1', { from: '2026-11-09', to: '2026-11-16' })).toEqual([{ id: 'e1' }]);
   expect(global.fetch.mock.calls.at(-1)[0]).toBe('/api/sales/b1/goals/week/events?from=2026-11-09&to=2026-11-16');
-  global.fetch.mockImplementation(() => reply(200, { items: [] }));
-  await goalsApi.actions('b1', { snoozed: true });
-  expect(global.fetch.mock.calls.at(-1)[0]).toBe('/api/sales/b1/goals/actions?snoozed=1');
-});
-
-test('Pipeline moves this week: a to-do change is a line (its text, what happened, when); an undo and the change it took back are not', () => {
-  const ev = (id, kind, words, extra = {}) => ({ id, kind, words, at: `2026-11-10T1${id}:00:00Z`, undone_at: null, todo: { text: `To-do ${id}` }, ...extra });
-  const rows = pipelineMoves({ todoEvents: [ev(1, 'done', 'done'), ev(2, 'due', 'due Nov 20', { undone_at: '2026-11-10T12:00:05Z' }), ev(3, 'undo', 'undone'), ev(4, 'snooze', 'snoozed until Nov 16'), { ...ev(5, 'drop', 'dropped'), todo: null }] });
-  expect(rows).toEqual([{ key: 't-4', name: 'To-do 4', kind: 'To-do', to: 'snoozed until Nov 16', at: '2026-11-10T14:00:00Z' }, { key: 't-1', name: 'To-do 1', kind: 'To-do', to: 'done', at: '2026-11-10T11:00:00Z' }]);
-  expect(pipelineMoves({})).toEqual([]);
+  global.fetch.mockImplementation(() => reply(200, { groups: [] }));
+  await goalsApi.today('b1', { owner: 'me', chips: 'snoozed' });
+  expect(global.fetch.mock.calls.at(-1)[0]).toBe('/api/sales/b1/goals/today?owner=me&chips=snoozed');
 });
 
 test('T6: a snoozed to-do is off the Tasks lists and badge until its day; T7: the accept summary says when a to-do names several companies', () => {
@@ -51,7 +43,6 @@ test('T6: a snoozed to-do is off the Tasks lists and badge until its day; T7: th
   const todos = [todo('a'), todo('b', { snooze_until: '2026-11-16' })];
   const { shown, snoozed } = splitSnoozed(todos, '2026-11-11');
   expect([shown.map(t => t.id), snoozed.map(t => t.id)]).toEqual([['a'], ['b']]);
-  expect(badgeCount({ todos: shown, flags: [], meId: 'me' })).toBe(badgeCount({ todos, flags: [], meId: 'me' }) - 1);
   expect(buildTaskGroups({ todos: shown, flags: [], filter: 'me', meId: 'me', today: '2026-11-11' }).flatMap(g => g.items || g.rows || g.todos || []).some(t => t.id === 'b')).toBe(false);
   expect(isSnoozed(todos[1], '2026-11-16')).toBe(false);
   expect(acceptSummary(2, { needs_link: [{ todo_id: 't1', text: 'Follow up', choices: [{ name: 'Access Development' }, { name: 'Justworks' }] }] })).toBe('2 tasks · 1 to-do names more than one company (Access Development · Justworks) - pick the link on the row');

@@ -1,4 +1,4 @@
-import { buildTaskGroups, badgeCount, matchesFilter } from './taskGroups';
+import { buildTaskGroups, matchesFilter } from './taskGroups';
 
 const ME = 'u-me';
 const CY = 'u-cy';
@@ -54,10 +54,4 @@ test('a flag shows once, in Flagged, even when it is also a this-week to-do', ()
   const cy = byId(buildTaskGroups({ todos: [flag], flags: [flag], filter: CY, meId: ME, today: '2026-10-07' }));
   expect(cy.flagged.label).toBe('Flagged');
   expect(cy.flagged.items).toEqual([]);
-});
-
-test('badge = my open this-week to-dos + my flags, each once', () => {
-  const flag = todo('f1', { prospect_contact_id: 'p1' });
-  const todos = [flag, todo('a'), todo('d', { status: 'done' }), todo('g', { owner_user_id: CY })];
-  expect(badgeCount({ todos, flags: [flag, todo('f2', { owner_user_id: CY })], meId: ME })).toBe(2);
 });

@@ -6,7 +6,7 @@ import { fetchMe } from '../../../utils/authSession';
 import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS, OPEN_GOALS_TARGET, OPEN_ATTENTION } from '../goals/goalsApi';
 import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goalsUi';
-import { buildTaskGroups, badgeCount } from './taskGroups';
+import { buildTaskGroups } from './taskGroups';
 import { splitSnoozed } from '../../../constants/todoSnooze';
 import { useLinkOptions } from './linkTargets';
 import QuickAdd from './QuickAdd';
@@ -62,18 +62,22 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     .catch(e => setError(e.message)), [businessId, week]);
   // REV5 - what counterparts owe us, across partners; never mixed into our to-dos.
   const loadWaiting = useCallback(() => goalsApi.waitingRows(businessId).then(setWaiting).catch(() => setWaiting([])), [businessId]);
+  // actions-v2 A7: the badge is Today's - the member's rows due or overdue plus those at a pinned or P1 company.
+  const [badge, setBadge] = useState(0);
+  const loadBadge = useCallback(() => goalsApi.today(businessId, { owner: 'me' }).then(d => setBadge(d.badge || 0)).catch(() => setBadge(0)), [businessId]);
 
   useEffect(() => {
     fetchMe().then(setMe).catch(() => setMe(null));
     goalsApi.members(businessId).then(setMembers).catch(e => setError(e.message));
   }, [businessId]);
   useEffect(() => {
-    load(); loadWaiting();
+    load(); loadWaiting(); loadBadge();
     window.addEventListener(TODOS_CHANGED, load);
     window.addEventListener(TODOS_CHANGED, loadWaiting);
+    window.addEventListener(TODOS_CHANGED, loadBadge);
     window.addEventListener(FLAGS_CHANGED, load);
-    return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(TODOS_CHANGED, loadWaiting); window.removeEventListener(FLAGS_CHANGED, load); };
-  }, [load, loadWaiting]);
+    return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(TODOS_CHANGED, loadWaiting); window.removeEventListener(TODOS_CHANGED, loadBadge); window.removeEventListener(FLAGS_CHANGED, load); };
+  }, [load, loadWaiting, loadBadge]);
   useEffect(() => {
     // detail.paste (actions-home-attention-v1 Quick add) opens straight on the call-notes panel.
     const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested', 'waiting', 'signals'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); if (e.detail.paste) setPasting(true); };
@@ -113,7 +117,6 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   // todo-events-v1 T6: a snoozed to-do is off the lists and the badge until its day (the one rule); the chip shows them.
   const { shown: liveTodos, snoozed: snoozedTodos } = splitSnoozed(todos, today);
   const groups = meId ? buildTaskGroups({ todos: (showSnoozed ? snoozedTodos : liveTodos).filter(inLink), flags: showSnoozed ? [] : flags.filter(inLink), filter, meId, today }) : [];
-  const badge = meId ? badgeCount({ todos: liveTodos, flags, meId }) : 0;
   const flagIds = new Set(flags.map(f => f.id));
 
   const run = async fn => { setError(''); try { await fn(); return true; } catch (e) { setError(e.message); return false; } };

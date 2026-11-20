@@ -14,9 +14,8 @@ import PartnersView from './PartnersView';
 import PipelineView from './PipelineView';
 import PrioritiesView from './priorities/PrioritiesView';
 import { writePeopleCompany } from '../salesNav';
-import PlanWeekDrawer from './PlanWeekDrawer';
-import { PlanNudge } from './PlanNudge';
-import ActionsView from './ActionsView';
+import TodayList from './today/TodayList';
+import { SCOUT_CAPTURE } from '../../scout/scoutActions';
 import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
@@ -24,18 +23,16 @@ import ClientsView from './ClientsView';
 import TopTargetsView from './topTargets/TopTargetsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
 import HomeView, { PERIODS, DEFAULT_PERIOD } from './HomeView';
-import TrackImprove from './TrackImprove';
-import GoalsSection from './GoalsSection';
 import { dayTitle } from './todayModel';
 import { linkedTo } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
-  subStyle, numStyle, Chip, Btn, ErrorNote,
-  addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
+  Chip, Btn, ErrorNote,
+  addDays, monthOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
-// sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView; dashboard-v3 Stage 2: the week's commitments +
-// Pipeline moves and Track & improve sit under it) / Pipeline / Dashboard (dashboard-v3: Home = HomeView's Pulse + Insights
+// sales-ia-v1 - the data hub behind Actions (actions-v2: Today - one ranked list, TodayList; the week card, Commitments,
+// Pipeline moves, Track & improve and Plan this week are gone) / Pipeline / Dashboard (dashboard-v3: Home = HomeView's Pulse + Insights
 // over GET goals/pulse, the 13 charts and the hero tiles are gone; Stage 1: the Scorecard is
 // its own sub-view, the Weekly report + KPI table are gone, Sequenced too). `section` is the tab on screen
 // and `view` its sub-view (SalesAnalyticsTab owns both, via salesNav.js, and
@@ -80,11 +77,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
   const [todos, setTodos] = useState([]);
   const [partners, setPartners] = useState([]);
   const [scorecard, setScorecard] = useState(null);
-  const [commitments, setCommitments] = useState([]);
   const [exportOpen, setExportOpen] = useState(false);
   const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner?, ids?, open? } - a link opening Partners filtered
-  const [planOpen, setPlanOpen] = useState(false);
-  const [plans, setPlans] = useState(null);
   const [toast, setToast] = useState('');
   const [period, setPeriod] = useState(DEFAULT_PERIOD); // Home: the Pulse window
   const [errors, setErrors] = useState({});
@@ -100,8 +94,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
   const isAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
   const isOwner = !!me && (me.profile?.is_platform_owner || myRole === 'owner');
-  // weekly-plan-v1: a plan is one person's; on Team it's the signed-in user's.
-  const planOwner = owner === 'team' ? me?.profile?.id : owner;
 
   useEffect(() => {
     goalsApi.members(businessId).then(setMembers).catch(e => setError('members', e));
@@ -114,17 +106,12 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
   const loadScorecard = useCallback(() => goalsApi.scorecard(businessId, monthOf(weekStart), owner === 'team' ? null : owner)
     .then(d => { setScorecard(d); setError('scorecard', null); }).catch(e => { setScorecard(null); setError('scorecard', e); }), [businessId, weekStart, owner, setError]);
 
-  const loadCommitments = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'commitment')
-    .then(g => { setCommitments(g); setError('commitments', null); }).catch(e => setError('commitments', e)), [businessId, weekStart, setError]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
   useEffect(() => {
     window.addEventListener(TODOS_CHANGED, loadTodos);
     return () => window.removeEventListener(TODOS_CHANGED, loadTodos);
   }, [loadTodos]);
-  useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadScorecard(); }, [loadScorecard]);
-  const loadPlans = useCallback(() => { if (planOwner) goalsApi.weekPlans(businessId, planOwner).then(setPlans).catch(() => setPlans(null)); }, [businessId, planOwner]);
-  useEffect(() => { loadPlans(); }, [loadPlans]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 4000);
@@ -158,7 +145,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
   const liveWeek = weekStart === thisWeek;
   const tasksFor = (type, id) => linkedTo(todos, type, id);
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
-  const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
 
   const today = laDateString();
   const meId = me?.profile?.id;
@@ -177,7 +163,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
     if (target.companies) { setWeekStart(target.companies); return onNav(home.tab, home.view); }
     const [kind, arg] = target.split(/:(.*)/);
     if (kind === 'huddle') return onOpenHuddle && onOpenHuddle(null, !arg ? null : arg === 'flags' ? { flags: true } : { feed: arg === 'feed' ? null : arg });
-    if (target === 'plan') setPlanOpen(true);
     if (target === 'view:partners') setPartnerFocus({});
     if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
       if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
@@ -209,10 +194,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
 
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
   // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
-  const showPeople = section === 'actions' || ['partners', 'overview'].includes(view);
-  const showWeek = section === 'actions'; // the Goals section under Actions follows this week; the Scorecard has its own month switch
+  const showPeople = ['partners', 'overview'].includes(view);
   const overview = section === 'dashboard' && view === 'overview';
-  const title = liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
+  const title = dayTitle(today, compact);
   const exportRect = exportOpen && document.getElementById('sales-export-btn')?.getBoundingClientRect();
   const tools = (
     <>
@@ -225,21 +209,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
       )}
       {overview && <Segmented label="Period" items={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />}
       {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{!overview && <span className="ui-group-label" aria-hidden="true">Who</span>}<Segmented label="Filter by person" items={people} value={ownerSlug} onChange={setOwnerSlug} /></div>}
-      {showWeek && <>
-        <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
-        </Btn>
-        <div style={{ height: 36, padding: '0 12px', border: `1px solid ${SA.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, background: SA.surface, flex: 'none' }}>
-          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', ...numStyle }}>{weekLabel(weekStart)}</span>
-          <Chip style={{ height: 22 }}>{monthName(monthOf(weekStart))}</Chip>
-        </div>
-        <Btn aria-label="Next week" onClick={() => setWeekStart(w => addDays(w, 7))}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
-        </Btn>
-        {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
-      </>}
       {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
-      {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
+      {section === 'actions' && canEdit && <Btn primary onClick={() => window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId, text: '' } }))}>+ To-do</Btn>}
       {section === 'dashboard' && view === 'overview' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>
   );
@@ -265,11 +236,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
         {errors.members && <ErrorNote message={errors.members.message} />}
 
         {section === 'actions' && me && <>
-          {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
-          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} owner={owner} members={members} lookup={lookup} onShowTeam={() => setOwnerSlug('team')}
-            onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
-          <GoalsSection businessId={businessId} weekStart={weekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup} commitments={myCommitments} partners={partners} />
-          <TrackImprove businessId={businessId} canEdit={canEdit} />
+          <TodayList businessId={businessId} canEdit={canEdit} lookup={lookup} compact={compact} />
         </>}
 
         {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} canEdit={canEdit} lookup={lookup}
@@ -336,12 +303,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
             onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
       </main>
-      {planOpen && canEdit && planOwner && (
-        <PlanWeekDrawer businessId={businessId} weekStart={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} teamDefault={owner === 'team'} compact={compact}
-          hasPlanned={commitments.some(c => c.owner_user_id === planOwner && c.plan_id && c.status === 'open')}
-          onClose={() => setPlanOpen(false)}
-          onSaved={() => { setPlanOpen(false); setToast('Focus 5 saved'); loadCommitments(); loadTodos(); loadPlans(); }} />
-      )}
       {toast && (
         <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14 }}>{toast}</div>
       )}

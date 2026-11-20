@@ -1,0 +1,79 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Today — Scout does the work, phone</title><script src="./support.js"></script></head>
+<body><x-dc><helmet><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@500&amp;display=swap"><style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}
+button{font-family:inherit}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#A8B2C0;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.note{font-size:12.5px;line-height:1.5;color:#A8B2C0}
+.card{background:#1E242C;border:1px solid rgba(120,130,144,.35);border-radius:14px}
+.chip{height:28px;padding:0 10px;border-radius:999px;border:1px solid rgba(120,130,144,.35);background:transparent;color:#A8B2C0;font:13px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-sizing:border-box}
+.chip b{font-weight:500;color:#E9ECF0}
+.chip.on{border-color:#8FA8FF;color:#E9ECF0;background:rgba(143,168,255,.12)}
+.fsel{height:28px;padding:0 9px 0 10px;border-radius:8px;border:1px solid rgba(120,130,144,.35);background:#12161B;font:13px Geist,sans-serif;display:inline-flex;align-items:center;gap:7px;color:#A8B2C0;box-sizing:border-box}
+.fsel b{color:#E9ECF0;font-weight:500}
+.btn{height:28px;padding:0 10px;border-radius:8px;border:1px solid rgba(120,130,144,.35);background:#2E3540;color:#E9ECF0;font:500 12.5px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;box-sizing:border-box}
+.btn.pri{background:#8FA8FF;border-color:#8FA8FF;color:#0B0D10}
+.btn.ghost{background:transparent}
+table{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed;font-size:13px}
+th{text-align:left;font-weight:500;height:34px;padding:0 10px;border-bottom:1px solid rgba(120,130,144,.6);white-space:nowrap}
+td{height:42px;padding:0 10px;border-bottom:1px solid rgba(120,130,144,.18);color:#C9D0D9;vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g td{height:32px;background:#12161B;border-bottom:1px solid rgba(120,130,144,.35);color:#E9ECF0;font-weight:600;font-size:12.5px}
+.g td span.c{color:#A8B2C0;font-weight:400;margin-left:8px}
+.more td{height:32px;color:#A8B2C0;font-size:12.5px}
+.rk{color:#6B7480;text-align:right}
+.task{color:#E9ECF0;font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:999px;border:1px solid;font:600 11px Geist,sans-serif;background:rgba(0,0,0,.2);margin-left:7px;vertical-align:middle}
+.pill small{font:500 11px Geist,sans-serif;opacity:.85}
+.ow{display:inline-flex;align-items:center;gap:6px}
+.ow i{width:8px;height:8px;border-radius:999px;box-sizing:border-box;display:inline-block}
+.og{color:#6B7480;display:inline-flex}
+.dn{height:26px;padding:0 10px;border-radius:7px;border:1px solid rgba(120,130,144,.6);background:transparent;color:#E9ECF0;font:500 12.5px Geist,sans-serif;display:inline-flex;align-items:center;gap:5px;cursor:pointer}
+.dn svg{color:#3DD68C}
+.mb{all:unset;cursor:pointer;width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;color:#A8B2C0}
+.mb.open{background:#12161B;outline:1px solid #8FA8FF;color:#E9ECF0}
+.menu{width:220px;box-sizing:border-box;background:#1E242C;border:1px solid rgba(120,130,144,.6);border-radius:10px;padding:4px;box-shadow:0 16px 40px rgba(0,0,0,.55);display:flex;flex-direction:column;text-align:left}
+.mi{display:flex;align-items:center;justify-content:space-between;gap:8px;height:32px;padding:0 9px;border-radius:7px;font-size:13px;color:#E9ECF0}
+.mi em{font-style:normal;font-size:11.5px;color:#A8B2C0;display:inline-flex;align-items:center;gap:4px}
+.mi.act{background:#2E3540}
+.sepr{height:1px;background:rgba(120,130,144,.35);margin:4px 0}
+.done{display:flex;align-items:center;gap:10px;height:40px;padding:0 12px 0 14px;border-radius:10px;background:#1E242C;border:1px solid rgba(120,130,144,.6);font-size:13px;color:#E9ECF0;box-shadow:0 10px 30px rgba(0,0,0,.45);width:max-content;max-width:640px;box-sizing:border-box}
+.done .u{all:unset;cursor:pointer;color:#AFC0FF;font-weight:500;margin-left:6px;height:28px;padding:0 8px;display:inline-flex;align-items:center;gap:6px}
+.done .u span{color:#A8B2C0;font-weight:400}
+.slot{flex:1;min-width:0;height:54px;border-radius:10px;border:1px solid rgba(120,130,144,.35);background:#12161B;padding:8px 10px;box-sizing:border-box;display:flex;gap:9px;align-items:flex-start}
+.slot.empty{border-style:dashed;background:transparent;align-items:center;justify-content:center;color:#6B7480;font-size:12.5px}
+.slot .n{font:500 11px 'Geist Mono',monospace;color:#8FA8FF;margin-top:1px}
+.slot .t{font-size:12.5px;line-height:1.3;color:#E9ECF0;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.slot .s{font-size:11.5px;color:#A8B2C0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ck{all:unset;cursor:pointer;width:20px;height:20px;border-radius:999px;border:1.5px solid rgba(120,130,144,.6);box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;color:transparent}
+.ck.hov{border-color:#3DD68C;color:#3DD68C}
+.vb{height:26px;padding:0 10px;border-radius:7px;border:1px solid rgba(255,138,61,.55);background:rgba(255,138,61,.08);color:#FFB36B;font:500 12.5px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap}
+.vb.open{background:linear-gradient(135deg,#FF8A3D,#FFB36B 55%,#FFD9A8);color:#0B0D10;border-color:transparent}
+.wk{background:#12161B;border-bottom:1px solid rgba(120,130,144,.35);padding:0;position:relative}
+.wk::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(135deg,#FF8A3D,#FFB36B 55%,#FFD9A8)}
+.pane{background:#1E242C;border:1px solid rgba(120,130,144,.35);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;white-space:normal;min-width:0}
+.gen{display:inline-flex;align-items:center;gap:6px;font:500 10.5px 'Geist Mono',monospace;letter-spacing:.08em;text-transform:uppercase;background:linear-gradient(135deg,#FF8A3D,#FFB36B 55%,#FFD9A8);-webkit-background-clip:text;background-clip:text;color:transparent}
+.st{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(120,130,144,.18)}
+.st:last-child{border-bottom:0}
+.st .n{font:500 11px 'Geist Mono',monospace;color:#FFB36B;margin-top:2px}
+.st b{color:#E9ECF0;font-weight:500;font-size:13px}
+.draft{background:#12161B;border:1px solid rgba(120,130,144,.6);border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;color:#E9ECF0}
+.mono{background:#12161B;border:1px solid rgba(120,130,144,.35);border-radius:8px;padding:9px 11px;font:11.5px/1.55 'Geist Mono',monospace;color:#C9D0D9}
+</style></helmet>
+<div style="width:390px;height:1500px;box-sizing:border-box;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px;position:relative;overflow:hidden"><div style="padding:16px;display:flex;flex-direction:column;gap:10px;opacity:.4">
+<h1 style="margin:0;font-size:22px;font-weight:600">Today</h1>
+<article class="card" style="padding:14px;display:flex;flex-direction:column;gap:8px"><div class="task" style="font-size:15px">[Email the People team]</div><div style="font-size:13px"><a href="#">Cloudflare</a> <span style="color:#8FA8FF;display:inline-flex" title="Pinned company"><svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" stroke="none" aria-hidden="true"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"/></svg></span><span class="pill" style="color:#FF9F57;border-color:#FF9F57">P1<small class="num">65</small></span></div>
+<div style="display:flex;gap:8px"><button class="vb" style="flex:1;height:44px;justify-content:center;font-size:14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.800M10.2 10.2 12 12M12 4l-1.8 1.800M5.8 10.2 4 12"/></svg>Draft email</button><button class="dn" style="height:44px;width:84px;justify-content:center"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 8.500l3 3 6-7"/></svg>Done</button><button class="mb" style="width:44px;height:44px;border:1px solid rgba(120,130,144,.6);box-sizing:border-box"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="3.5" cy="8" r=".7"/><circle cx="8" cy="8" r=".7"/><circle cx="12.5" cy="8" r=".7"/></svg></button></div></article></div>
+<div style="position:absolute;left:0;right:0;top:200px;bottom:0;background:#1E242C;border-top:1px solid rgba(120,130,144,.6);border-radius:18px 18px 0 0;padding:10px 16px 20px;display:flex;flex-direction:column;gap:12px;box-sizing:border-box">
+<div style="width:36px;height:4px;border-radius:999px;background:#6B7480;align-self:center"></div>
+<div><div style="font-weight:600;font-size:16px">[Email the People team]</div><div class="note">Cloudflare · Danilea Mayer</div></div>
+<div style="display:flex;gap:22px;border-bottom:1px solid rgba(120,130,144,.35)"><span style="height:40px;display:inline-flex;align-items:center;font-size:14px;color:#E9ECF0;font-weight:500;border-bottom:2px solid #FF8A3D">Draft</span><span style="height:40px;display:inline-flex;align-items:center;font-size:14px;color:#A8B2C0">Next steps · 3</span><span style="height:40px;display:inline-flex;align-items:center;font-size:14px;color:#A8B2C0">Claude</span></div>
+<div style="display:flex;justify-content:space-between;align-items:center"><span class="gen"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v3M8 11v3M2 8h3M11 8h3M4 4l1.8 1.800M10.2 10.2 12 12M12 4l-1.8 1.800M5.8 10.2 4 12"/></svg>Draft · email</span><span class="note">Nothing is sent</span></div>
+<div style="font-size:13px"><span class="note">To</span> Danilea Mayer<br><span class="note">Subject</span> <span style="color:#E9ECF0">[A home-buying benefit for the Cloudflare team]</span></div>
+<div class="draft" style="font-size:15px;flex:1">Hi Danilea,<br><br>[One line tied to the last touch.]<br><br>[Two sentences on what HomeLover does for employees and what it costs the employer.]<br><br>[One clear ask with two time options.]<br><br>Jack</div>
+<div style="display:flex;gap:6px;overflow:hidden"><span class="chip">Shorter</span><span class="chip">Warmer</span><span class="chip">Try again</span></div>
+<div style="display:flex;gap:8px"><button class="btn pri" style="flex:1;height:48px;justify-content:center;font-size:15px">Copy</button><button class="btn" style="flex:1;height:48px;justify-content:center;font-size:15px">Open in Mail</button></div>
+<button class="btn" style="height:48px;justify-content:center;font-size:15px">Done and mark Danilea contacted</button>
+</div></div></x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1500}}'>class Component extends DCLogic { renderVals() { return {}; } }</script></body></html>

@@ -60,9 +60,6 @@ export const goalsApi = {
   createWeekGoal: (id, body) => call(id, '/week', { method: 'POST', body }).then(withEvent),
   updateWeekGoal: (id, goalId, body, row = null) => call(id, `/week/${goalId}`, { method: 'PATCH', body: row?.updated_at ? { ...body, expect: { updated_at: row.updated_at } } : body }).then(withEvent),
   deleteWeekGoal: (id, goalId) => call(id, `/week/${goalId}`, { method: 'DELETE' }),
-  proposePlan: (id, body) => call(id, '/week/plan/propose', { method: 'POST', body }),
-  savePlan: (id, body) => call(id, '/week/plan/save', { method: 'POST', body }),
-  weekPlans: (id, ownerId) => call(id, `/week/plans?${q({ owner_user_id: ownerId })}`).then(d => d.plans),
   carryOver: (id, weekStart, kind) => call(id, '/week/carry-over', { method: 'POST', body: { week_start: weekStart, kind } }),
 
   // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.
@@ -87,9 +84,6 @@ export const goalsApi = {
   // actions-v2 REV2 A4: ownerUserId = accept on a Member's behalf (the to-do is theirs).
   acceptSuggestion: (id, sid, { done = false, ownerUserId = null } = {}) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: { ...(done ? { done: true } : {}), ...(ownerUserId ? { owner_user_id: ownerUserId } : {}) } }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
-  snoozeSuggestion: (id, sid) => call(id, `/suggestions/${sid}/snooze`, { method: 'POST', body: {} }),
-  // sales-ia-v2 A1 - back to proposed within 10 min; todo_id = the to-do Accept returned (deleted if still open).
-  undoSuggestion: (id, sid, todoId, touchEventId) => call(id, `/suggestions/${sid}/undo`, { method: 'POST', body: { ...(todoId ? { todo_id: todoId } : {}), ...(touchEventId ? { touch_event_id: touchEventId } : {}) } }),
   // signals-v1 Stage 2 - the Signals review queue. scoutImport: dryRun = preview, nothing written.
   // accept = { signal, todo, via, record }; dismiss parks the company 7 days. 0 AI, 0 Apollo.
   signals: (id, status = 'new') => call(id, `/signals?${q({ status })}`).then(d => d.signals),
@@ -98,8 +92,10 @@ export const goalsApi = {
   dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - a just-accepted / dismissed signal back to new (its to-do, target or note come off too).
   undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),
-  // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
-  actions: (id, { snoozed = false } = {}) => call(id, `/actions${snoozed ? '?snoozed=1' : ''}`),
+  // actions-v2 A1 / A4 - Actions › Today: the ranked list ({ groups, strip, five, counts, verbs, rule, today, badge, members };
+  // params owner=me, chips, source, q) and the Needs attention fixes. 0 AI, 0 Apollo.
+  today: (id, params = {}) => call(id, `/today?${q(params)}`),
+  todayFixes: id => call(id, '/today/fixes'),
   // actions-home-attention-v1 D4 - sync status + counts; fresh = re-read the held partner moves (cached 15 min otherwise).
   attention: (id, { fresh = false } = {}) => call(id, `/attention${fresh ? '?fresh=1' : ''}`),
   // seif-campaign-v1 - outreach campaigns (Pipeline > Campaigns). No response carries a contact's address.
@@ -220,9 +216,7 @@ export const goalsApi = {
   // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
   sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),
   sourcesFunnel: (id, { days, team, partner, rep, source } = {}) => call(id, `/sources/funnel?${q({ days, team, partner, rep, source })}`),
-  // intake-insights-v1: Track & improve + channel links (status PATCH: Members, expect = the status the screen showed).
-  insights: (id, status) => call(id, `/insights?${q({ status })}`),
-  setInsightStatus: (id, insightId, body) => call(id, `/insights/${insightId}`, { method: 'PATCH', body }),
+  // intake-insights-v1: the channel links of a partner or a record.
   channelLinks: (id, { partner, record } = {}) => call(id, `/channel-links?${q({ partner, record })}`).then(d => d.links),
   // Structured fields only (company, type, stage, owner, covered lives, rep, office) - never route_in or notes.
   sourcesExport: (id, partner) => call(id, `/sources/export?${q({ partner })}`),
