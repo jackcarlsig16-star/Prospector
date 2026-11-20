@@ -35,7 +35,7 @@ import PinControl from './topTargets/PinControl';
 import { TT_CSS } from './topTargets/topTargetsStyles';
 import { PRIORITY_TYPES } from './companyPanelModel';
 import {
-  EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf, readWindowParam, windowParam,
+  EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf, readWindowParam, readVisitorParam, windowParam,
   readHidden, writeHidden, readSort, writeSort, readCollapsed, writeCollapsed, prioritySetLabel, PRIORITY_GROUPS, priorityGroup,
 } from './companiesModel';
 
@@ -74,7 +74,8 @@ let handledTarget = null;
 export default function PipelineView({ businessId, canEdit, isAdmin = false, meId, onOpenPartner, onOpenCompanies, onOpenPeople, onReturn, focusTarget = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
-  const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
+  const [pendingVisitor, setPendingVisitor] = useState(readVisitorParam); // FIX touch-truth T3: ?visitors=<company_key> resolves against the loaded rows
+  const [channel, setChannel] = useState(() => (readVisitorParam() ? 'website' : channelFromParam(new URLSearchParams(window.location.search).get('channel'))));
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [pendingWindow, setPendingWindow] = useState(readWindowParam); // visitor-trend-v1 T2: ?window=<start>_<end> resolves against the trend route
   const [hidden, setHidden] = useState(readHidden);
@@ -147,9 +148,10 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     if (pendingWindow) return;
     const url = new URL(window.location.href);
     if (filters.window) url.searchParams.set('window', windowParam(filters.window)); else url.searchParams.delete('window');
-    if (!visitorsOpen) url.searchParams.delete('visitors');
+    if (filters.visitor) url.searchParams.set('visitors', filters.visitor.key);
+    else if (!visitorsOpen && !pendingVisitor) url.searchParams.delete('visitors');
     window.history.replaceState(window.history.state, '', url);
-  }, [filters.window, pendingWindow, visitorsOpen]);
+  }, [filters.window, filters.visitor, pendingWindow, pendingVisitor, visitorsOpen]);
   // A bar on the 30-day chart: that window's companies (companiesView shows them whatever the channel), the report closed
   // so the list is what's on screen.
   const pickWindow = w => { setFilters(f => ({ ...f, window: w })); setChannel('website'); setVisitorsOpen(false); load(); };
@@ -196,6 +198,17 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   // A window opened from another Pipeline view (Top targets, People) goes back there when it closes.
   const returnTo = useRef(null);
   const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
+  // The email's "Add →": the list narrows to that visitor and its window opens with Add to pipeline focused. A company
+  // that has a record by now (added by hand or by the daily pull) has no visitor row left - the toast says so.
+  useEffect(() => {
+    if (!pendingVisitor || !rows) return;
+    const hit = rows.find(r => r.type === 'visitor' && r.id === pendingVisitor);
+    setPendingVisitor(null);
+    if (!hit) { setToast({ text: 'That company is no longer waiting on the visitors list - it may already be in the pipeline.' }); return; }
+    setFilters(f => ({ ...f, visitor: { key: hit.id, name: hit.name } }));
+    setPanelSection('add');
+    setPanelKey(rowKey(hit));
+  }, [pendingVisitor, rows]);
   const closePanel = useCallback(() => {
     clearOpenParam();
     setPanelKey(null);

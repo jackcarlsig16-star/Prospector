@@ -26,6 +26,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const [clients, setClients] = useState([]);
   const [testClient, setTestClient] = useState('');
   const [sendNow, setSendNow] = useState(null); // FIX visitor-email-top10-v1 follow-up: { kind, step: 'ask' | 'again' | 'again2', sent_at?, recipients? }
+  const [capDraft, setCapDraft] = useState(null); // FIX touch-truth T4: the typed auto-add cap until it is saved
   const [weekendAsk, setWeekendAsk] = useState(null); // visitor-trend-v1 T4: 'ask' | 'sure' - two confirms before weekends turn on
   const undoTimer = useRef(null);
 
@@ -125,6 +126,24 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
           <input type="checkbox" aria-label="Weekend pulls and emails" checked={!!data.weekend_on} disabled={!!busy} onChange={e => (e.target.checked ? setWeekendAsk('ask') : setWeekend(false))} /> On
         </label>
       ) : <span style={small}>{data.weekend_on ? 'On' : 'Off'}</span>}
+    </div>
+  );
+  // FIX touch-truth T4: the owner's daily cap on visitor companies the pull adds as targets on its own (US 500+ or a
+  // buyer-title visitor). 0 = never add automatically; the email then keeps "Add →" on them.
+  const saveCap = () => { const v = Number(capDraft); act('auto-add-cap', () => goalsApi.updateTeamEmails(businessId, { auto_add_cap: v }), () => { setCapDraft(null); flash(v ? `Up to ${v} visitor ${v === 1 ? 'company' : 'companies'} a day are added as targets - from the next pull; nothing was added now` : 'Automatic adds off - visitors wait for Add'); }); };
+  const capValid = capDraft != null && /^\d{1,3}$/.test(String(capDraft)) && Number(capDraft) <= 500 && Number(capDraft) !== data.auto_add_cap;
+  const capRow = 'auto_add_cap' in data && (
+    <div data-auto-add-row style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: `1px solid ${SA.border}` }}>
+      <div style={{ flex: '1 1 260px', display: 'grid', gap: 2 }}>
+        <b style={{ fontSize: 14, color: SA.text, fontWeight: 600 }}>Add visiting companies as targets automatically</b>
+        <span style={small}>A visitor with no record that is US 500+ or has a buyer-title visitor becomes an unassigned target on the daily pull · at most this many a day · 0 turns it off</span>
+      </div>
+      {isOwner ? (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+          <input type="number" min={0} max={500} step={1} aria-label="Automatic adds per day" className="ui-input" style={{ width: 84, height: 36 }} value={capDraft ?? data.auto_add_cap} disabled={!!busy} onChange={e => setCapDraft(e.target.value)} />
+          <Btn disabled={!!busy || !capValid} style={{ height: 36 }} onClick={saveCap}>{busy === 'auto-add-cap' ? 'Saving…' : 'Save'}</Btn>
+        </span>
+      ) : <span style={small}>{data.auto_add_cap ? `${data.auto_add_cap} a day` : 'Off'}</span>}
     </div>
   );
   // FIX email-simplify-v1 E2: the funnel tables in the daily email, off by default; the switch changes the next email
@@ -241,7 +260,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
             : `Scheduler: not running in this server process (Render runs it; its startup log line reads "HomeLover scheduler on: ${data.scheduler.line}")`}
         </span>
       )}
-      <div>{['visitor', 'client', ...('weekly_on' in data ? ['weekly'] : [])].map(emailRow)}{weekendRow}{funnelRow}</div>
+      <div>{['visitor', 'client', ...('weekly_on' in data ? ['weekly'] : [])].map(emailRow)}{weekendRow}{capRow}{funnelRow}</div>
       {weekendDialog}
       {sendNowDialog}
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}

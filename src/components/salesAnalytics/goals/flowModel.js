@@ -50,7 +50,7 @@ export function nextStepText({ row, detail }) {
   const text = rec.next_step || row?.next_step || todo?.text || null;
   const parts = [];
   const lt = rec.last_touch;
-  if (lt?.at) parts.push(`Last touch ${md(lt.at)}${lt.by ? ` · ${String(lt.by).split(' ')[0]}` : ''}${lt.what ? ` · ${lt.what}` : lt.touch_type && lt.touch_type !== 'done' ? ` · ${lt.touch_type}` : ''}`);
+  if (lt?.at) parts.push(`${rec.touches?.count ? `${rec.touches.count} touch${rec.touches.count === 1 ? '' : 'es'} · last` : 'Last touch'} ${md(lt.at)}${lt.by ? ` · ${String(lt.by).split(' ')[0]}` : ''}${lt.kind && lt.kind !== 'todo' ? ` · ${lt.kind}` : ''}`);
   else if (row?.last_touch_at) parts.push(`Last touch ${md(row.last_touch_at)}`);
   const web = detail?.visits?.[0];
   if (web) parts.push(`${web.visits_7d ?? 0} visit${web.visits_7d === 1 ? '' : 's'} / 7 d${(web.top_paths || []).length ? ` · ${web.top_paths.slice(0, 2).map(x => x.path || x).join(', ')}` : ''}`);

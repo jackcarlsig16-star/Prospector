@@ -7,6 +7,8 @@ import { schedulerState, laClock } from './scheduler.js';
 import { pullRunsThisMonth } from './jobs.js';
 import { composeAlert, lookalikesOf, ALERT_COLS } from './clientAlert.js';
 
+export const AUTO_ADD_CAP_DEFAULT = 25, AUTO_ADD_CAP_MAX = 500; // the column's default and CHECK (20261027_visitor_to_record_v1.sql)
+
 // homelover-team-emails-v1 T2 (REV2) - Sales › Settings › Team emails. Reads: any member; every write: the owner.
 // Only the owner's read carries the recipient addresses; everyone else sees counts. Activity rows
 // (sales_team_email_changes) carry counts only, never an address; each change can be undone for UNDO_MS.
@@ -46,6 +48,8 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
     // weekly-funnel-v1 W7: the weekly funnel email's switch (default OFF); absent while its migration has not run.
     ...(settings.weekly_pending ? {} : { weekly_on: !!settings.weekly_on }),
     weekend_on: !!settings.weekend_on, pull_runs_month: await pullRunsThisMonth(supabase, businessId, now),
+    // FIX touch-truth T4: the owner's daily cap on visitor companies the pull adds as targets (sales_settings.auto_create_daily_cap).
+    auto_add_cap: (await supabase.from('sales_settings').select('auto_create_daily_cap').eq('business_id', businessId).maybeSingle()).data?.auto_create_daily_cap ?? AUTO_ADD_CAP_DEFAULT,
     domains, max: MAX_RECIPIENTS, counts: await recipientCounts(supabase, businessId, settings, grant), total: live.length,
     sends: sends.map(s => ({ id: s.id, at: s.created_at, kind: s.kind, test: s.test, recipients: s.recipients, status: s.status, error: s.error })),
     changes: changes.map(c => ({ ...c, undoable: !c.undone_at && c.action !== 'undo' && now - Date.parse(c.at) < UNDO_MS })),
@@ -64,8 +68,10 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
 export async function updateTeamEmails(supabase, { businessId, userId, body = {}, isOwner, grantOf = getGrant }) {
   if (!isOwner) return ownerOnly;
   const keys = Object.keys(body);
-  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on', 'funnel_tables', 'weekly_on'].includes(k));
-  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on, weekend_on, funnel_tables and / or weekly_on' });
+  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on', 'funnel_tables', 'weekly_on', 'auto_add_cap'].includes(k));
+  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on, weekend_on, funnel_tables, weekly_on and / or auto_add_cap' });
+  const { auto_add_cap: cap, ...emailBody } = body;
+  if ('auto_add_cap' in body && !(Number.isInteger(cap) && cap >= 0 && cap <= AUTO_ADD_CAP_MAX)) return reply(400, { error: `auto_add_cap must be a whole number from 0 to ${AUTO_ADD_CAP_MAX}` });
   if ('funnel_tables' in body && (await loadSettings(supabase, businessId))?.funnel_tables_pending) return reply(503, { error: 'Run supabase/migrations/20261111_email_simplify_v1.sql first (funnel_tables is missing)', migration_pending: true });
   if ('weekly_on' in body && (await loadSettings(supabase, businessId))?.weekly_pending) return reply(503, { error: WEEKLY_PENDING_ERROR, migration_pending: true });
   for (const k of ['visitor_on', 'client_on', 'weekend_on', 'funnel_tables', 'weekly_on']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
@@ -76,8 +82,11 @@ export async function updateTeamEmails(supabase, { businessId, userId, body = {}
     if (!members.some(m => m.userId === id)) return reply(400, { error: 'sender_user_id must be a member' });
     if (!canSendTeamEmail(await grantOf(id))) return reply(409, { error: `That member's Microsoft connection can't send yet - ${RECONNECT_NOTE.toLowerCase()}` });
   }
-  const rows = must(await supabase.from('sales_team_email_settings').update({ ...body, updated_by: userId, updated_at: new Date().toISOString() }).eq('business_id', businessId).select('business_id'));
-  if (!rows.length) return reply(404, { error: 'Team emails are not set up for this workspace' });
+  if ('auto_add_cap' in body) must(await supabase.from('sales_settings').upsert({ business_id: businessId, auto_create_daily_cap: cap }, { onConflict: 'business_id' }).select('business_id'));
+  if (Object.keys(emailBody).length) {
+    const rows = must(await supabase.from('sales_team_email_settings').update({ ...emailBody, updated_by: userId, updated_at: new Date().toISOString() }).eq('business_id', businessId).select('business_id'));
+    if (!rows.length) return reply(404, { error: 'Team emails are not set up for this workspace' });
+  }
   return teamEmailState(supabase, businessId, userId, { isOwner, grantOf });
 }
 

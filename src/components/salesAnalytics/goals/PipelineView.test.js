@@ -857,7 +857,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(band.queryByRole('button')).toBeNull();
   expect(panel.queryByRole('group', { name: 'Edit' })).toBeNull();
   expect(factText('Gallagher', 'Stage')).toBeNull();
-  expect(factText('Gallagher', 'Last touch')).toBe('No touch yet');
+  expect(factText('Gallagher', 'Touches')).toBe('—');
   expect(panel.queryByRole('button', { name: /^(Stage|Owner|Team|Priority|Source|Next step)/ })).toBeNull(); // company-panel-v3: viewers get plain facts
   expect(panel.queryByRole('button', { name: 'More' })).toBeNull(); // spec Z: no ⋯ for Viewers
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
@@ -1011,5 +1011,26 @@ test('T2: ?window= filters the Companies list to the trend window\'s companies w
   expect(await screen.findByText('Solidcore')).toBeTruthy();
   await waitFor(() => expect(window.location.search).not.toContain('window='));
   expect(screen.queryByRole('button', { name: /^Remove filter Visited/ })).toBeNull();
+  window.history.replaceState(null, '', '/');
+});
+
+// FIX touch-truth T3: the visitor email's "Add →" = ?visitors=<company_key>.
+test('T3: ?visitors=<company_key> opens Website visitors on that one company with its window open and Add to pipeline focused; the chip removes it; a key with no visitor row says so and drops the param', async () => {
+  window.history.replaceState(null, '', '/?visitors=acme%20visit');
+  goalsApi.pipelineBoard.mockResolvedValue([...ROWS, { ...VISITOR, id: 'acme visit', name: 'Acme Visit' }, { ...VISITOR, id: 'other co', name: 'Other Co' }]);
+  setup();
+  const panel = within(await screen.findByRole('dialog', { name: 'Acme Visit' }));
+  expect(channelBtn('Website visitors')).toHaveAttribute('aria-pressed', 'true');
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Add to pipeline ▾' })).toHaveFocus());
+  expect(screen.getByRole('button', { name: 'Remove filter Visitor: Acme Visit' })).toBeTruthy();
+  expect(screen.queryByText('Other Co')).toBeNull();
+  expect(window.location.search).toContain('visitors=acme+visit');
+
+  document.body.innerHTML = '';
+  window.history.replaceState(null, '', '/?visitors=gone%20co');
+  setup();
+  expect(await screen.findByText(/no longer waiting on the visitors list/)).toBeTruthy();
+  expect(await screen.findByText('Other Co')).toBeTruthy();
+  await waitFor(() => expect(window.location.search).not.toContain('visitors='));
   window.history.replaceState(null, '', '/');
 });

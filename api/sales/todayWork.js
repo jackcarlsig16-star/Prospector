@@ -50,7 +50,7 @@ export function groundsFor({ row, person = null, visit = null, score = null, pin
     if (person.heat_band) add('heat', `${person.name} is ${person.heat_band}${person.heat != null ? ` (heat ${person.heat})` : ''}`);
     if (person.title) add('title', `${person.name} is ${person.title}${person.buyer ? ' - a buyer title' : ' - not on the buyer-title list'}`);
   }
-  if (score?.stage) add('stage', `${name} is at ${said(score.stage)}${score.last_touch_at ? `; last touch ${md(score.last_touch_at)}${score.last_touch_channel ? ` by ${said(score.last_touch_channel)}` : ''}` : '; no touch recorded'}`);
+  if (score?.stage) add('stage', `${name} is at ${said(score.stage)}${score.last_touch_at ? `; ${score.touches ? `${score.touches} touch${score.touches === 1 ? '' : 'es'}, ` : ''}last touch ${md(score.last_touch_at)}${score.last_touch_channel ? ` by ${said(score.last_touch_channel)}` : ''}` : '; no touch recorded'}`);
   if (c?.pinned) add('pin', `${name} is pinned${pinReason ? `: ${pinReason}` : ''}`);
   if (siblings.length) add('todos', `${n(siblings.length, 'other open to-do')} on ${name}: ${siblings.slice(0, 2).map(s => `"${s.text}"${s.due ? ` (due ${md(s.due)})` : ''}`).join('; ')}`);
   for (const note of notes.slice(0, NOTES_MAX)) add('note', `Call note ${md(note.call_date)}${note.title ? ` (${note.title})` : ''}: ${String(note.text || '').replace(/\s+/g, ' ').slice(0, 220)}`);

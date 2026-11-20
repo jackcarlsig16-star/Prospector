@@ -92,7 +92,10 @@ test('partner body: to-dos, waiting, matched visits, decisions, terms, people wi
   // person-owner-v1 O3: each person row carries the key Assign posts and the person's own owner (null = Unassigned).
   assert.ok(d.people.every(p => /^(contact|prospect):/.test(p.person_key) && 'owner_user_id' in p), JSON.stringify(d.people.map(p => [p.person_key, p.owner_user_id])));
   assert.deepEqual(d.recent.map(e => e.event), ['touch', 'note']);
-  assert.equal(d.record.last_touch, null);
+  // FIX touch-truth: the logged call is a touch (the old reader said none while the goal's stamp was empty).
+  assert.deepEqual(d.record.last_touch, { at: '2026-10-17T10:00:00Z', kind: 'call', by: null, what: null });
+  const k = d.record.touches.kinds;
+  assert.deepEqual([d.record.touches.count, k.email, k.call, k.note, k.open, k.click], [4, 2, 1, 1, 1, 1], 'ours = 2 Apollo emails + the call + the note; the open and the click are theirs');
   assert.deepEqual(d.record.site, { domain: 'gallagher.example', confirmed: true });
   assert.deepEqual(d.research, { runs: [], today: 0, cap: 5 });
   assert.equal(JSON.stringify(d).includes('@'), false);
@@ -106,10 +109,10 @@ test('employer body: stage history + done to-dos as recent, decision makers and 
   // lead-upload-v1: the uploaded person carries the upload's source and the list's why line; the duplicate (by name) is not repeated.
   assert.deepEqual(e.people.filter(p => p.source === 'upload').map(p => [p.name, p.source_kind, p.note, p.linkedin_url]), [['Kit Vale', 'apollo', 'Recently changed roles', 'https://www.linkedin.com/in/kitvale']]);
   assert.deepEqual(e.decision_makers, ['Pat Lee · VP People']);
-  assert.deepEqual(e.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
+  assert.deepEqual(e.record.last_touch, { at: '2026-10-19T10:00:00Z', kind: 'stage', by: null, what: null });
   // FIX loop-quickfixes Q4: a later archived / created event is not contact.
   sb.db.sales_opportunity_events.push({ id: randomUUID(), business_id: B, opportunity_id: ID.employer, event_type: 'archived', from_stage: 'contacted', to_stage: 'contacted', changed_at: '2026-10-20T10:00:00Z' });
-  assert.deepEqual((await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
+  assert.deepEqual((await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body.record.last_touch, { at: '2026-10-19T10:00:00Z', kind: 'stage', by: null, what: null });
   sb.db.sales_opportunity_events.pop();
   assert.equal(e.record.notes, 'old note'); assert.equal(e.record.covered_lives, 1200); assert.equal(e.record.owner, 'Jack Carlson');
   sb.db.sales_targets[0].research_notes = '(10/19) Looks good\nPeople: Lee Park · Head of HR\nPerson: Ana Ruiz';
@@ -276,7 +279,7 @@ test('mark contacted: partner = a touch (past contacted: stage stays, last touch
   assert.deepEqual(e.body.stage, { before: 'contacted', after: 'contacted' });
   assert.equal(sb.db.sales_opportunities.find(x => x.id === ID.employer).stage, 'contacted');
   const d = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
-  assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), touch_type: 'done', what: 'Contacted Dana Q', by: 'Jack Carlson' }); assert.equal(d.record.last_touch_at, NOW.toISOString());
+  assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), kind: 'todo', by: 'Jack Carlson', what: null }); assert.equal(d.record.last_touch_at, NOW.toISOString());
   assert.equal(d.recent[0].text, 'Done: Contacted Dana Q');
   const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
   assert.equal(t.status, 200); assert.equal(t.body.todo.text, 'Contacted Zeta Labs'); assert.equal(t.body.todo.link_type, 'employer'); assert.equal(t.body.todo.link_id, t.body.added.id);

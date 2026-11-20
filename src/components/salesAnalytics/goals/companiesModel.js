@@ -28,9 +28,12 @@ export const TYPE_OPTIONS = [['partner', 'Partner'], ['employer', 'Employer'], [
 // visitor-trend-v1 T2: window = one pull window from GET goals/visitors/trend ({ start, end, label, companies, company_keys,
 // record_keys }) - the list shows that window's companies: an unmatched visitor row by its company_key (its id), a
 // matched record by `${type}:${id}`. Read from ?window=<start>_<end> beside ?channel; a bar click sets it.
-export const EMPTY_FILTERS = { owner: '', ownerTeam: '', type: '', stage: '', priority: '', tier: '', visited: false, hasTodo: false, overdue: false, q: '', window: null };
+export const EMPTY_FILTERS = { owner: '', ownerTeam: '', type: '', stage: '', priority: '', tier: '', visited: false, hasTodo: false, overdue: false, q: '', window: null, visitor: null };
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 export const readWindowParam = (search = window.location.search) => { const [start, end] = (new URLSearchParams(search).get('window') || '').split('_'); return YMD.test(start || '') && YMD.test(end || '') ? { start, end } : null; };
+// FIX touch-truth T3: ?visitors=<company_key> (the visitor email's "Add →") = the list on that one unmatched visitor,
+// its window open on Add to pipeline. ?visitors=1 stays the 30-day report. visitor = { key, name }.
+export const readVisitorParam = (search = window.location.search) => { const v = new URLSearchParams(search).get('visitors'); return v && v !== '1' ? v : null; };
 export const windowParam = w => (w ? `${w.start}_${w.end}` : null);
 export const inWindow = (r, w) => (r.type === 'visitor' ? (w.company_keys || []).includes(r.id) : (w.record_keys || []).includes(`${r.type}:${r.id}`));
 export const activeFilterCount = f => Object.entries(f).filter(([k, v]) => v && v !== EMPTY_FILTERS[k]).length;
@@ -47,6 +50,7 @@ export function activeFilters(f) {
     f.tier && { key: 'tier', text: `Tier: ${TIER_TEXT(f.tier)}` },
     f.visited && { key: 'visited', text: 'Visited 7 d' },
     f.window && { key: 'window', text: `Visited ${f.window.label} · ${f.window.companies} ${f.window.companies === 1 ? 'company' : 'companies'} in that window` },
+    f.visitor && { key: 'visitor', text: `Visitor: ${f.visitor.name}` },
     f.hasTodo && { key: 'hasTodo', text: 'Has open to-do' },
     f.overdue && { key: 'overdue', text: 'Overdue' },
     f.q && { key: 'q', text: `"${f.q}"` },
@@ -65,6 +69,7 @@ export function matchesCompanyFilters(r, f) {
     && (!f.priority || (f.priority === 'none' ? r.priority == null : r.priority === Number(f.priority)))
     && (!f.visited || !!r.visited)
     && (!f.window || inWindow(r, f.window))
+    && (!f.visitor || (r.type === 'visitor' && r.id === f.visitor.key))
     && (!f.hasTodo || (r.work?.todos || 0) > 0)
     && (!f.overdue || (r.work?.todos_overdue || 0) + (r.work?.waiting_overdue || 0) > 0);
 }

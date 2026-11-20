@@ -51,8 +51,9 @@ export function windowRange(key, today) {
 
 // rows: { delivered, messages, events, prospects, partnerContacts, opportunities, targets, partners, sequenced, people,
 // visits, runs, calEvents } - every table business-scoped. -> an index the window / day functions read.
-export function funnelContext(rows) {
-  const { delivered = [], messages = [], events = [], prospects = [], partnerContacts = [], opportunities = [], targets = [], partners = [], sequenced = [], people = [], visits = [], runs = [], calEvents = [] } = rows;
+// The K3 company join on its own (FIX touch-truth T1 reads it too - never a second join): companyOf(d) for a row that
+// carries { account_id, contact_id } -> { type, id, name, matched_by } | null, keyOf(company) -> 'type:id' | 'name:<norm>'.
+export function companyJoin({ prospects = [], partnerContacts = [], opportunities = [], targets = [], partners = [], sequenced = [] }) {
   const oppById = new Map(opportunities.map(o => [o.id, o])), goalById = new Map(partners.map(g => [g.id, g]));
   const oppByAccount = new Map(opportunities.filter(o => o.apollo_account_id).map(o => [o.apollo_account_id, o]));
   const targetByAccount = new Map(targets.filter(t => t.apollo_account_id).map(t => [t.apollo_account_id, t]));
@@ -79,6 +80,12 @@ export function funnelContext(rows) {
     return { ...(byName.get(normName(name)) || { type: null, id: null, name }), matched_by: 'name' };
   };
   const keyOf = c => (c.id ? `${c.type}:${c.id}` : `name:${normName(c.name)}`);
+  return { companyOf, keyOf, oppById, prospectBy };
+}
+
+export function funnelContext(rows) {
+  const { delivered = [], messages = [], events = [], targets = [], people = [], visits = [], runs = [], calEvents = [] } = rows;
+  const { companyOf, keyOf, oppById, prospectBy } = companyJoin(rows);
   // Visits: the live rows (backfill hidden), each on its attributed day with its window's length.
   const backfill = new Set(runs.filter(r => r.kind === 'backfill' && r.status === 'ok' && r.window_start).map(r => `${r.la_date}|${r.window_start}|${r.window_end}`));
   const visitDays = new Map(), windowDaysOf = new Map();

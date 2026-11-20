@@ -1016,8 +1016,13 @@ export default function App({ me }) {
       const landId = new URLSearchParams(window.location.search).get('business');
       if (landId) {
         const landing = businesses.find(b => b.id === landId);
-        if (landing) { setActiveBusiness(landing); landOn(landing); setPage('business-detail'); }
-        window.history.replaceState({}, '', '/');
+        // FIX url-params-on-business: a deep link (?business=<id>&tab=… / &open=… / &visitors=…) opens the workspace's Sales
+        // page ON that link - landOn would send it to Actions - and only ?business= is consumed; the other params stay.
+        const url = new URL(window.location.href);
+        const deep = ['tab', 'view', 'open', 'visitors'].some(k => url.searchParams.has(k)) && homePage(landing || {}) === 'sales-analytics';
+        if (landing) { setActiveBusiness(landing); if (deep) setBusinessPage('sales-analytics'); else landOn(landing); setPage('business-detail'); }
+        url.searchParams.delete('business');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
       } else if (parseHkHash(window.location.hash)) {
         // hkos-project-shell-v1 S10 - a #hk/... link opens the Sales OS of the first hk_sales workspace you're in.
         const hk = businesses.find(b => b.features?.hk_sales);

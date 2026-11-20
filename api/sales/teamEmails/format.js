@@ -3,8 +3,10 @@
 export const ORIGIN = process.env.PUBLIC_APP_ORIGIN || 'https://prospector-chtj.onrender.com';
 export const FOOTER = 'Sent by Prospector to the HomeLover team · manage recipients in Sales › Settings › Team emails';
 export const MAP_URL = `${ORIGIN}/?tab=pipeline&view=priorities`;
-// There is no per-visitor link: a company not in Prospector opens the Website visitors list, where Add lives.
 export const VISITORS_URL = `${ORIGIN}/?tab=pipeline&view=companies&channel=website_visit`;
+// FIX touch-truth T3: a company not in Prospector opens the Website visitors list on that one company, its window open
+// on the Add control (?visitors=<company_key>; ?visitors=1 stays the 30-day report).
+export const visitorUrl = companyKey => `${VISITORS_URL}&visitors=${encodeURIComponent(companyKey)}`;
 export const recordUrl = (type, id) => `${ORIGIN}/?tab=pipeline&view=companies&open=${type}-${id}`;
 export const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 export const INK = '#1f2430', MUTED = '#6b7280', RULE = '#e5e7eb', LINK = '#3D5FD9', ACCENT = '#C97626';

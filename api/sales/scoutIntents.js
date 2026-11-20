@@ -453,7 +453,7 @@ export async function salesStanding(sb, { businessId, auth, today, now }) {
     items: [
       ...todos.rows.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 160), 'my open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date'].join(' · ') })),
       ...notes.map(r => noteItem(r, noteChars(notes.length))),
-      ...touched.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, text: [x.name, x.type, `score ${x.score} ${x.band}`, `last touch ${day(x.last_touch_at)}${x.last_touch_channel ? ` ${x.last_touch_channel}` : ''}`, x.owner ? `owner ${x.owner}` : null].filter(Boolean).join(' · ') })),
+      ...touched.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, text: [x.name, x.type, `score ${x.score} ${x.band}`, `${x.touches ? `${x.touches} touches · ` : ''}last touch ${day(x.last_touch_at)}${x.last_touch_channel ? ` ${x.last_touch_channel}` : ''}`, x.owner ? `owner ${x.owner}` : null].filter(Boolean).join(' · ') })),
     ],
   };
 }

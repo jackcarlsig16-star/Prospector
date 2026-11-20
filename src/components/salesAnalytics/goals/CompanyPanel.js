@@ -155,7 +155,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       </span>
     : <OwnerChip row={row} members={members} meId={meId} />);
   const actions = canEdit
-    ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} fit={fit} stage={detail?.record?.stage ?? row.stage} actionsRef={actionsRef} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} onOwner={() => setMenu('owner')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />
+    ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} fit={fit} stage={detail?.record?.stage ?? row.stage} actionsRef={actionsRef} focusAdd={initialSection === 'add'} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} onOwner={() => setMenu('owner')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />
     : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>;
   const titleRow = (
     <div data-company-panel={row.type} data-layout={live ? 'live-partner' : 'classic'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>

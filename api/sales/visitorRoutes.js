@@ -8,7 +8,8 @@ import { insertCompanyRecord } from './companyPanel.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { normName } from './normName.js';
 import { cleanText, hasPii } from './scrubText.js';
-import { autoCreatePlan, autoSignalPatch, recordDecision, visitLookup } from './visitorRecords.js';
+import { autoCreatePlan, autoSignalPatch, recordDecision, visitLookup, visitEvidence } from './visitorRecords.js';
+import { restampVisits, logRestamp } from './restampVisits.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
 import { VISITOR_ROLE, SKIP_NOTE, relinkParked } from './visitorPeopleMove.js';
@@ -121,6 +122,52 @@ export async function autoCreateFromVisits(supabase, { businessId, userId = null
     for (const person of mapPeople(json, { visitId: item.visit_id, max: settings.people_per_company, day: today })) {
       if (await filePerson(supabase, { businessId, userId, type: 'target', id: targetId, person, existingKeys: keys })) { out.people++; created.people++; }
     }
+  }
+  out.made_today = made + out.created.length;
+  return out;
+}
+
+// FIX touch-truth T4 - auto-add: a visiting company with no record becomes an employer TARGET when it meets the record
+// rule the people filer already uses (recordDecision: the visit row is US 500+, or one of its identified people has a
+// buyer title) - so a 15-visit company never sits on "Not in Prospector · Add →" waiting for a click. Through the one
+// target writer (insertCompanyRecord: an exact name / domain match answers `already`, never a second row), owner
+// Unassigned, no stage set, its visit rows re-stamped, an Activity line, the week's open signal accepted as auto. Counts
+// against the same owner-set daily cap as V1 (sales_settings.auto_create_daily_cap). No Apollo call, no people search.
+// dryRun: the same decisions, nothing written. only: one company_key. madeToday: the pull hands over V1's count.
+// -> { added: [{ target_id, name, reason, visits_matched, event_id }], would_add: [{ name, reason }], already, capped }
+const RULE_WORD = { us_500: 'US 500+', buyer_title: 'a buyer-title visitor' };
+export async function autoAddVisitors(supabase, { businessId, userId = null, visits, dupeCtx, settings, skip = new Set(), now = new Date(), dryRun = false, only = null, madeToday = null }) {
+  const today = laDateString(now);
+  const parked = await selectAllPages(() => supabase.from('sales_people').select('id, company_name, title').eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id'));
+  const peopleOf = new Map();
+  for (const p of parked) { const k = normName(p.company_name); if (!peopleOf.has(k)) peopleOf.set(k, []); peopleOf.get(k).push({ title: p.title }); }
+  // A company someone dismissed in Signals stays out until the dismissal runs out (the same respect V1 pays it).
+  const dismissed = new Set(must(await supabase.from('sales_signals').select('company_key, dismissed_until').eq('business_id', businessId).eq('source', 'web_visit').eq('status', 'dismissed')).filter(x => x.dismissed_until && String(x.dismissed_until).slice(0, 10) >= today).map(x => x.company_key));
+  let left = Math.max(0, settings.auto_create_daily_cap - (madeToday ?? await createdToday(supabase, businessId, today)));
+  const out = { added: [], would_add: [], already: 0, capped: 0 };
+  for (const v of visits) {
+    if (only && v.company_key !== only) continue;
+    if ((v.matched_type && v.matched_id) || v.noise_reason || v.maybe_user || skip.has(v.company_key) || dismissed.has(v.company_key)) continue;
+    const d = recordDecision({}, peopleOf.get(v.company_key) || [], { buyerTitles: settings.buyer_titles, visit: v });
+    if (d.action !== 'create') continue;
+    if (left <= 0) { out.capped++; continue; }
+    if (dryRun) {
+      if (exactRecord(v.company_name, v.domain || null, dupeCtx)) { out.already++; continue; }
+      left--; out.would_add.push({ name: v.company_name, reason: d.reason });
+      continue;
+    }
+    const evidence = visitEvidence(v);
+    const r = await insertCompanyRecord(supabase, { businessId, userId, name: v.company_name, domain: v.domain || null, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: `Website visit ${v.pulled_on || today}` }, owner: null, dupeCtx, now });
+    if (r.already) { out.already++; continue; }
+    left--;
+    const id = r.created.id, rec = { type: 'target', id, name: v.company_name, domain: v.domain || null };
+    must(await supabase.from('sales_targets').update({ visit_id: v.id || null, source: 'web_visit', research_notes: `(${slash(today)}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
+    dupeCtx.targets.push({ id, name: v.company_name, status: 'researching' });
+    const stamped = await restampVisits(supabase, { businessId, to: rec });
+    const matched = (r.visits_matched || 0) + stamped.matched;
+    must(await supabase.from('sales_signals').update({ ...autoSignalPatch(id, { now }), match: { type: 'target', id, name: v.company_name, via: 'new_target' }, updated_at: now.toISOString() }).eq('business_id', businessId).eq('source', 'web_visit').eq('company_key', v.company_key).eq('status', 'new').select('id'));
+    const ev = await logRestamp(supabase, { businessId, to: rec, text: `Added automatically from website visits (${RULE_WORD[d.reason] || d.reason}) · ${matched} visit ${matched === 1 ? 'row' : 'rows'} joined`, moved: 0, matched, meta: { auto_add: true, rule: d.reason, visit_id: v.id || null }, byUser: userId, now });
+    out.added.push({ target_id: id, name: v.company_name, reason: d.reason, visits_matched: matched, event_id: ev?.id || null });
   }
   return out;
 }

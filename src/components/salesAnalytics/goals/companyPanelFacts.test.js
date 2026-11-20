@@ -1,37 +1,39 @@
-import { factsFor, lastTouchText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel, sourceText, typeFact, readinessOf, researchNumbers } from './companyPanelFacts';
+import { factsFor, touchesText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel, sourceText, typeFact, readinessOf, researchNumbers } from './companyPanelFacts';
 import { historyText, sourceBody } from './LeadSource';
 
 // company-panel-v2 L2 / L5 - the facts row and the Edit row per row type (the matrix), pure.
 const base = { name: 'X', stage: 'replied', owner: 'Jack', owner_team: 'homelover', channel: 'import', priority: 1, next_step: 'Send deck', next_step_due: '2026-10-22', last_touch_at: '2026-10-17T10:00:00Z' };
 
-test('partner / employer (company-window-v4 F): Owner · Team · Priority · Employees · Type · Source · Last touch · Next step - no Stage; Last touch says the kind when the touch has one; Next step carries its due date', () => {
-  const facts = factsFor({ ...base, type: 'partner' }, { last_touch: { at: '2026-10-17T10:00:00Z', touch_type: 'email' }, next_step: 'Send deck', next_step_due: '2026-10-22' });
+test('partner / employer (company-window-v4 F): Owner · Team · Priority · Employees · Type · Source · Touches · Next step - no Stage; Touches = count · last day · kind · who; Next step carries its due date', () => {
+  const facts = factsFor({ ...base, type: 'partner' }, { touches: { count: 33, last: { at: '2026-10-17T10:00:00Z', kind: 'email', by: 'Cyrus Test' }, last_signal: { at: '2026-10-18T10:00:00Z', kind: 'open' } }, next_step: 'Send deck', next_step_due: '2026-10-22' });
   // company-workflow-v1: + Employees (number + source tag).
-  expect(facts.map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Type', 'Source', 'Last touch', 'Next step']);
-  expect(facts.map(f => f[1])).toEqual(['Jack', 'HomeLover', 'P1 · Strong', '—', 'Uncategorized', 'Import', 'Oct 17 · Email sent', 'Send deck · due Oct 22']);
+  expect(facts.map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Type', 'Source', 'Touches', 'Next step']);
+  expect(facts.map(f => f[1])).toEqual(['Jack', 'HomeLover', 'P1 · Strong', '—', 'Uncategorized', 'Import', '33 · last Oct 17 · Email · Cyrus', 'Send deck · due Oct 22']);
+  expect(facts.find(f => f[0] === 'Touches')[3]).toBe('they opened Oct 18');
   expect(facts.filter(f => !['Employees', 'Type'].includes(f[0])).every(f => f[2] === false)).toBe(true);
-  const employer = factsFor({ ...base, type: 'employer', stage: 'contacted', owner: null, owner_team: null, priority: null, next_step: null, next_step_due: null, last_touch_at: null }, { last_touch: { at: '2026-10-19T10:00:00Z', touch_type: 'done' } });
-  expect(employer.map(f => f[1])).toEqual(['Unassigned', '—', '—', '—', '—', 'Import', 'Oct 19 · To-do done', '—']);
+  const employer = factsFor({ ...base, type: 'employer', stage: 'contacted', owner: null, owner_team: null, priority: null, next_step: null, next_step_due: null, last_touch_at: null }, { touches: { count: 1, last: { at: '2026-10-19T10:00:00Z', kind: 'todo', by: null }, last_signal: null } });
+  expect(employer.map(f => f[1])).toEqual(['Unassigned', '—', '—', '—', '—', 'Import', '1 · last Oct 19 · To-do done', '—']);
   expect(employer.map(f => f[2])).toEqual([true, true, true, true, true, false, false, true]);
   expect(typeFact({ type: 'employer', org_type: 'membership' }, null)).toEqual(['Type', 'Membership org', false]);
   expect(typeFact({ type: 'partner', category: '3. Brokers' }, null)).toEqual(['Type', 'Brokers', false]);
   expect(typeFact({ type: 'target' }, { kind: 'partner' })).toEqual(['Type', 'Partner', false]);
 });
 
-test('target: Owner (a person, company-workflow-v1), Team, Type (kind), Source, Last touch - no Stage; Apollo-only keeps In sequence · Apollo (no journey); visitor: Priority · Source Website · Last visit', () => {
-  expect(factsFor({ type: 'target', stage: 'researching', owner_team: 'upside', channel: 'scout', kind: 'employer' }, null).map(f => [f[0], f[1]])).toEqual([['Owner', 'Unassigned'], ['Team', 'Upside'], ['Type', 'Employer'], ['Source', 'Scout signal'], ['Last touch', 'No touch yet']]);
-  expect(factsFor({ type: 'apollo', stage: 'sequenced' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'In sequence'], ['Source', 'Apollo'], ['Last touch', 'No touch yet']]);
+test('target: Owner (a person, company-workflow-v1), Team, Type (kind), Source, Touches - no Stage; Apollo-only keeps In sequence · Apollo (no journey); visitor: Priority · Source Website · Last visit', () => {
+  expect(factsFor({ type: 'target', stage: 'researching', owner_team: 'upside', channel: 'scout', kind: 'employer' }, null).map(f => [f[0], f[1]])).toEqual([['Owner', 'Unassigned'], ['Team', 'Upside'], ['Type', 'Employer'], ['Source', 'Scout signal'], ['Touches', '—']]);
+  expect(factsFor({ type: 'apollo', stage: 'sequenced' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'In sequence'], ['Source', 'Apollo'], ['Touches', '—']]);
   const v = factsFor({ type: 'visitor', priority: 2, visited: { last_visit: '2026-10-20' } }, null);
   expect(v.map(f => [f[0], f[1]])).toEqual([['Priority', 'P2 · Warm'], ['Source', 'Website'], ['Last visit', 'Oct 20']]);
   expect(factsFor({ type: 'visitor', priority: null, not_a_fit: true, visited: null }, null)[0][1]).toBe('Not a fit');
   expect(sourceLabel({ type: 'partner', channel: 'unknown' })).toBe('—');
 });
 
-test('lastTouchText: kind + date, else "Touched <date>" from the stamp, else "No touch yet" (muted)', () => {
-  expect(lastTouchText({ at: '2026-10-17T10:00:00Z', touch_type: 'call' }, null)).toEqual({ text: 'Oct 17 · Call', empty: false });
-  expect(lastTouchText({ at: '2026-10-17T10:00:00Z', touch_type: null }, null)).toEqual({ text: 'Touched Oct 17', empty: false });
-  expect(lastTouchText(null, '2026-10-16T10:00:00Z')).toEqual({ text: 'Touched Oct 16', empty: false });
-  expect(lastTouchText(null, null)).toEqual({ text: 'No touch yet', empty: true });
+test('touchesText: ours only - count · last day · kind · first name; their last signal is the sub line; a bare stamp or "—" before the read; "None yet" (muted) only from a read', () => {
+  expect(touchesText({ count: 2, last: { at: '2026-10-17T10:00:00Z', kind: 'call', by: 'Jack Carlson' }, last_signal: null }, null)).toEqual({ text: '2 · last Oct 17 · Call · Jack', empty: false, sub: null });
+  expect(touchesText({ count: 0, last: null, last_signal: { at: '2026-10-20T10:00:00Z', kind: 'visit' } }, '2026-10-16T10:00:00Z')).toEqual({ text: 'None yet', empty: true, sub: 'they visited Oct 20' });
+  expect(touchesText(undefined, '2026-10-16T10:00:00Z')).toEqual({ text: 'Touched Oct 16', empty: false, sub: null });
+  expect(touchesText(null, null)).toEqual({ text: '—', empty: true, sub: null });
+  expect(touchesText({ count: 0, last: null, last_signal: null }, null)).toEqual({ text: 'None yet', empty: true, sub: null });
 });
 
 test('Edit row: the Stage select lists now + forward only; the matrix picks the controls; Not now hides on visitor / Apollo-only rows', () => {

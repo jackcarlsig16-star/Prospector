@@ -99,7 +99,7 @@ export function pageOf(rows, page, size = PAGE_SIZE) {
 }
 
 export const rowLabel = (row, sourceLabels) => `${row.name} · ${row.score} · ${row.band} · ${sourceLabels[row.source_label] || row.source_label}`;
-export const touchText = row => (row.days_since_touch == null ? 'Never touched' : `Last touch: ${row.days_since_touch === 0 ? 'today' : `${row.days_since_touch} day${row.days_since_touch === 1 ? '' : 's'} ago`}${row.last_touch_who || row.last_touch_channel ? ` (${[row.last_touch_who, row.last_touch_channel].filter(Boolean).join(', ')})` : ''}`);
+export const touchText = row => (row.days_since_touch == null ? 'Never touched' : `${row.touches ? `${row.touches} touch${row.touches === 1 ? '' : 'es'} · last` : 'Last touch:'} ${row.days_since_touch === 0 ? 'today' : `${row.days_since_touch} day${row.days_since_touch === 1 ? '' : 's'} ago`}${row.last_touch_who || row.last_touch_channel ? ` (${[row.last_touch_who, row.last_touch_channel].filter(Boolean).join(', ')})` : ''}`);
 
 // The viewer's chart prefs, normalized: view null = dots (table on a phone), height 'standard', rings off, names 'on'.
 export function readPrefs() {

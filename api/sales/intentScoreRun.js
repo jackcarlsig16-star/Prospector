@@ -8,6 +8,7 @@ import { cleanText } from './scrubText.js';
 import { DEFAULT_WEIGHTS, UPSIDE_TEAMS, scoreCompany, dedupeCompanies } from './intentScore.js';
 import { VISITOR_ROLE } from './visitorPeopleMove.js';
 import { fitBlock } from './fitRadar.js';
+import { touchesFor, TOUCH_KIND_WORD } from './touches.js';
 
 // intent-score-v1 S2 - the inputs gatherer (ONE pass over the workspace with selectAllPages, no model, no Apollo), the
 // recompute runner that writes sales_company_scores + today's sales_company_score_days row, and the trigger hook the
@@ -38,9 +39,6 @@ export function mergeWeights(row) {
 // NAMED (planner, Oct 27): a referral a person attached to the record - a co-owner name, no-double-touch, a referring
 // person, or a source set by a real user. The Oct 22 backfill set source_set_by NULL, so its rows stay LIST.
 export const isNamedReferral = r => NAMED_FIELDS.some(k => (k === 'no_double_touch' ? r[k] === true : !!r[k]));
-
-// touches: [{ at, who, channel }] -> the latest, or null.
-export const latestTouch = touches => touches.reduce((best, t) => (t?.at && (!best || t.at > best.at) ? t : best), null);
 
 // homelover-flow-v1 F2-F4: the fit columns (20261104_homelover_flow_v1.sql) per record key; null until that migration
 // ran, so scoring never fails on a column that isn't there yet.
@@ -113,25 +111,18 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const msgsBy = new Map(), evsBy = new Map();
   for (const m of messages) { if (!msgsBy.has(m.contact_id)) msgsBy.set(m.contact_id, []); msgsBy.get(m.contact_id).push(m); }
   for (const e of events) { if (!evsBy.has(e.contact_id)) evsBy.set(e.contact_id, []); evsBy.get(e.contact_id).push(e); }
-  const heatBy = new Map(), touchesBy = new Map();
-  const addTouch = (k, t) => { if (!t?.at) return; if (!touchesBy.has(k)) touchesBy.set(k, []); touchesBy.get(k).push(t); };
+  const heatBy = new Map();
   for (const p of prospects) {
     const ms = msgsBy.get(p.contact_id) || [], es = evsBy.get(p.contact_id) || [];
     if (!ms.length && !es.length) continue;
     const s = scoreProspect(ms, es);
     const h = { score: s.score, replied: ms.some(m => m.replied), opens: ms.reduce((n, m) => n + (m.num_opens || 0), 0), clicks: ms.reduce((n, m) => n + (m.num_clicks || 0), 0) };
-    const sent = ms.map(m => m.delivered_at).filter(Boolean).sort().pop() || null;
     const keys = [p.opportunity_id && `employer:${p.opportunity_id}`, p.goal_id && `partner:${p.goal_id}`, p.company && `name:${normName(p.company)}`].filter(Boolean);
     for (const k of keys) {
       const prev = heatBy.get(k);
       if (!prev || h.score > prev.score) heatBy.set(k, h);
-      if (sent) addTouch(k, { at: sent, who: null, channel: 'apollo email' });
-      if (s.last_signal_at) addTouch(k, { at: s.last_signal_at, who: null, channel: h.replied ? 'apollo reply' : 'apollo activity' });
     }
   }
-  for (const e of partnerEvents) addTouch(`partner:${e.goal_id}`, { at: e.at, who: names.get(e.by_user) || null, channel: e.event === 'touch' ? (e.touch_type || 'touch') : e.event === 'note' ? 'note' : 'stage' });
-  for (const e of oppEvents) if (e.event_type === 'stage_change') addTouch(`employer:${e.opportunity_id}`, { at: e.changed_at, who: null, channel: 'stage' });
-  for (const t of doneTodos) { const type = LINK_TYPES.includes(t.link_type) ? t.link_type : null; if (type && t.completed_at) addTouch(`${type}:${t.link_id}`, { at: t.completed_at, who: names.get(t.owner_user_id) || null, channel: 'to-do done' }); }
 
   const companies = [
     ...partners.filter(p => !p.archived_at).map(p => ({ type: 'partner', id: p.id, name: p.name, stage: p.pipeline_status || 'not_started', row: p, created_at: p.updated_at })),
@@ -139,19 +130,22 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     // visitor-people-follow-record-v1 V2: an accepted target lives on as the record it was promoted to - not scored twice.
     ...targets.filter(t => t.status !== 'rejected' && t.status !== 'accepted').map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', row: t, created_at: t.created_at })),
   ];
+  // FIX touch-truth T2: the touch facts come from the one reader (ours and theirs kept apart), one read set for the book.
+  const touchList = await touchesFor(supabase, businessId, companies.map(c => ({ type: c.type, id: c.id })));
+  const touchOf = new Map(companies.map((c, i) => [`${c.type}:${c.id}`, touchList[i]]));
   const inputs = dedupeCompanies(companies).map(c => {
     const r = c.row, key = `${c.type}:${c.id}`, nameKey = normName(c.name);
     const visit = visitByRecord.get(key) || latest.get(nameKey) || null;
     const viaUpside = r.source_kind === 'partner_referral' && (upsideIds.has(r.source_partner_id) || UPSIDE_TEAMS.includes(r.owner_team || ''));
     const heat = heatBy.get(key) || heatBy.get(`name:${nameKey}`) || null;
-    const touch = latestTouch([...(touchesBy.get(key) || []), ...(touchesBy.get(`name:${nameKey}`) || []), r.last_touch_at ? { at: r.last_touch_at, who: null, channel: 'touch' } : null]);
+    const touches = touchOf.get(key), touch = touches.last;
     // top-targets-v1 Q1: the record's pin is the clamp (a visitor override typed by company name still wins).
     const override = overrideByKey.get(nameKey) || pinOverride(r, now, weights.override_days);
     const research = researchBy.get(key) || null;
     const fitRow = fitByKey?.get(key) || null;
     return {
       type: c.type, id: c.id, name: c.name, stage: c.stage, owner_team: r.owner_team || null, employees: r.employees ?? null, category: r.category || null,
-      last_touch_at: touch?.at || null, on_skip_list: skipKeys.has(nameKey), duplicate_of: c.duplicate_of || null,
+      last_touch_at: later(touch?.at || null, touches.last_signal?.at || null), on_skip_list: skipKeys.has(nameKey), duplicate_of: c.duplicate_of || null,
       source: { kind: r.source_kind || 'unknown', via_upside: viaUpside, named: viaUpside && isNamedReferral(r), campaign_replied: !!heat?.replied, partner_id: r.source_partner_id || null, partner_name: partnerName.get(r.source_partner_id) || null },
       visit, people: peopleBy.get(key) || [], research, heat, override,
       fit_record: fitRow, us_footprint: fitRow?.us_footprint || research?.result?.us_footprint || null,
@@ -159,7 +153,8 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
         name: c.name, owner_user_id: r.owner_user_id || null, owner: names.get(r.owner_user_id) || null, owner_team: r.owner_team || null,
         co_owner_name: r.co_owner_name || null, no_double_touch: r.no_double_touch === true, stage: c.stage, employees: r.employees ?? null, employees_source: r.employees_source || null, kind: r.kind || null,
         visits_7d: visit?.visits_7d ?? null, unique_visitors_7d: visit?.unique_visitors_7d ?? null, last_visit: visit?.last_visit || visit?.pulled_on || null,
-        people: (peopleBy.get(key) || []).length, last_touch_at: touch?.at || null, last_touch_who: touch?.who || null, last_touch_channel: touch?.channel || null,
+        people: (peopleBy.get(key) || []).length, touches: touches.count, last_touch_at: touch?.at || null, last_touch_who: (touch?.by && names.get(touch.by)) || null, last_touch_channel: touch ? TOUCH_KIND_WORD[touch.kind] : null,
+        last_signal_at: touches.last_signal?.at || null, last_signal_kind: touches.last_signal?.kind || null,
         researched: !research ? 'none' : (now - Date.parse(research.created_at)) / DAY > weights.research.fresh_days ? 'decayed' : 'fresh', research_at: research?.created_at || null,
         created_at: c.created_at || null,
         first_seen: visit ? firstSeen.get(visit.company_key) || null : null,

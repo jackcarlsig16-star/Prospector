@@ -41,8 +41,8 @@ test('F9 primary: a live partner adds a referred client, Bring back while deprio
   expect(primaryAction({ row: { type: 'partner', stage: 'live' }, fit: { level: 'deprioritized' } }).id).toBe('bring_back');
   expect(primaryAction({ row: { type: 'partner', stage: 'replied' } })).toBeNull();
   expect(primaryAction({ row: EMPLOYER })).toBeNull();
-  const detail = { record: { next_step: 'Send the deck', next_step_due: '2026-11-07', last_touch: { at: '2026-10-29T18:00:00Z', by: 'Cyrus Test', what: 'Contacted Ana' } }, todos: [{ text: 'Call them', due_date: '2026-11-05' }], visits: [{ visits_7d: 2, top_paths: [{ path: '/employers' }] }] };
-  expect(nextStepText({ row: EMPLOYER, detail })).toEqual({ text: 'Send the deck', sub: 'Last touch Oct 29 · Cyrus · Contacted Ana · 2 visits / 7 d · /employers · due Nov 5', empty: false });
+  const detail = { record: { next_step: 'Send the deck', next_step_due: '2026-11-07', last_touch: { at: '2026-10-29T18:00:00Z', by: 'Cyrus Test', kind: 'email' }, touches: { count: 3 } }, todos: [{ text: 'Call them', due_date: '2026-11-05' }], visits: [{ visits_7d: 2, top_paths: [{ path: '/employers' }] }] };
+  expect(nextStepText({ row: EMPLOYER, detail })).toEqual({ text: 'Send the deck', sub: '3 touches · last Oct 29 · Cyrus · email · 2 visits / 7 d · /employers · due Nov 5', empty: false });
   expect(nextStepText({ row: EMPLOYER, detail: { record: {}, todos: [{ text: 'Call them' }], visits: [] } }).text).toBe('Call them');
   expect(nextStepText({ row: { type: 'target' }, detail: { record: {}, todos: [], visits: [] } })).toMatchObject({ text: 'Research, then draft the first email', empty: true });
 });

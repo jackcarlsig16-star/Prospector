@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { gatherInputs, recomputeScores, recomputeIfStale, scheduleRecompute, recomputeInFlight, isNamedReferral, mergeWeights, latestTouch, STALE_HOURS } from './intentScoreRun.js';
+import { gatherInputs, recomputeScores, recomputeIfStale, scheduleRecompute, recomputeInFlight, isNamedReferral, mergeWeights, STALE_HOURS } from './intentScoreRun.js';
 import { listScores, parseFilters, filterScoreRows, scoresCsv, recomputeRoute, exportScoresRoute, needsTouch } from './scoresRoutes.js';
 import { companyBrief, briefLines } from './companyBrief.js';
 import { DEFAULT_WEIGHTS } from './intentScore.js';
@@ -75,15 +75,13 @@ test('isNamedReferral: a co-owner, no-double-touch, a referring person or a user
   assert.equal(isNamedReferral({ source_set_by: JACK }), true);
 });
 
-test('mergeWeights: NULL or partial settings fall back to the defaults block by block; latestTouch picks the newest', () => {
+test('mergeWeights: NULL or partial settings fall back to the defaults block by block', () => {
   assert.deepEqual(mergeWeights(null), DEFAULT_WEIGHTS);
   const w = mergeWeights({ thresholds: { P1: 70 }, source: { inbound: 15 } });
   assert.deepEqual(w.thresholds, { P1: 70, P2: 40, P3: 15 });
   assert.equal(w.source.inbound, 15);
   assert.equal(w.source.website, 6);
   assert.equal(w.caps.visits, 25);
-  assert.equal(latestTouch([{ at: ago(5) }, null, { at: ago(1), who: 'Jack' }, { at: ago(3) }]).who, 'Jack');
-  assert.equal(latestTouch([]), null);
 });
 
 test('gatherInputs: one pass -> inputs per live record with the NAMED rule, the matched visit, buyer people, touches from every source, heat, research state, the employer + target dupe; no address in any input', async () => {
@@ -96,14 +94,17 @@ test('gatherInputs: one pass -> inputs per live record with the NAMED rule, the 
   assert.deepEqual([harbor.source.via_upside, harbor.source.named, harbor.source.partner_name], [true, true, 'Upside Benefits']);
   assert.equal(harbor.heat.replied, true, 'heat by goal_id');
   assert.equal(harbor.meta.researched, 'decayed');
-  assert.deepEqual([harbor.meta.last_touch_channel, harbor.meta.last_touch_who], ['apollo reply', null], 'the newest touch wins (the Apollo reply at 9 d beats the call at 12 d)');
+  // FIX touch-truth: OUR newest touch is the Apollo email; the reply at 9 d is theirs and rides in last_signal_*.
+  assert.deepEqual([harbor.meta.last_touch_channel, harbor.meta.last_touch_who], ['email', null]);
+  assert.ok(['open', 'click', 'reply'].includes(harbor.meta.last_signal_kind) && harbor.meta.last_signal_at);
+  assert.ok(harbor.meta.touches >= 2, 'the email and the call');
   const hilton = inputs.find(i => i.name === 'Hilton Example');
   assert.deepEqual([hilton.source.via_upside, hilton.source.named], [true, true], 'no_double_touch makes it NAMED');
   assert.equal(hilton.visit.visits_7d, 2, "the employer's visit row (web_visits matched_type 'employer'), not a name match");
-  assert.equal(hilton.meta.last_touch_channel, 'stage');
+  assert.equal(hilton.meta.last_touch_channel, 'stage moved');
   const ixl = inputs.find(i => i.name === 'IXL Learning, Inc.');
   assert.deepEqual([ixl.source.via_upside, ixl.source.named], [true, false], 'backfilled Upside row = LIST');
-  assert.deepEqual([ixl.meta.last_touch_channel, ixl.meta.last_touch_who], ['to-do done', 'Jack Carlson']);
+  assert.deepEqual([ixl.meta.last_touch_channel, ixl.meta.last_touch_who], ['to-do', 'Jack Carlson']);
   const ixlT = inputs.find(i => i.name === 'IXL Learning');
   assert.equal(ixlT.duplicate_of, `employer:${ID.ixl}`);
   const quarry = inputs.find(i => i.name === 'Quarry Labs');

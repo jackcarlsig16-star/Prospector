@@ -40,9 +40,16 @@ const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/
 // Stages behind Contacted: Mark contacted shows; at or past it, it is gone (F8).
 const behindContacted = (row, stage) => row.type === 'target' || (row.type === 'employer' && (stage || row.stage) === 'target') || (row.type === 'partner' && ['not_started', 'researching', 'first_email_drafted'].includes(stage || row.stage || 'not_started'));
 
-export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, fit = null, stage = null, actionsRef = null, onPatch, onChanged, onToast, onConvert, onClose, onOwner, onAddClient }) {
+export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, fit = null, stage = null, actionsRef = null, focusAdd = false, onPatch, onChanged, onToast, onConvert, onClose, onOwner, onAddClient }) {
   const [busy, setBusy] = useState('');
   const rootRef = useRef(null);
+  // FIX touch-truth T3: a window opened from the email's "Add →" lands on Add to pipeline (after the window's own focus).
+  const addRef = useRef(null);
+  useEffect(() => {
+    if (!focusAdd) return undefined;
+    const t = setTimeout(() => addRef.current?.focus(), 0);
+    return () => clearTimeout(t);
+  }, [focusAdd]);
   const keysRef = useRef(null); // the latest shortcut handler, set below once the actions exist
   const [error, setError] = useState('');
   const [draft, setDraft] = useState({});
@@ -214,7 +221,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       </Group>
       {divider}
       <Group id="decide" label="Decide" icon={<IconCheck size={12} />}>
-        {needsRecord(row.type) && <button type="button" className={bandShown ? btn : 'ui-btn ui-btn--primary'} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
+        {needsRecord(row.type) && <button type="button" className={bandShown ? btn : 'ui-btn ui-btn--primary'} aria-expanded={form === 'add'} ref={addRef} onClick={() => open('add')}>Add to pipeline ▾</button>}
         {row.type === 'target' && <>
           <button type="button" className="ui-btn ui-btn--primary" aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Add to pipeline ▾</button>
           <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>

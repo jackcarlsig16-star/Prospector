@@ -22,6 +22,7 @@ import { contactTarget } from './targetsRoutes.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 import { rematchVisits } from './visitMatch.js';
+import { touchesFor } from './touches.js';
 import { splitSnoozed } from './snoozed.js';
 import { starOf } from './pinState.js';
 import { isSnoozed as todoSnoozed } from '../../src/constants/todoSnooze.js';
@@ -268,24 +269,12 @@ async function interestFor(supabase, businessId, record, { people, signals, time
   return { interest: { items, strongest: items[0] || null, newest_id: newest?.id || null, since, dismissed, show: items.length > 0 && !dismissed }, timeline: timeline.slice(0, 40) };
 }
 
-// L2: Last touch as the facts row shows it.
+// FIX touch-truth T1: the old reader's name, now `last` of the one reader (touches.js). Kept for one release; the counter
+// says whether anything still calls it.
+export const lastTouchForCalls = { n: 0 };
 export async function lastTouchFor(supabase, businessId, record) {
-  if (record.type === 'partner') {
-    if (!record.last_touch_at) return null;
-    const ev = must(await supabase.from('sales_partner_events').select('touch_type, at, by_user').eq('business_id', businessId).eq('goal_id', record.id).eq('event', 'touch').order('at', { ascending: false }).limit(1));
-    return { at: record.last_touch_at, touch_type: ev[0]?.touch_type || null, by: ev[0]?.by_user || null };
-  }
-  if (record.type === 'employer') {
-    const [ev, done] = await Promise.all([
-      supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).eq('event_type', 'stage_change').order('changed_at', { ascending: false }).limit(1).then(must),
-      supabase.from('sales_week_goals').select('completed_at, text, owner_user_id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'employer').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
-    ]);
-    const stage = ev[0]?.changed_at || null, todo = done[0]?.completed_at || null;
-    if (!stage && !todo) return null;
-    // A to-do written in the same request as the stage move is the touch (its JS clock can trail the trigger's now()).
-    return todo && (!stage || Date.parse(todo) >= Date.parse(stage) - 5000) ? { at: todo, touch_type: 'done', what: cleanText(done[0].text, 120), by: done[0].owner_user_id || null } : { at: stage, touch_type: 'stage' };
-  }
-  return null;
+  lastTouchForCalls.n++;
+  return (await touchesFor(supabase, businessId, record)).last;
 }
 
 // L1 / L6 Intel: the site the window links to and whether a person confirmed it.
@@ -331,7 +320,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     if (!record) return reply(404, { error: `${type} not found` });
     const key = type === 'visitor' ? id : normName(record.name);
     const prospects = await prospectsFor(supabase, businessId, record);
-    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, lastTouch, stages] = await Promise.all([
+    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, touchRead, stages] = await Promise.all([
       linkedWork(supabase, businessId, type, id, 'todo', names, laDateString(now)),
       linkedWork(supabase, businessId, type, id, 'waiting', names, laDateString(now)),
       visitsFor(supabase, businessId, type, id, key),
@@ -341,7 +330,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       decisionsFor(supabase, businessId, record),
       loadOverrides(supabase, businessId),
       emailFor(supabase, businessId, prospects.map(p => p.contact_id), now),
-      lastTouchFor(supabase, businessId, record),
+      RECORD_TYPES.includes(type) ? touchesFor(supabase, businessId, { type, id }) : null,
       stageHistory(supabase, businessId, type, id),
     ]);
     const personSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime() });
@@ -355,6 +344,8 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     const site = await siteFor(supabase, businessId, record, research);
     const terms = (record.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => cleanText(l, 400));
     const { notes, decision_makers, champion, ...head } = record;
+    const touches = touchRead && { ...touchRead, last: touchRead.last && { ...touchRead.last, by: touchRead.last.by ? names.get(touchRead.last.by) || null : null } };
+    const lastTouch = touches?.last || null;
     const ownerName = record.owner_user_id ? names.get(record.owner_user_id) || null : null;
     const out = {
       ...head, owner: ownerName, owner_name: ownerName,
@@ -362,7 +353,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       ...(type === 'partner' || type === 'employer' ? { next_step: record.next_step ? cleanText(record.next_step, 400) : null } : {}),
       ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000), promoted_to: record.promoted_to ? { ...record.promoted_to, name: cleanText(record.promoted_to.name, 160) } : null } : {}),
       ...(type === 'employer' ? { notes: t(notes, 4000), last_touch_at: lastTouch?.at || null } : {}),
-      last_touch: lastTouch && 'by' in lastTouch ? { ...lastTouch, by: lastTouch.by ? names.get(lastTouch.by) || null : null } : lastTouch, site,
+      last_touch: lastTouch, touches, site,
     };
     return reply(200, {
       record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,

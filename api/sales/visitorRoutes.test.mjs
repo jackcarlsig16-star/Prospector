@@ -425,3 +425,48 @@ test('FIX linkedin-url-normalize: addPerson stores "www.linkedin.com/in/x?trk=â€
     assert.equal(bad.status, 400);
   } finally { restore(); }
 });
+
+// FIX touch-truth T4 - auto-add by the record rule (US 500+ or a buyer-title visitor), under the cap, never a duplicate.
+test('T4 auto-add: a US 500+ visitor and a buyer-title visitor with no record become unassigned employer targets with an Activity line and their visit rows joined; size unknown waits; a same-name record is never duplicated; the cap holds; a dry run writes nothing', async () => {
+  const { autoAddVisitors } = await import('./visitorRoutes.js');
+  const { loadDupeContext } = await import('./partnerDupeCheck.js');
+  const big = visitRow('Granite Hotels', 'granitehotels.example', true), titled = visitRow('Small Studio', null, false), unknown = visitRow('Mystery LLC', null, false);
+  const dupe = visitRow('Quarry Labs, Inc.', null, true), dismissedCo = visitRow('Parked Corp', null, true);
+  const older = { ...visitRow('Granite Hotels', 'granitehotels.example', true), pulled_on: '2026-10-15' };
+  const { sb, restore } = setup({
+    web_visits: [big, titled, unknown, dupe, dismissedCo, older],
+    sales_people: [{ id: randomUUID(), business_id: B, company_type: 'parked', company_name: 'Small Studio', name: 'Pat Example', title: 'VP People', archived_at: null }],
+    sales_signals: [{ id: randomUUID(), business_id: B, source: 'web_visit', signal_week: '2026-10-19', company_name: 'Parked Corp', company_key: normName('Parked Corp'), kind: 'employer', status: 'dismissed', dismissed_until: '2026-10-27', created_at: '2026-10-19T00:00:00Z' }],
+    sales_flow_events: [],
+  });
+  try {
+    const visits = [big, titled, unknown, dupe, dismissedCo];
+    const args = async over => ({ businessId: B, userId: null, visits, dupeCtx: await loadDupeContext(sb, B), settings: settings(), now: new Date(NOW), madeToday: 0, ...over });
+    const dry = await autoAddVisitors(sb, await args({ dryRun: true }));
+    assert.deepEqual(dry.would_add, [{ name: 'Granite Hotels', reason: 'us_500' }, { name: 'Small Studio', reason: 'buyer_title' }]);
+    assert.equal(dry.already, 1, 'Quarry Labs, Inc. is the existing Quarry Labs target');
+    assert.equal(targets(sb).length, 0, 'a dry run writes nothing');
+    assert.equal(sb.db.sales_flow_events.length, 0);
+
+    const capped = await autoAddVisitors(sb, await args({ madeToday: 25 }));
+    assert.deepEqual([capped.added.length, capped.capped], [0, 3]);
+
+    const out = await autoAddVisitors(sb, await args({ only: big.company_key }));
+    assert.deepEqual(out.added.map(a => [a.name, a.reason, a.visits_matched]), [['Granite Hotels', 'us_500', 2]]);
+    const t = targets(sb).find(x => x.name === 'Granite Hotels');
+    assert.deepEqual([t.kind, t.status, t.source, t.channel, t.visit_id, t.owner_user_id ?? null, t.source_kind], ['employer', 'researching', 'web_visit', 'website_visit', big.id, null, 'website']);
+    assert.ok(sb.db.web_visits.filter(v => v.company_name === 'Granite Hotels').every(v => v.matched_type === 'target' && v.matched_id === t.id), 'both pull rows follow the new target');
+    const ev = sb.db.sales_flow_events.find(e => e.record_id === t.id);
+    assert.deepEqual([ev.kind, ev.text, ev.meta.auto_add, ev.by_user], ['restamp', 'Added automatically from website visits (US 500+) Â· 2 visit rows joined', true, null]);
+    assert.equal(out.added[0].event_id, ev.id);
+
+    const rest = await autoAddVisitors(sb, await args({}));
+    assert.deepEqual(rest.added.map(a => a.name), ['Small Studio'], 'Mystery has no size and no buyer; Parked Corp was dismissed');
+    assert.equal(rest.already, 2, 'the stale Granite row (handed in unmatched again) and Quarry Labs, Inc. answer already - no second row');
+    assert.equal(sb.db.sales_targets.filter(x => x.name === 'Granite Hotels').length, 1);
+    assert.equal(sb.db.sales_targets.filter(x => normName(x.name) === normName('Quarry Labs')).length, 1);
+    const again = await autoAddVisitors(sb, await args({}));
+    assert.deepEqual([again.added.length, targets(sb).length], [0, 2], 'a second run adds nothing');
+    noAddress(sb);
+  } finally { restore(); }
+});

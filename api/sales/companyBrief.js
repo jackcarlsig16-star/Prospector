@@ -52,7 +52,7 @@ export function briefLines({ type, name, score, meta = {}, sourceRow = {}, sourc
   for (const t of (detail.todos || []).slice(0, TASKS_MAX)) push('task', `Open to-do: ${t.text}${t.due_date ? ` · due ${md(t.due_date)}` : ''}${t.owner ? ` · ${t.owner}` : ''}`);
   if (meta.last_touch_at) {
     const days = Math.max(0, Math.round((now - Date.parse(meta.last_touch_at)) / DAY));
-    push('touch', `Last touch: ${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`}${meta.last_touch_who || meta.last_touch_channel ? ` (${[meta.last_touch_who, meta.last_touch_channel].filter(Boolean).join(', ')})` : ''}`);
+    push('touch', `Last touch: ${days === 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} ago`}${meta.last_touch_who || meta.last_touch_channel ? ` (${[meta.last_touch_who, meta.last_touch_channel].filter(Boolean).join(', ')})` : ''}${meta.touches ? ` · ${meta.touches} touch${meta.touches === 1 ? '' : 'es'} of ours in all` : ''}`);
   } else push('touch', 'Never touched');
   for (const r of (detail.recent || []).slice(0, TOUCHES_MAX)) push('touch', r.text || r.note || (r.event === 'status' ? `Stage ${r.from_status || '?'} → ${r.to_status || '?'}` : r.event === 'touch' ? `${r.touch_type || 'touch'} ${md(r.at)}` : r.event));
   const next = detail.steps?.next;

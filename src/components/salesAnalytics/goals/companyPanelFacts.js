@@ -7,23 +7,30 @@ import { ORG_TYPE_LABELS } from '../pipelineStages';
 import { categoryName } from './partners/partnerTypes';
 
 // company-panel-v2 L2 / L5 / L6 - what the window shows for each row type
-// (pure, unit-tested): the labelled facts row, the Last touch wording, the
+// (pure, unit-tested): the labelled facts row, the Touches wording, the
 // forward-only Stage choices, which Edit controls a type has, and the People
 // filter. No email or phone ever passes through here.
-// company-window-v4 F: the facts are Owner · Team · Priority · Employees (· Reach) · Type · Source · Last touch · Next
+// company-window-v4 F: the facts are Owner · Team · Priority · Employees (· Reach) · Type · Source · Touches · Next
 // step - Stage is not a fact (the journey is the stage); only an Apollo-only row, which has no journey, keeps "In sequence".
 export const md = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 
-const TOUCH_WORD = { email: 'Email sent', call: 'Call', linkedin: 'LinkedIn', meeting: 'Meeting', event: 'Event', other: 'Touch', stage: 'Stage moved', done: 'To-do done' };
+const TOUCH_WORD = { email: 'Email', call: 'Call', linkedin: 'LinkedIn', meeting: 'Meeting', note: 'Note', stage: 'Stage moved', todo: 'To-do done', contacted: 'Marked contacted' };
+const SIGNAL_WORD = { open: 'opened', click: 'clicked', reply: 'replied', visit: 'visited' };
 
-// "Oct 17 · Email sent" when the touch has a kind, "Touched Oct 17" when only
-// the stamp is known, "No touch yet" otherwise (the caller mutes that one).
-export function lastTouchText(lastTouch, lastTouchAt) {
-  const at = lastTouch?.at || lastTouchAt;
-  if (!at) return { text: 'No touch yet', empty: true };
-  const word = lastTouch?.touch_type && TOUCH_WORD[lastTouch.touch_type];
-  return { text: word ? `${md(at)} · ${word}` : `Touched ${md(at)}`, empty: false };
+// FIX touch-truth T2 - the Touches fact from the record's `touches` (the server's one reader): "33 · last Nov 9 · Email
+// · Cyrus" = OUR touches; "None yet" only once the read says there are none (the caller mutes that one). Their last open /
+// click / reply / visit is the fact's sub line, never added in. Before the read arrives - and on a row with no record
+// (Apollo-only) - the row's own stamp ("Touched Oct 17") or "—": never "None yet" on a company whose touches are unread.
+export function touchesText(touches, lastTouchAt) {
+  const last = touches?.last;
+  if (touches?.count && last?.at) {
+    const who = last.by ? String(last.by).split(' ')[0] : null;
+    return { text: [`${touches.count}`, `last ${md(last.at)}`, TOUCH_WORD[last.kind], who].filter(Boolean).join(' · '), empty: false, sub: theirText(touches) };
+  }
+  if (!touches) return lastTouchAt ? { text: `Touched ${md(lastTouchAt)}`, empty: false, sub: null } : { text: '—', empty: true, sub: null };
+  return { text: 'None yet', empty: true, sub: theirText(touches) };
 }
+const theirText = touches => (touches?.last_signal?.at ? `they ${SIGNAL_WORD[touches.last_signal.kind] || 'engaged'} ${md(touches.last_signal.at)}` : null);
 
 export const sourceLabel = row => (row.type === 'apollo' ? 'Apollo' : row.type === 'visitor' ? 'Website' : row.channel && row.channel !== 'unknown' ? CHANNEL_LABEL[row.channel] || row.channel : '—');
 
@@ -76,18 +83,18 @@ export function typeFact(row, record) {
 // The facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
 // source (partner / employer / target only).
 export function factsFor(row, record, source) {
-  const touch = lastTouchText(record?.last_touch, row.last_touch_at);
+  const touch = touchesText(record?.touches, row.last_touch_at);
   const next = record?.next_step ?? row.next_step;
   const nextText = next ? `${next}${record?.next_step_due || row.next_step_due ? ` · due ${md(record?.next_step_due || row.next_step_due)}` : ''}` : '—';
   if (row.type === 'visitor') {
     return [['Priority', visitBandText(row), row.priority == null], ['Source', 'Website', false], ['Last visit', row.visited?.last_visit ? md(row.visited.last_visit) : '—', !row.visited?.last_visit]];
   }
   if (row.type === 'apollo') {
-    return [['Stage', 'In sequence', false], ['Source', 'Apollo', false], ['Last touch', touch.text, touch.empty]];
+    return [['Stage', 'In sequence', false], ['Source', 'Apollo', false], ['Touches', touch.text, touch.empty]];
   }
   if (row.type === 'target') {
     const owner = record?.owner_name || row.owner || null;
-    return [['Owner', owner || 'Unassigned', !owner], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], ...sizeFacts(row, record), typeFact(row, record), sourceFact(row, source), ['Last touch', touch.text, touch.empty]];
+    return [['Owner', owner || 'Unassigned', !owner], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], ...sizeFacts(row, record), typeFact(row, record), sourceFact(row, source), ['Touches', touch.text, touch.empty, touch.sub]];
   }
   return [
     ['Owner', row.owner || 'Unassigned', !row.owner],
@@ -96,7 +103,7 @@ export function factsFor(row, record, source) {
     ...sizeFacts(row, record),
     typeFact(row, record),
     sourceFact(row, source),
-    ['Last touch', touch.text, touch.empty],
+    ['Touches', touch.text, touch.empty, touch.sub],
     ['Next step', nextText, !next],
   ];
 }

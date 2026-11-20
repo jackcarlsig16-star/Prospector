@@ -80,7 +80,9 @@ export function publicRow(s, prev, now = Date.now()) {
     closed: !!s.closed, live: !!s.flagged_out, duplicate_of: s.duplicate_of || null, override: s.override || null,
     stage: meta.stage || null, kind: meta.kind || null, employees: meta.employees ?? null, employees_source: meta.employees_source || null,
     visits_7d: meta.visits_7d ?? null, unique_visitors_7d: meta.unique_visitors_7d ?? null, last_visit: meta.last_visit || null, people: meta.people ?? 0,
-    last_touch_at: meta.last_touch_at || null, last_touch_who: meta.last_touch_who || null, last_touch_channel: meta.last_touch_channel || null, days_since_touch: daysSince(meta.last_touch_at, now),
+    // FIX touch-truth T2: ours only (touches.js through the recompute) - their opens and visits ride in last_signal_*.
+    touches: meta.touches ?? null, last_touch_at: meta.last_touch_at || null, last_touch_who: meta.last_touch_who || null, last_touch_channel: meta.last_touch_channel || null, days_since_touch: daysSince(meta.last_touch_at, now),
+    last_signal_at: meta.last_signal_at || null, last_signal_kind: meta.last_signal_kind || null,
     researched: meta.researched || 'none', research_at: meta.research_at || null, computed_at: s.computed_at,
     fit_level: fit.level || null, fit_source: fit.source || null, fit_score: fit.score ?? null, fit_used: fit.used ?? 0, deprioritized_reason: fit.reason || null, deprioritized_note: fit.note || null,
     us_footprint: fit.us_footprint || null, axes,

@@ -82,7 +82,7 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
   // email-funnel-v1 F4: the three tables read the funnel route for the send window + 7 d / 30 d / this and last week -
   // only when the owner's switch is on (FIX email-simplify-v1 E2: off by default, and then the funnel is not read).
   const [companies, overall, cumulative, trend, funnel] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId), visitorsTrend(supabase, businessId, { now }).then(r => r.body), settings.funnel_tables ? loadFunnel(supabase, businessId, { windows: FUNNEL_WINDOWS, custom: { from: window.days[0], to: window.days[window.days.length - 1] }, now }).then(r => r.body) : null]);
-  const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative, trend, funnel, funnelTablesOn: !!settings.funnel_tables });
+  const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative, trend, funnel, funnelTablesOn: !!settings.funnel_tables, businessId });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
   return { ...sent, rows: mail.rows, new_rows: mail.new_rows, more: mail.more, overall: mail.overall, strip: mail.strip, funnel: mail.funnel, subject: mail.subject, pull: p };
 }

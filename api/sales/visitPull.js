@@ -9,7 +9,7 @@ import { cleanText } from './scrubText.js';
 import { VISITOR_DOMAINS, US_500_FILTERS, SEED_SKIP, mergeResults, toVisit, liveMatch, knownSmall, prioritize, toWebSignal } from './visitRules.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { windowFor, LOOKBACK_CAP } from './visitWindow.js';
-import { autoCreateFromVisits, salesSettings } from './visitorRoutes.js';
+import { autoCreateFromVisits, autoAddVisitors, salesSettings } from './visitorRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { scheduleRecompute } from './intentScoreRun.js';
 import { schedulePeoplePull } from './visitorPeoplePull.js';
@@ -145,6 +145,11 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
   const settings = await salesSettings(supabase, businessId);
   const auto = await autoCreateFromVisits(supabase, { businessId, userId, visits: effective.map(v => ({ ...v, id: idByKey.get(v.company_key) || null })), apollo, dupeCtx: ctx, settings, skip, week, now: new Date(now) });
   counts.auto = { created: auto.created.length, people: auto.people, searches: auto.searches, attached: auto.attached, waited: auto.waited, duplicates: auto.duplicates, capped: auto.capped, no_signal: auto.no_signal, search_errors: auto.search_errors };
+  // FIX touch-truth T4: what V1's P1 / P2 bar left without a record but the record rule accepts, under the same daily cap.
+  const visitRows = effective.map(v => ({ ...v, id: idByKey.get(v.company_key) || null }));
+  const unmatched = visitRows.filter(v => !auto.created.some(c => c.company_key === v.company_key));
+  const autoAdded = await autoAddVisitors(supabase, { businessId, userId, visits: unmatched, dupeCtx: ctx, settings, skip, now: new Date(now), madeToday: auto.made_today });
+  counts.auto_add = { added: autoAdded.added.length, already: autoAdded.already, capped: autoAdded.capped };
   return counts;
 }
 

@@ -1,11 +1,11 @@
 import { selectAllPages } from '../../lib/selectAllPages.js';
 import { memberColor } from '../../../src/constants/memberColors.js';
 import { laClock } from './scheduler.js';
-import { lastTouchFor } from '../companyPanel.js';
+import { touchesFor, TOUCH_KIND_WORD, TOUCHES_LEGEND } from '../touches.js';
 import { mergeWeights } from '../intentScoreRun.js';
 import { seenBeforeKeys, isNewCompany } from '../visitRules.js';
 import { DEFAULT_WEIGHTS } from '../intentScore.js';
-import { esc, recordUrl, MAP_URL, VISITORS_URL, ORIGIN, DARK, BAND_HUE, SANS, MONO, dlink, tagPill, outlinePill, memberDot, tileGrid, dataTable, darkShell } from './format.js';
+import { esc, recordUrl, visitorUrl, MAP_URL, VISITORS_URL, ORIGIN, DARK, BAND_HUE, SANS, MONO, dlink, tagPill, outlinePill, memberDot, tileGrid, dataTable, darkShell } from './format.js';
 import { STEPS, STEP_WORD } from '../funnelMath.js';
 
 // homelover-team-emails-v1 T4 (REV2) - the weekday visitor email. Pure builder over rows the loader reads; no person
@@ -44,8 +44,9 @@ const mdOf = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', {
 const shortDay = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
 const addDay = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 const dowOf = d => new Date(`${d}T12:00:00Z`).getUTCDay();
-// The touch kind only - an employer to-do's own text can name a person, so it never reaches the email.
-const TOUCH_WORD = { email: 'email', call: 'call', meeting: 'meeting', linkedin: 'LinkedIn', event: 'event', other: 'note', done: 'to-do', stage: 'stage moved' };
+// FIX touch-truth T2: a row's Touches cell from the one reader - the count of OUR touches, the last one's day, kind word
+// and who (a first name). Never a to-do's text (it can name a person) and never their opens or visits.
+const touchCellOf = (t, nameOf) => ({ count: t.count, at: t.last?.at || null, what: t.last ? TOUCH_KIND_WORD[t.last.kind] : null, by: (t.last?.by && nameOf.get(t.last.by)) || null });
 
 // The UTC instant of <LA date> <HH:MM> (PDT or PST, whichever that day is on).
 export function laInstant(date, hm) {
@@ -88,17 +89,17 @@ export async function loadRankedBook(supabase, businessId, { now = Date.now(), m
   if (prevDay && picked.length) for (const r of must(await supabase.from('sales_company_score_days').select('company_type, company_id, score').eq('business_id', businessId).eq('day', prevDay).in('company_id', picked.map(p => p.company_id)))) prev.set(`${r.company_type}:${r.company_id}`, r.score);
   const nameOf = new Map(members.map(m => [m.userId, m.firstName]));
   const colorOf = new Map(members.map((m, i) => [m.userId, memberColor(i)]));
-  const rows = await Promise.all(picked.map(async (s, i) => {
+  const touches = picked.length ? await touchesFor(supabase, businessId, picked.map(s => ({ type: s.company_type, id: s.company_id }))) : [];
+  const rows = picked.map((s, i) => {
     const meta = s.components?.meta || {};
-    const lt = await lastTouchFor(supabase, businessId, { type: s.company_type, id: s.company_id, last_touch_at: meta.last_touch_at || null });
     const p = prev.get(`${s.company_type}:${s.company_id}`);
     return {
       rank: i + 1, company: meta.name || 'Unnamed company', type: s.company_type, id: s.company_id, score: s.score, band: s.band, stage: meta.stage || null,
       owner: meta.owner_user_id ? nameOf.get(meta.owner_user_id) || meta.owner || 'Unassigned' : meta.owner || 'Unassigned', owner_color: meta.owner_user_id ? colorOf.get(meta.owner_user_id) || null : null,
       trend: p == null ? 'new' : s.score > p ? 'up' : s.score < p ? 'down' : 'flat', prev_score: p ?? null,
-      last_touch: lt ? { at: lt.at, by: lt.by ? nameOf.get(lt.by) || null : null, what: TOUCH_WORD[lt.touch_type] || null } : null,
+      touches: touchCellOf(touches[i], nameOf),
     };
-  }));
+  });
   return { rows, total: ranked.length, prev_day: prevDay, thresholds: mergeWeights(settings?.score_weights).thresholds };
 }
 
@@ -124,14 +125,14 @@ export async function loadVisitorData(supabase, businessId, { window: w, members
   const [opps, targets, partners, scores, people] = await Promise.all([
     ids('employer').length ? must(await supabase.from('sales_opportunities').select('id, organization, stage, owner_user_id, client_status').eq('business_id', businessId).in('id', ids('employer'))) : [],
     ids('target').length ? must(await supabase.from('sales_targets').select('id, name, status, owner_user_id').eq('business_id', businessId).in('id', ids('target'))) : [],
-    ids('partner').length ? must(await supabase.from('sales_goals').select('id, name, pipeline_status, owner_user_id, last_touch_at').eq('business_id', businessId).in('id', ids('partner'))) : [],
+    ids('partner').length ? must(await supabase.from('sales_goals').select('id, name, pipeline_status, owner_user_id').eq('business_id', businessId).in('id', ids('partner'))) : [],
     must(await supabase.from('sales_company_scores').select('company_type, company_id, score, band').eq('business_id', businessId).in('company_id', [...ids('employer'), ...ids('target'), ...ids('partner')])),
     visits.length ? selectAllPages(() => supabase.from('sales_people').select('id, visit_id, title').eq('business_id', businessId).in('visit_id', visits.map(v => v.id)).is('archived_at', null).order('id')) : [],
   ]);
   const rec = new Map([
     ...opps.map(o => [o.id, { stage: o.client_status ? 'client' : o.stage, owner: o.owner_user_id }]),
     ...targets.map(t => [t.id, { stage: t.status, owner: t.owner_user_id }]),
-    ...partners.map(p => [p.id, { stage: p.pipeline_status, owner: p.owner_user_id, last_touch_at: p.last_touch_at }]),
+    ...partners.map(p => [p.id, { stage: p.pipeline_status, owner: p.owner_user_id }]),
   ]);
   const score = new Map(scores.map(s => [`${s.company_type}:${s.company_id}`, s]));
   const nameOf = new Map(members.map(m => [m.userId, m.firstName]));
@@ -144,21 +145,20 @@ export async function loadVisitorData(supabase, businessId, { window: w, members
     const titles = [...new Set([...ppl.filter(p => isBuyer(p.title)), ...ppl].map(p => p.title).filter(Boolean))].slice(0, 3);
     const paths = Array.isArray(v.top_paths) ? v.top_paths.map(p => String(p?.path || p)).filter(Boolean) : [];
     return {
-      company: v.company_name, type, id: v.matched_id || null, visit_id: v.id,
+      company: v.company_name, company_key: v.company_key, type, id: v.matched_id || null, visit_id: v.id,
       score: s ? s.score : v.intent_score != null ? Math.round(Number(v.intent_score)) : null, band: s ? s.band : v.priority,
       visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, buyers: ppl.filter(p => isBuyer(p.title)).length, titles,
       pages: paths.length, paths: paths.slice(0, 2), top_page: paths[0] || null,
       stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', owner_color: r?.owner ? colorOf.get(r.owner) || null : null,
-      is_new: isNewCompany(v.company_key, seenBefore), days: dayTag(v, w), last_touch_at: r?.last_touch_at || null,
+      is_new: isNewCompany(v.company_key, seenBefore), days: dayTag(v, w),
     };
   });
-  // Last touch for the rows the two lists can show (A0 = the new, A = the qualified), read for records only.
-  const shown = new Set([...rankVisitors(out.filter(c => c.is_new)).slice(0, TOP_N), ...rankVisitors(out.filter(qualifies)).slice(0, TOP_N)]);
-  await Promise.all([...shown].filter(c => c.type).map(async c => {
-    const lt = await lastTouchFor(supabase, businessId, { type: c.type, id: c.id, last_touch_at: c.last_touch_at });
-    c.last_touch = lt ? { at: lt.at, by: lt.by ? nameOf.get(lt.by) || null : null, what: TOUCH_WORD[lt.touch_type] || null } : null;
-  }));
-  return out.map(({ last_touch_at, ...c }) => c);
+  // Touches for the rows the two lists can show (A0 = the new, A = the qualified): a record by its id, a company with no
+  // record by its name (the Apollo emails the funnel's join ties to that name) - one read set for all of them.
+  const shown = [...new Set([...rankVisitors(out.filter(c => c.is_new)).slice(0, TOP_N), ...rankVisitors(out.filter(qualifies)).slice(0, TOP_N)])];
+  const touches = shown.length ? await touchesFor(supabase, businessId, shown.map(c => (c.type ? { type: c.type, id: c.id } : { name: c.company }))) : [];
+  shown.forEach((c, i) => { c.touches = touchCellOf(touches[i], nameOf); });
+  return out;
 }
 
 // V1: both visitor lists rank by intent - score desc, then unique visitors, then pages, then the name.
@@ -243,7 +243,7 @@ export function funnelTables(funnel, { when = 'yesterday' } = {}) {
   return { html, text, tables: weekRows ? 3 : 2 };
 }
 
-export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, funnel = null, funnelTablesOn = false, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
+export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, businessId = null, funnel = null, funnelTablesOn = false, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
   const strip = trendStrip(trend);
   const sorted = rankVisitors(companies);
   const n = sorted.length, multi = w.days.length > 1, days = windowDays(w);
@@ -283,12 +283,14 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   const intent = c => (c.band in BAND_WORD ? `${BAND_WORD[c.band]}${c.score != null ? ` ${c.score}` : ''}` : c.score != null ? String(c.score) : '—');
   const tagOf = c => (c.is_new ? 'NEW' : 'RETURNING');
   const inProspector = c => (c.type ? `${KIND_LABEL[c.type]} · ${c.stage ? sentence(c.stage) : 'No stage'} · ${c.owner || 'Unassigned'}` : 'Not in Prospector');
-  const touch = c => (c.last_touch?.at ? [shortDay(c.last_touch.at), c.last_touch.what].filter(Boolean).join(' · ') : 'No touch yet');
+  const touch = c => (c.touches?.count ? `${c.touches.count} · last ${[shortDay(c.touches.at), c.touches.what].filter(Boolean).join(' ')}${c.touches.by ? ` · ${c.touches.by}` : ''}` : 'None yet');
   const trendText = c => (c.trend === 'up' ? `▲ ${c.prev_score}→${c.score}` : c.trend === 'down' ? `▼ ${c.prev_score}→${c.score}` : c.trend === 'new' ? 'new' : '—');
-  const url = c => (c.type ? recordUrl(c.type, c.id) : VISITORS_URL);
+  // A row's link names its workspace (?business=), so it opens there even in a browser that has no workspace open.
+  const inWorkspace = u => (businessId ? `${u}&business=${businessId}` : u);
+  const url = c => inWorkspace(c.type ? recordUrl(c.type, c.id) : c.company_key ? visitorUrl(c.company_key) : VISITORS_URL);
 
-  const textRow = (c, i) => [`${i + 1}. ${c.company} [${tagOf(c)}${c.days ? ` · ${c.days}` : ''}] — ${intent(c)} · ${inProspector(c)}${c.type ? '' : ` · Add → ${VISITORS_URL}`} · ${touch(c)}`, `   ${detailOf(c)}`, `   ${url(c)}`].join('\n');
-  const textBook = c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)} · ${inProspector(c)} · ${touch(c)}`, `   ${url(c)}`].join('\n');
+  const textRow = (c, i) => [`${i + 1}. ${c.company} [${tagOf(c)}${c.days ? ` · ${c.days}` : ''}] — ${intent(c)} · ${inProspector(c)}${c.type ? '' : ` · Add → ${url(c)}`} · Touches ${touch(c)}`, `   ${detailOf(c)}`, `   ${url(c)}`].join('\n');
+  const textBook = c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)} · ${inProspector(c)} · Touches ${touch(c)}`, `   ${url(c)}`].join('\n');
   const text = [
     eyebrow.toUpperCase(), head, `${subWords} Open the Map → ${MAP_URL}`, '',
     ...(strip ? [strip.text, ''] : []),
@@ -297,6 +299,7 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
     `NEW ${when.toUpperCase()}`, newSub, ...listNew.map(textRow), ...(newFoot ? [`${newFoot} ${MAP_URL}`] : []), '',
     `WORTH A LOOK ${when.toUpperCase()}`, qSub, ...listQ.map(textRow), ...(qFoot ? [`${qFoot} ${MAP_URL}`] : []),
     ...(overall ? ['', `TOP ${TOP_N} RIGHT NOW — WHOLE BOOK`, bookSub, ...(book.length ? book.map(textBook) : ['No ranked companies yet'])] : []),
+    '', TOUCHES_LEGEND,
     '', 'HOW TO READ THIS', ...glossary.map(([k, v]) => `${k} — ${v}`), anonymous,
     ...(pullNote ? ['', pullNote] : []),
     '', '—', FOOTER_WORDS,
@@ -307,8 +310,8 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   const foot = t => `<div style="font:12.5px ${SANS};color:${DARK.muted};margin-top:10px">${esc(t.replace(/ · all .*$/, ''))}${/ · all /.test(t) ? ` · ${dlink(MAP_URL, t.slice(t.indexOf('all ')))}` : dlink(MAP_URL, t)}</div>`;
   const section = inner => `<tr><td style="padding:26px 0 0">${inner}</td></tr>`;
   const pillOf = c => (c.band in BAND_HUE ? outlinePill(intent(c), BAND_HUE[c.band]) : `<span style="color:${DARK.faint}">${esc(intent(c))}</span>`);
-  const whoCell = c => (c.type ? `${esc(`${KIND_LABEL[c.type]} · ${c.stage ? sentence(c.stage) : 'No stage'}`)} · ${memberDot(c.owner_color)}${esc(c.owner || 'Unassigned')}</span>` : `<span style="color:${DARK.muted}">Not in Prospector</span> · ${dlink(VISITORS_URL, 'Add →', true)}`);
-  const touchCell = c => (c.last_touch?.at ? esc(touch(c)) : `<span style="color:${DARK.faint}">No touch yet</span>`);
+  const whoCell = c => (c.type ? `${esc(`${KIND_LABEL[c.type]} · ${c.stage ? sentence(c.stage) : 'No stage'}`)} · ${memberDot(c.owner_color)}${esc(c.owner || 'Unassigned')}</span>` : `<span style="color:${DARK.muted}">Not in Prospector</span> · ${dlink(url(c), 'Add →', true)}`);
+  const touchCell = c => (c.touches?.count ? esc(touch(c)) : `<span style="color:${DARK.faint}">None yet</span>`);
   const row = c => [
     `<div style="font-size:14px;line-height:1.3">${dlink(url(c), c.company, true)}${tagPill(tagOf(c), c.is_new ? BAND_HUE.P1 : BAND_HUE.P3)}${c.days ? ` <span style="font-size:11px;color:${DARK.faint}">· ${esc(c.days)}</span>` : ''}</div><div style="font-size:12px;color:${DARK.muted};line-height:1.45;margin-top:3px">${esc(detailOf(c))}</div>`,
     pillOf(c), whoCell(c), touchCell(c),
@@ -318,7 +321,7 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
     `<span style="white-space:nowrap;color:${c.trend === 'up' ? DARK.good : c.trend === 'down' ? DARK.bad : DARK.faint}">${esc(trendText(c))}</span>`,
     whoCell(c), touchCell(c),
   ];
-  const HEADS = ['Company · why', 'Intent', 'In Prospector · owner', 'Last touch'], WIDTHS = [42, 19, 22, 17];
+  const HEADS = ['Company · why', 'Intent', 'In Prospector · owner', 'Touches'], WIDTHS = [40, 18, 22, 20];
   const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
 ${strip ? `<tr><td style="padding:0">${strip.html}</td></tr>` : ''}
 ${funnelT ? `<tr><td style="padding:4px 0 0">${funnelT.html}</td></tr>` : ''}
@@ -326,7 +329,8 @@ ${funnelT ? `<tr><td style="padding:4px 0 0">${funnelT.html}</td></tr>` : ''}
 <tr><td style="padding:12px 0 0;font:12.5px ${SANS};color:${DARK.muted}">${n ? `Intent of ${esc(whose)} ${n}: ${BANDS.map(b => outlinePill(`${BAND_WORD[b]} ${bands[b]}`, BAND_HUE[b])).join(' ')} &nbsp;·&nbsp; ${esc(inProspectorWords)} &nbsp;·&nbsp; ${notIn} not yet` : esc(intentWords)}</td></tr>
 ${section(`${h2(`New ${when}`, 'NEW')}${sub(newSub)}${listNew.length ? dataTable(HEADS, WIDTHS, listNew.map(row)) : ''}${newFoot ? foot(newFoot) : ''}`)}
 ${section(`${h2(`Worth a look ${when}`, 'RETURNING')}${sub(qSub)}${listQ.length ? dataTable(HEADS, WIDTHS, listQ.map(row)) : ''}${qFoot ? foot(qFoot) : ''}`)}
-${overall ? section(`${h2(`Top ${TOP_N} right now — whole book`)}${sub(bookSub)}${book.length ? dataTable(['Company', 'Intent', 'Trend', 'In Prospector · owner', 'Last touch'], [27, 18, 17, 22, 16], book.map(bookRow)) : sub('No ranked companies yet')}`) : ''}
+${overall ? section(`${h2(`Top ${TOP_N} right now — whole book`)}${sub(bookSub)}${book.length ? dataTable(['Company', 'Intent', 'Trend', 'In Prospector · owner', 'Touches'], [25, 17, 16, 22, 20], book.map(bookRow)) : sub('No ranked companies yet')}`) : ''}
+<tr><td style="padding:14px 0 0;font:11.5px ${SANS};color:${DARK.faint}">${esc(TOUCHES_LEGEND)}</td></tr>
 ${pullNote ? `<tr><td style="padding:16px 0 0;font:12.5px ${SANS};color:${DARK.muted}"><i>${esc(pullNote)}</i></td></tr>` : ''}
 <tr><td style="padding:26px 0 0"><div style="border-top:1px solid ${DARK.rule};padding-top:20px"><div style="font:600 11px ${MONO};letter-spacing:.08em;text-transform:uppercase;color:${DARK.faint};margin-bottom:8px">How to read this</div>
 <div style="font:12.5px ${SANS};color:${DARK.muted};line-height:1.55">${glossary.map(([k, v]) => `<b style="color:${DARK.soft}">${esc(k)}</b> — ${esc(v)}`).join('<br>')}<br>${esc(anonymous)}</div>

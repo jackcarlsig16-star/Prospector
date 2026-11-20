@@ -25,8 +25,8 @@ const setup = (row, props = {}) => {
 const fact = label => document.querySelector(`[data-fact="${label}"]`);
 afterEach(() => jest.clearAllMocks());
 
-test('editable facts follow editControls (+ Next step on partners / employers); Stage is no fact; Last touch never edits; a Viewer gets plain facts', () => {
-  expect(factsFor(PARTNER, {}, undefined).map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Reach', 'Type', 'Source', 'Last touch', 'Next step']);
+test('editable facts follow editControls (+ Next step on partners / employers); Stage is no fact; Touches never edits; a Viewer gets plain facts', () => {
+  expect(factsFor(PARTNER, {}, undefined).map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Reach', 'Type', 'Source', 'Touches', 'Next step']);
   expect(editableFacts(PARTNER)).toEqual(['Owner', 'Team', 'Employees', 'Reach', 'Source', 'Next step']);
   expect(editableFacts(EMPLOYER)).toEqual(['Owner', 'Team', 'Employees', 'Type', 'Source', 'Next step']);
   expect(editableFacts(TARGET)).toEqual(['Owner', 'Team', 'Employees', 'Source']);
@@ -36,7 +36,7 @@ test('editable facts follow editControls (+ Next step on partners / employers); 
   for (const l of ['Owner', 'Team', 'Employees', 'Reach', 'Source', 'Next step']) expect(fact(l).tagName).toBe('BUTTON');
   expect(fact('Priority').tagName).not.toBe('BUTTON');
   expect(fact('Stage')).toBeNull();
-  expect(fact('Last touch').tagName).toBe('DIV');
+  expect(fact('Touches').tagName).toBe('DIV');
   expect(fact('Type').tagName).toBe('DIV'); // a partner's category has no PATCH
   expect(fact('Owner').querySelector('i').style.background).toBe('rgb(111, 140, 240)'); // Jack's member color beside the value
   document.body.innerHTML = '';

@@ -63,7 +63,9 @@ export function navFrom({ tab, view, gview, storedTab, storedView, storedLegacy 
 
 export function readNav() {
   const p = new URLSearchParams(window.location.search);
-  const nav = navFrom({ tab: p.get('tab'), view: p.get('view'), gview: p.get('gview'), storedTab: read(TAB_KEY), storedView: read(VIEW_KEY), storedLegacy: read(LEGACY_KEY) });
+  // A bare /?visitors=<company_key> (FIX touch-truth T3) is Pipeline > Companies.
+  const visitor = !p.get('tab') && p.get('visitors') && p.get('visitors') !== '1';
+  const nav = navFrom({ tab: visitor ? 'pipeline' : p.get('tab'), view: visitor ? 'companies' : p.get('view'), gview: p.get('gview'), storedTab: read(TAB_KEY), storedView: read(VIEW_KEY), storedLegacy: read(LEGACY_KEY) });
   if (nav.channel) {
     const url = new URL(window.location.href);
     url.searchParams.set('channel', nav.channel);
