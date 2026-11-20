@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { getSupabase, addDays } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { cleanText, hasPii } from './scrubText.js';
 import { PRIORITY_LABEL } from './visitRules.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
@@ -19,7 +19,7 @@ const RANK = { P1: 0, P2: 1, P3: 2, P4: 3 };
 const rank = p => (p in RANK ? RANK[p] : 4); // a person-only row (no company visit) sorts after P4
 const isBuyer = (title, buyerTitles) => { const t = String(title || '').toLowerCase(); return !!t && buyerTitles.some(b => { const x = String(b).toLowerCase(); return t.includes(x) || x.includes(t); }); };
 export const PERSON_ONLY_RULE = 'Identified visitor only (Apollo did not resolve the company)';
-const MATCH_LABEL = { partner: 'Partner', opportunity: 'Employer', target: 'Target' };
+const MATCH_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target' };
 const SKIPPED = { priority: 'P4', priority_rule: 'On the skip list', noise_reason: 'On the skip list' };
 const VISIT_COLS = 'id, company_key, company_name, domain, us_500, first_visit, last_visit, visits_7d, unique_visitors_7d, top_paths, priority, priority_rule, noise_reason, maybe_user, matched_type, matched_id, pulled_on';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +27,7 @@ const must = r => { if (r.error) throw new Error(r.error.message); return r.data
 
 const typeOf = (v, rec) => {
   if (v.matched_type === 'partner') return `Partner · ${String(rec?.category || 'uncategorized').replace(/^\d+\.\s*/, '')}`;
-  if (v.matched_type === 'opportunity') return 'Employer';
+  if (v.matched_type === 'employer') return 'Employer';
   if (v.matched_type === 'target') return `Target (${rec?.kind || 'unknown kind'})`;
   return 'New';
 };
@@ -109,7 +109,7 @@ export function buildReport({ visits, skipKeys, records, signals, sources, today
     if (!people.length) continue;
     rows.push({
       company_key: key, company_name: rec.name, domain: rec.domain || null, priority: null, priority_rule: PERSON_ONLY_RULE, maybe_user: false, skipped: false, override: null,
-      type: rec.type === 'partner' ? 'Partner' : rec.type === 'opportunity' ? 'Employer' : 'Target (employer)', size: 'size unknown',
+      type: rec.type === 'partner' ? 'Partner' : rec.type === 'employer' ? 'Employer' : 'Target (employer)', size: 'size unknown',
       match: { type: rec.type, label: MATCH_LABEL[rec.type], id: rec.id, record_id: rec.record_id || null, owner_team: rec.owner_team || null, upside: UPSIDE_TEAMS.includes(rec.owner_team) },
       visits_7d: 0, unique_visitors_apollo: people.length, first_visit: null, last_visit: people.map(p => p.last_visit).filter(Boolean).sort().pop() || null, pulled_on: null,
       top_pages: [], sources: [], next_action: `Review ${people.length} identified ${people.length === 1 ? 'person' : 'people'}`,
@@ -134,7 +134,7 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
   const [skip, partners, opps, targets, signals, prospects, messages, sequencedAccounts, snap, members, overrides, visitPeople, createdTargets, settings] = await Promise.all([
     selectAllPages(() => supabase.from('sales_visit_skip').select('company_key').eq('business_id', businessId).order('id')),
     byIds('sales_goals', 'id, category, owner_team, record_id', ids('partner')),
-    byIds('sales_opportunities', 'id, owner_team, record_id', ids('opportunity')),
+    byIds('sales_opportunities', 'id, owner_team, record_id', ids('employer')),
     byIds('sales_targets', 'id, kind, owner_team, record_id', ids('target')),
     selectAllPages(() => supabase.from('sales_signals').select('id, company_key, status, created_at')
       .eq('business_id', businessId).eq('source', 'web_visit').gte('signal_week', addDays(since, -6)).order('id')),
@@ -157,7 +157,7 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
   for (const p of visitPeople) {
     const rec = p.opportunity_id ? peopleOpps.find(o => o.id === p.opportunity_id) : peopleTargets.find(t => t.id === p.target_id);
     if (!rec) continue;
-    const type = p.opportunity_id ? 'opportunity' : 'target', name = rec.organization || rec.name;
+    const type = p.opportunity_id ? 'employer' : 'target', name = rec.organization || rec.name;
     const key = normName(name);
     if (!peopleByKey.has(key)) peopleByKey.set(key, []);
     const dateIn = /(\d{4}-\d{2}-\d{2})/.exec(p.note || '')?.[1] || null;
@@ -168,7 +168,7 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
   for (const list of peopleByKey.values()) list.sort((a, b) => Number(b.buyer) - Number(a.buyer) || a.name.localeCompare(b.name));
   const createdKeys = new Set(createdTargets.map(t => normName(t.name)));
   const records = new Map();
-  for (const [type, list] of [['partner', partners], ['opportunity', opps], ['target', targets]]) for (const r of list) records.set(`${type}:${r.id}`, r);
+  for (const [type, list] of [['partner', partners], ['employer', opps], ['target', targets]]) for (const r of list) records.set(`${type}:${r.id}`, r);
   for (const [k, rec] of peopleRecs) records.set(k, rec);
   const scrub = nameScrubber(must(members).flatMap(m => [m.name, m.profile?.display_name]));
   const sequences = (must(snap)?.payload || []).filter(s => s && s.id);

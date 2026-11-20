@@ -23,7 +23,7 @@ const ROWS = [
   // Thu Nov 5 (pulled Fri Nov 6): b returning, e new, 3 visits.
   row('b', '2026-11-05', '2026-11-06', '2026-11-06', 2), row('e', '2026-11-05', '2026-11-06', '2026-11-06', 1),
   // Mon Nov 9: the 06:30 Fri-Sun pull (a, f) and a later same-day re-pull Nov 8 -> 9 (f again with a newer count, g): ONE bar.
-  row('a', '2026-11-06', '2026-11-09', '2026-11-09', 4, 'opportunity:o-1'), row('f', '2026-11-06', '2026-11-09', '2026-11-09', 1),
+  row('a', '2026-11-06', '2026-11-09', '2026-11-09', 4, 'employer:o-1'), row('f', '2026-11-06', '2026-11-09', '2026-11-09', 1),
   row('f', '2026-11-08', '2026-11-09', '2026-11-09', 7, 'partner:p-1'), row('g', '2026-11-08', '2026-11-09', '2026-11-09', 2),
   // A Sunday pull (Nov 1, covering Sat Oct 31): its own bar.
   row('c', '2026-10-31', '2026-11-01'),
@@ -68,7 +68,7 @@ test('buildTrend: windows from the rows (the run rows are never the source), the
   ]);
   const mon = t.windows[4];
   assert.deepEqual([mon.company_keys, mon.new_keys, mon.days], [['a', 'f', 'g'], ['f', 'g'], ['2026-11-06', '2026-11-07', '2026-11-08']], 'f once (its newer re-pull row, 7 visits), a returning (the backfill saw it), f + g new');
-  assert.deepEqual(mon.record_keys, ['employer:o-1', 'partner:p-1'], 'T2: the matched Pipeline rows (an opportunity match = the employer row), from the latest row per company');
+  assert.deepEqual(mon.record_keys, ['employer:o-1', 'partner:p-1'], 'T2: the matched Pipeline rows (an employer match = the employer row), from the latest row per company');
   assert.deepEqual(t.windows[0].record_keys, []);
   assert.ok(t.windows.every(w => w.new + w.returning === w.companies && w.companies === w.company_keys.length));
   assert.ok(!t.windows.some(w => w.start === '2026-10-13'), 'the 14-day backfill is not a bar');

@@ -5,7 +5,7 @@
 import { getServiceSupabase } from '../lib/authUser.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { hasPii, cleanText } from '../sales/scrubText.js';
-import { normName } from '../sales/intakeMatch.js';
+import { normName } from '../sales/normName.js';
 import { makeClient, markClient } from '../sales/clients.js';
 import { insertCompanyRecord } from '../sales/companyPanel.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';

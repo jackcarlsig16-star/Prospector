@@ -8,7 +8,7 @@ import { sourceColumns, logSource } from './leadSource.js';
 import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { companySteps } from './companySteps.js';
 import { laDateString } from './laDate.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { relinkParked } from './visitorPeopleMove.js';
@@ -46,8 +46,8 @@ const VISIT_WEEK_DAYS = 7;
 const NOT_NOW_DAYS = 7;
 const DISMISS_DAYS = 90;
 const PEOPLE_LINE = /^(People|Person): /;
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target', apollo: 'company' };
-const VISIT_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPE = { partner: 'partner', employer: 'employer', target: 'target', apollo: 'company' };
+const VISIT_TYPE = { partner: 'partner', employer: 'employer', target: 'target' };
 const TARGET_STATUSES = ['proposed', 'researching'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TERMS_LINE = /^\(\d{1,2}\/\d{1,2}\) Terms: /;
@@ -73,6 +73,17 @@ const REACH_COLS = 'reach_employees, reach_employees_source, reach_employees_at,
 const pick = (row, cols) => Object.fromEntries(cols.split(', ').map(c => [c, row[c] ?? null]));
 
 // The record behind a row, as the panel header reads it. null = gone.
+// data-keys-v1 K2: the record a promoted target became (the window says "promoted → <name>"); null while it is a target.
+async function promotedTo(supabase, businessId, t) {
+  if (t.employer_id) {
+    const o = must(await supabase.from('sales_opportunities').select('id, organization').eq('business_id', businessId).eq('id', t.employer_id).maybeSingle());
+    return o ? { type: 'employer', id: o.id, name: o.organization } : null;
+  }
+  if (!t.promoted_goal_id) return null;
+  const g = must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).eq('id', t.promoted_goal_id).maybeSingle());
+  return g ? { type: 'partner', id: g.id, name: g.name } : null;
+}
+
 async function loadRecord(supabase, businessId, type, id) {
   if (type === 'partner') {
     const g = must(await supabase.from('sales_goals').select(`id, name, pipeline_status, category, tier, pinned_until, pin_reason, owner_user_id, owner_team, co_owner_name, no_double_touch, next_step, next_meeting_at, last_touch_at, channel, priority, priority_set_by, priority_set_at, notes, record_id, ${SIZE_COLS}, ${REACH_COLS}`)
@@ -80,16 +91,16 @@ async function loadRecord(supabase, businessId, type, id) {
     return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, ...starOf(g), owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes, ...pick(g, SIZE_COLS), ...pick(g, REACH_COLS) };
   }
   if (type === 'employer') {
-    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, pinned_until, pin_reason, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, expected_close, expected_launch, ${CLIENT_COLS.join(', ')}, ${SIZE_COLS}`)
+    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner_user_id, owner_team, co_owner_name, tier, pinned_until, pin_reason, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, expected_close, expected_launch, ${CLIENT_COLS.join(', ')}, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).is('archived_at', null).maybeSingle());
-    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, ...starOf(o), next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS),
+    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, ...starOf(o), next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS),
       // homelover-clients-v1: the client card + Make client sheet read these.
       client: { ...pick(o, CLIENT_COLS.join(', ')), expected_close: o.expected_close, launch_date: o.expected_launch, apollo_account_id: o.apollo_account_id } };
   }
   if (type === 'target') {
-    const r = must(await supabase.from('sales_targets').select(`id, name, kind, status, suggested_category, owner_team, co_owner_name, owner_user_id, evidence, research_notes, channel, created_at, promoted_goal_id, ${SIZE_COLS}`)
+    const r = must(await supabase.from('sales_targets').select(`id, name, kind, status, suggested_category, owner_team, co_owner_name, owner_user_id, evidence, research_notes, channel, created_at, promoted_goal_id, employer_id, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).maybeSingle());
-    return r && { type, id: r.id, name: r.name, kind: r.kind, stage: r.status, category: r.suggested_category, owner_team: r.owner_team, co_owner_name: r.co_owner_name, channel: r.channel, created_at: r.created_at, evidence: r.evidence, research_notes: r.research_notes, promoted_goal_id: r.promoted_goal_id, owner_user_id: r.owner_user_id, ...pick(r, SIZE_COLS) };
+    return r && { promoted_to: await promotedTo(supabase, businessId, r), type, id: r.id, name: r.name, kind: r.kind, stage: r.status, category: r.suggested_category, owner_team: r.owner_team, co_owner_name: r.co_owner_name, channel: r.channel, created_at: r.created_at, evidence: r.evidence, research_notes: r.research_notes, promoted_goal_id: r.promoted_goal_id, owner_user_id: r.owner_user_id, ...pick(r, SIZE_COLS) };
   }
   if (type === 'apollo') {
     const a = must(await supabase.from('sales_sequenced_accounts').select('account_id, name, first_sequenced_at, sequence_id, employees').eq('business_id', businessId).eq('account_id', id).maybeSingle());
@@ -136,7 +147,7 @@ async function recentFor(supabase, businessId, record) {
   if (record.type === 'employer') {
     const [ev, done, client] = await Promise.all([
       supabase.from('sales_opportunity_events').select('id, event_type, from_stage, to_stage, changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).neq('event_type', 'created').order('changed_at', { ascending: false }).limit(RECENT).then(must),
-      supabase.from('sales_week_goals').select('id, text, completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(RECENT).then(must),
+      supabase.from('sales_week_goals').select('id, text, completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'employer').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(RECENT).then(must),
       // homelover-clients-v1 ruling 1: client changes live in their own table (not stage moves) but read here.
       supabase.from('sales_client_events').select('id, kind, from_status, to_status, via, meta, at').eq('business_id', businessId).eq('opportunity_id', record.id).order('at', { ascending: false }).limit(RECENT).then(must),
     ]);
@@ -267,7 +278,7 @@ export async function lastTouchFor(supabase, businessId, record) {
   if (record.type === 'employer') {
     const [ev, done] = await Promise.all([
       supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).eq('event_type', 'stage_change').order('changed_at', { ascending: false }).limit(1).then(must),
-      supabase.from('sales_week_goals').select('completed_at, text, owner_user_id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
+      supabase.from('sales_week_goals').select('completed_at, text, owner_user_id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'employer').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
     ]);
     const stage = ev[0]?.changed_at || null, todo = done[0]?.completed_at || null;
     if (!stage && !todo) return null;
@@ -346,10 +357,10 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     const { notes, decision_makers, champion, ...head } = record;
     const ownerName = record.owner_user_id ? names.get(record.owner_user_id) || null : null;
     const out = {
-      ...head, owner: type === 'partner' ? ownerName : type === 'target' ? ownerName : record.owner || null, owner_name: ownerName,
+      ...head, owner: ownerName, owner_name: ownerName,
       priority_set_by: record.priority_set_by ? names.get(record.priority_set_by) || null : null,
       ...(type === 'partner' || type === 'employer' ? { next_step: record.next_step ? cleanText(record.next_step, 400) : null } : {}),
-      ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000) } : {}),
+      ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000), promoted_to: record.promoted_to ? { ...record.promoted_to, name: cleanText(record.promoted_to.name, 160) } : null } : {}),
       ...(type === 'employer' ? { notes: t(notes, 4000), last_touch_at: lastTouch?.at || null } : {}),
       last_touch: lastTouch && 'by' in lastTouch ? { ...lastTouch, by: lastTouch.by ? names.get(lastTouch.by) || null : null } : lastTouch, site,
     };

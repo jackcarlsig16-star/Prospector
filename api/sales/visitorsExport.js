@@ -13,8 +13,7 @@ import { hasPii } from './scrubText.js';
 export const WINDOWS = { 7: 'last 7 days', 30: 'last 30 days', 90: 'last 90 days', all: 'since the first pull' };
 export const COLUMNS = ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
 const BAND_WORD = { P1: 'Hot', P2: 'Warm', P3: 'Cool', P4: 'Cold' };
-const KIND = { partner: 'Partner', opportunity: 'Employer', target: 'Target' };
-const SCORE_TYPE = { employer: 'opportunity', target: 'target', partner: 'partner' };
+const KIND = { partner: 'Partner', employer: 'Employer', target: 'Target' };
 const SOURCE_WORD = { research: 'research', manual: 'typed', apollo: 'Apollo' };
 const titleCase = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -68,18 +67,18 @@ export async function visitorsExport(supabase, businessId, { window: id = '30', 
   const ids = t => [...new Set(visits.filter(v => v.matched_type === t && v.matched_id).map(v => v.matched_id))];
   const byIds = (table, cols, list) => (list.length ? selectAllPages(() => supabase.from(table).select(cols).eq('business_id', businessId).in('id', list).order('id')) : []);
   const [opps, targets, partners, scores, people] = await Promise.all([
-    byIds('sales_opportunities', 'id, stage, client_status, employees, employees_source', ids('opportunity')),
+    byIds('sales_opportunities', 'id, stage, client_status, employees, employees_source', ids('employer')),
     byIds('sales_targets', 'id, status, employees, employees_source', ids('target')),
     byIds('sales_goals', 'id, pipeline_status, employees, employees_source', ids('partner')),
     selectAllPages(() => supabase.from('sales_company_scores').select('company_type, company_id, band').eq('business_id', businessId).order('company_id')),
     visits.length ? selectAllPages(() => supabase.from('sales_people').select('id, visit_id').eq('business_id', businessId).not('visit_id', 'is', null).is('archived_at', null).order('id')) : [],
   ]);
   const records = new Map([
-    ...opps.map(o => [`opportunity:${o.id}`, { stage: o.stage, client_status: o.client_status, employees: o.employees, employees_source: o.employees_source }]),
+    ...opps.map(o => [`employer:${o.id}`, { stage: o.stage, client_status: o.client_status, employees: o.employees, employees_source: o.employees_source }]),
     ...targets.map(t => [`target:${t.id}`, { stage: t.status, client_status: null, employees: t.employees, employees_source: t.employees_source }]),
     ...partners.map(p => [`partner:${p.id}`, { stage: p.pipeline_status, client_status: null, employees: p.employees, employees_source: p.employees_source }]),
   ]);
-  const bands = new Map(scores.filter(s => SCORE_TYPE[s.company_type]).map(s => [`${SCORE_TYPE[s.company_type]}:${s.company_id}`, s.band]));
+  const bands = new Map(scores.filter(s => KIND[s.company_type]).map(s => [`${s.company_type}:${s.company_id}`, s.band]));
   const peopleByVisit = new Map();
   for (const p of people) if (p.visit_id) peopleByVisit.set(p.visit_id, (peopleByVisit.get(p.visit_id) || 0) + 1);
   const report = buildVisitorsExport({ visits, records, bands, peopleByVisit, window: w, today, firstPull: visits.map(v => v.pulled_on).filter(Boolean).sort()[0] || null });

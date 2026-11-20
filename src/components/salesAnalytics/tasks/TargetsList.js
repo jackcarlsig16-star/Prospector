@@ -77,7 +77,7 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
 
   const shown = targets.filter(t => showClosed || OPEN_STATUSES.includes(t.status));
   const closed = targets.length - openTargets(targets).length;
-  const typeLabel = { partner: 'partner', opportunity: 'employer', target: 'target' };
+  const typeLabel = { partner: 'partner', employer: 'employer', target: 'target' };
   return (
     <section aria-label="Targets" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
       onKeyDown={e => { if (e.key !== 'Escape' || !openEvidence) return; e.stopPropagation(); const id = openEvidence; setOpenEvidence(null); document.getElementById(`ev-btn-${id}`)?.focus(); }}>

@@ -1,5 +1,5 @@
 import { cleanText, hasPii } from './scrubText.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { SOURCE_KINDS } from '../../src/constants/leadSources.js';
 

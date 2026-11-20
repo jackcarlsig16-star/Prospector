@@ -1,4 +1,4 @@
-import { normalizeDomain, parseDomainsFromSources, ownDomainFromSources, normalizeName, matchApolloAccounts, suggestionsFor, pendingSuggestions, SUGGESTION_BADGE, apolloAccountFor, exportCandidates, buildApolloCsv } from './partnerDomains';
+import { normalizeDomain, parseDomainsFromSources, ownDomainFromSources, matchApolloAccounts, suggestionsFor, pendingSuggestions, SUGGESTION_BADGE, apolloAccountFor, exportCandidates, buildApolloCsv } from './partnerDomains';
 
 // partner-360-v1 Stage 2 - the audit's examples (audits/partner-apollo-link-audit-report.md §2).
 const accounts = [
@@ -45,12 +45,6 @@ test('parseDomainsFromSources: own site first, press after, notes ignored', () =
   expect(partners.map(p => ownDomainFromSources(p.sources)).filter(Boolean)).toHaveLength(13);
 });
 
-test('normalizeName: diacritics, parentheticals, legal suffixes', () => {
-  expect(normalizeName('Piñata')).toBe('pinata');
-  expect(normalizeName('EBG (Entertainment Benefits Group)')).toBe('ebg');
-  expect(normalizeName('Lockton Companies')).toBe('lockton companies');
-  expect(normalizeName('Gallagher, Inc.')).toBe('gallagher');
-});
 
 test('matchApolloAccounts: the audit\'s 11 by name and 7 by domain, Piñata only by domain, Corestream only by name', () => {
   const byName = partners.filter(p => matchApolloAccounts({ name: p.name }, accounts).byName.length).map(p => p.name);

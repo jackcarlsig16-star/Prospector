@@ -62,7 +62,7 @@ async function user(name, role) {
 
 (async () => {
   const hlBefore = await hl(); const t0 = Date.now();
-  const { normName } = await import(ROOT + '/api/sales/intakeMatch.js');
+  const { normName } = await import(ROOT + '/api/sales/normName.js');
   const { acceptBody } = await import(ROOT + '/src/components/salesAnalytics/tasks/intakeBody.js');
   try {
     const T = made.biz = ins(await svc.from('businesses').insert({ name: `ZZ Intake ${tag.slice(-4)}`, website_url: 'https://example.com', color: '#777777', owner_email: `${tag}-jack@example.com`, access_code: tag, features: { goals_sales: true } }).select().single()).id;

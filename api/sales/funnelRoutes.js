@@ -23,7 +23,7 @@ export async function loadFunnelRows(supabase, businessId) {
     all('sales_prospect_state', 'contact_id, name, company, opportunity_id, goal_id', q => q, 'contact_id'),
     all('partner_contacts', 'id, apollo_contact_id, goal_id'),
     all('sales_opportunities', 'id, organization, apollo_account_id'),
-    all('sales_targets', 'id, name'),
+    all('sales_targets', 'id, name, apollo_account_id, employer_id'),
     all('sales_goals', 'id, name', q => q.eq('goal_type', 'partnership')),
     all('sales_sequenced_accounts', 'account_id, name', q => q, 'account_id'),
     all('sales_people', 'id, name, company_name, opportunity_id, target_id, apollo_person_id, created_at', q => q.eq('source_kind', 'web_visit').is('archived_at', null)),

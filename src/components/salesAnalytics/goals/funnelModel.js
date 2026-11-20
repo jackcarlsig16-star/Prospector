@@ -30,7 +30,8 @@ export function funnelTables(f) {
         { key: 'company_rate', label: 'Company rate', cells: cols.map((w, i) => ({ main: pctOf(w.company_rate.rate), strong: true, arrow: i === 2 && f.trend_30d ? f.trend_30d.arrow : null, sub: `· ${w.company_rate.n} of ${w.company_rate.d} companies` })) },
         { key: 'person_rate', label: 'Person rate', cells: cols.map(w => ({ main: pctOf(w.person_rate.rate), strong: true, sub: `· ${w.person_rate.n} of ${w.person_rate.d} people` })) },
       ],
-      how: [f.wording.company, f.wording.person],
+      // data-keys-v1 K3: how many of the emailed companies were reached by their name, not by an id (30 days).
+      how: [f.wording.company, f.wording.person, ...(W['30d'].companies_by_name != null ? [`${W['30d'].companies_by_name} of ${W['30d'].companies_emailed} companies matched by name (30 days).`] : [])],
     },
     week: tw && lw ? {
       title: 'This week vs last week', sub: `Mon ${md(tw.from)} → today against Mon ${md(lw.from)} → Sun ${md(lw.to)}.`, heads: WEEK_HEADS,

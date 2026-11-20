@@ -1,7 +1,6 @@
 import { addDays } from './goalsShared.js';
 import { cleanText } from './scrubText.js';
 import { visitIndex } from './visitJoin.js';
-import { readType } from './readType.js';
 import { NBA_RULES } from './nextBestAction.js';
 
 // actions-v2 A1 - "Today": one ranked list of the open to-dos, pure. A row lands in the FIRST group it fits:
@@ -68,7 +67,7 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
   const first = id => members.find(m => m.id === id)?.name.split(/\s+/)[0] || null;
 
   const companyOf = (linkType, linkId, person) => {
-    const type = readType(linkType);
+    const type = linkType;
     const ref = RECORD_TYPES.includes(type) && linkId ? { type, id: linkId } : person?.company?.id && RECORD_TYPES.includes(person.company.type) ? { type: person.company.type, id: person.company.id } : null;
     if (!ref) return person?.company?.name ? { type: null, id: null, key: null, name: cleanText(person.company.name, 160), score: null, band: null, pinned: false, visits_7d: 0 } : null;
     const s = scoreOf.get(`${ref.type}:${ref.id}`) || null;

@@ -40,8 +40,15 @@ export async function memberNamed(supabase, businessId, text) {
   const hits = rows.filter(m => m.role !== 'viewer' && m.name && [m.name.trim().toLowerCase(), m.name.trim().split(' ')[0].toLowerCase()].includes(k));
   return hits.length === 1 ? hits[0].user_id : null;
 }
-// An employer keeps its owner text (the board's Owner column, first names) in step with the person.
-export const employerOwner = person => (person ? { owner_user_id: person.user_id, owner: person.name.split(' ')[0] || null } : { owner_user_id: null, owner: null });
+// data-keys-v1 K8: one owner. sales_opportunities.owner (text) is never written; a reader that wants the name derives
+// it from owner_user_id: ownerFirst(names, id) with names = memberNames(...) (user id -> the member's name).
+export const employerOwner = person => ({ owner_user_id: person ? person.user_id : null });
+export const ownerFirst = (names, userId) => (userId && names.get(userId) ? String(names.get(userId)).split(' ')[0] : null) || null;
+export async function memberNames(supabase, businessId) {
+  return new Map(must(await supabase.from('business_members').select('user_id, name').eq('business_id', businessId)).filter(m => m.user_id).map(m => [m.user_id, m.name || '']));
+}
+// Rows of sales_opportunities with `owner` set to the owner's first name (for the readers that still show a text).
+export const withOwnerText = (rows, names) => rows.map(r => ({ ...r, owner: ownerFirst(names, r.owner_user_id) }));
 
 // The picked owner when there is one (must be a Member), else the caller. -> { person } | { error }.
 export async function ownerOrCaller(supabase, businessId, picked, callerId) {
@@ -112,9 +119,9 @@ export async function editCompanyFields(supabase, { businessId, type, id, body: 
     if ('owner_user_id' in body) {
       const person = body.owner_user_id ? await ownerPerson(supabase, businessId, body.owner_user_id) : null;
       if (body.owner_user_id && !person) return reply(400, { error: 'owner_user_id must be a Member of this workspace' });
-      Object.assign(patch, type === 'employer' ? employerOwner(person) : { owner_user_id: person?.user_id ?? null });
+      patch.owner_user_id = person?.user_id ?? null;
     }
-    const select = `id, ${cols(type)}${type === 'partner' ? '' : ', owner_user_id, domain, domain_source'}${type === 'employer' ? ', owner' : ''}`;
+    const select = `id, ${cols(type)}${type === 'partner' ? '' : ', owner_user_id, domain, domain_source'}`;
     // homelover-flow-v1 F1: a Map / panel Assign on an employer or target is Activity + Undo (flow event with the prior owner).
     const before = 'owner_user_id' in body ? must(await supabase.from(RECORD_TABLE[type]).select(`id, owner_user_id${type === 'employer' ? ', owner, organization' : ', name'}`).eq('business_id', businessId).eq('id', id).maybeSingle()) : null;
     if ('owner_user_id' in body && !before) return reply(404, { error: `${type} not found` });
@@ -130,7 +137,7 @@ export async function editCompanyFields(supabase, { businessId, type, id, body: 
     if (patch.domain) { const { scheduleFirstSight } = await import('./headcountRun.js'); scheduleFirstSight(supabase, { businessId, type, id }); }
     let event = null;
     if (before && (before.owner_user_id || null) !== (patch.owner_user_id || null)) {
-      const set = type === 'employer' ? { owner_user_id: patch.owner_user_id ?? null, owner: patch.owner ?? null } : { owner_user_id: patch.owner_user_id ?? null };
+      const set = { owner_user_id: patch.owner_user_id ?? null };
       const prev = Object.fromEntries(Object.keys(set).map(k => [k, before[k] ?? null]));
       const who = patch.owner_user_id ? (await ownerPerson(supabase, businessId, patch.owner_user_id))?.name?.split(' ')[0] || 'a member' : null;
       try { event = await logFlow(supabase, { businessId, recordType: type, recordId: id, kind: 'assign', text: who ? `Assigned to ${who}` : 'Unassigned', prev, set, meta: { name: before.organization || before.name || null, to_owner: patch.owner_user_id ?? null, ...(origin ? { origin } : {}) }, byUser, now }); }

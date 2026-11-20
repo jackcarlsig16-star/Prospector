@@ -1,6 +1,5 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName } from './intakeMatch.js';
-import { readType } from './readType.js';
+import { normName } from './normName.js';
 import { addDays } from './goalsShared.js';
 import { cleanText } from './scrubText.js';
 
@@ -39,7 +38,7 @@ export function buildNameIndex({ partners, employers, targets, visits }) {
   for (const v of visits) {
     const key = normName(v.company_name);
     if (!key) continue;
-    const matched = v.matched_id ? byId.get(`${readType(v.matched_type)}:${v.matched_id}`) : null;
+    const matched = v.matched_id ? byId.get(`${v.matched_type}:${v.matched_id}`) : null;
     if (matched) { put(key, matched); continue; }
     if (byKey.has(key) && byKey.get(key).type !== 'visitor') continue;
     const s = seen.get(key) || { days: new Set(), last: null, latest: null };

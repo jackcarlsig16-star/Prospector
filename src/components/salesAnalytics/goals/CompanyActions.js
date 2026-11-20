@@ -33,7 +33,7 @@ function Group({ id, label, icon, children }) {
   );
 }
 const divider = <span aria-hidden="true" style={{ width: 1, height: 46, background: SA.border, alignSelf: 'flex-end', margin: '0 4px' }} />;
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPE = { partner: 'partner', employer: 'employer', target: 'target' };
 const field = { ...inputStyle, height: 32, fontSize: 13, padding: '0 8px' };
 const btn = 'ui-btn ui-btn--secondary';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -126,7 +126,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     const r = await goalsApi.promoteTarget(businessId, row.id, { to, ...(ownerPick ? { owner_user_id: ownerPick } : {}) });
     const rec = r.created || r.already;
     setForm(null);
-    onConvert({ ...rec, type: rec.type === 'opportunity' ? 'employer' : rec.type }, !!r.already);
+    onConvert(rec, !!r.already);
   });
   const addTo = to => act('add', async () => {
     const r = await goalsApi.addToPipeline(businessId, { type: row.type, id: row.id, to, ...(ownerPick ? { owner_user_id: ownerPick } : {}) });

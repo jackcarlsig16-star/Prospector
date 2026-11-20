@@ -1,21 +1,18 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { bulkStageRefusal } from './pipelineStages.js';
+import { normName } from './normName.js';
 
 // pipeline-add-dedupe-v1 - every path that creates an opportunity reuses a
 // live one first. The unique index is on lower(organization), so "[solidcore]"
-// and "Solidcore" both got in; this key is what the paths compare instead.
-const SUFFIXES = new Set(['inc', 'llc', 'corp', 'co']);
-export function orgKey(name) {
-  return String(name || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w && !SUFFIXES.has(w)).join(' ');
-}
+// and "Solidcore" both got in; normName is what the paths compare instead.
 
 export function matchOpportunity(opps, { name, apolloAccountId = null }) {
   if (apolloAccountId) {
     const byApollo = opps.find(o => o.apollo_account_id === apolloAccountId);
     if (byApollo) return byApollo;
   }
-  const key = orgKey(name);
-  return (key && opps.find(o => orgKey(o.organization) === key)) || null;
+  const key = normName(name);
+  return (key && opps.find(o => normName(o.organization) === key)) || null;
 }
 
 export async function findOpportunity(supabase, businessId, { name, apolloAccountId = null }) {

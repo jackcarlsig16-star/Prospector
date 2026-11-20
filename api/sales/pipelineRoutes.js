@@ -1,4 +1,4 @@
-import { ownerOrCaller, employerOwner, memberNamed } from './companyFields.js';
+import { ownerOrCaller, employerOwner, memberNamed, memberNames, withOwnerText } from './companyFields.js';
 import { relinkParked } from './visitorPeopleMove.js';
 import { createClient } from '@supabase/supabase-js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, PARKED_STAGES, compareStages, bulkStageRefusal } from './pipelineStages.js';
@@ -9,6 +9,7 @@ import { findOpportunity, moveForward } from './opportunityMatch.js';
 import { CHANNEL_IDS, PRIORITIES } from '../../src/constants/salesChannels.js';
 import { priorityStamp } from './goalsShared.js';
 import { validateSource, sourceColumns, logSource } from './leadSource.js';
+import { renamed } from './restampVisits.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -62,16 +63,19 @@ export async function listOpportunitiesRoute(req, res) {
   const supabase = getSupabase();
   const { stage, cohort, owner, is_top, include_archived } = req.query;
   try {
+    // K8: the owner filter names a member; the rows carry the owner's first name derived from owner_user_id.
+    const ownerId = owner ? await memberNamed(supabase, req.params.businessId, owner) : null;
+    if (owner && !ownerId) return res.status(200).json({ opportunities: [] });
     const data = await selectAllPages(() => {
       let query = supabase.from('sales_opportunities').select('*').eq('business_id', req.params.businessId);
       if (!include_archived || include_archived === 'false') query = query.is('archived_at', null);
       if (stage) query = query.eq('stage', stage);
       if (cohort) query = query.eq('cohort', cohort);
-      if (owner) query = query.eq('owner', owner);
+      if (ownerId) query = query.eq('owner_user_id', ownerId);
       if (is_top === 'true') query = query.eq('is_top', true);
       return query.order('created_at', { ascending: false }).order('id');
     });
-    res.status(200).json({ opportunities: data });
+    res.status(200).json({ opportunities: withOwnerText(data, await memberNames(supabase, req.params.businessId)) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
@@ -92,7 +96,8 @@ export async function createOpportunityRoute(req, res) {
     const named = !pickedOwner && payload.owner ? (await memberNamed(supabase, req.params.businessId, payload.owner)) : null;
     const who = await ownerOrCaller(supabase, req.params.businessId, pickedOwner || named, req.auth.user.id);
     if (who.error) return res.status(400).json({ error: who.error });
-    owner = pickedOwner || named || !payload.owner ? employerOwner(who.person) : { owner_user_id: who.person?.user_id ?? null };
+    owner = employerOwner(who.person);
+    delete payload.owner;
   } catch (e) { return res.status(500).json({ error: e.message }); }
   try {
     const found = await findOpportunity(supabase, req.params.businessId, { name: payload.organization });
@@ -125,8 +130,15 @@ export async function updateOpportunity(supabase, { businessId, id, userId, body
   if (allowBackward !== undefined && typeof allowBackward !== 'boolean') return { status: 400, body: { error: 'allow_backward must be true or false' } };
   const { payload, error } = validateFields(body);
   if (error) return { status: 400, body: { error } };
+  // K8: a typed owner must name one Member; it is stored as that member's id, never as text.
+  if ('owner' in payload) {
+    const named = payload.owner ? await memberNamed(supabase, businessId, payload.owner) : null;
+    if (payload.owner && !named) return { status: 400, body: { error: 'owner must name a Member of this workspace' } };
+    payload.owner_user_id = named;
+    delete payload.owner;
+  }
   const { data: existing, error: findErr } = await supabase
-    .from('sales_opportunities').select('id, stage').eq('business_id', businessId).eq('id', id).maybeSingle();
+    .from('sales_opportunities').select('id, stage, organization').eq('business_id', businessId).eq('id', id).maybeSingle();
   if (findErr) return { status: 500, body: { error: findErr.message } };
   if (!existing) return { status: 404, body: { error: 'opportunity not found' } };
   if (payload.stage && compareStages(existing.stage, payload.stage) === 'back' && !allowBackward) {
@@ -140,6 +152,7 @@ export async function updateOpportunity(supabase, { businessId, id, userId, body
     .select()
     .single();
   if (updErr) return { status: 500, body: { error: updErr.message } };
+  if (data.organization !== existing.organization) await renamed(supabase, { businessId, type: 'employer', id, from: existing.organization, to: data.organization, userId, now });
   return { status: 200, body: { opportunity: data } };
 }
 
@@ -242,6 +255,9 @@ export async function importOpportunities(supabase, businessId, csvText) {
     .is('archived_at', null);
   if (fetchErr) throw new Error(fetchErr.message);
   const existingByOrgLower = new Map(existingRows.map(r => [r.organization.toLowerCase(), r]));
+  // K8: an Owner cell names a Member (full or first name, one match); it is stored as that member's id.
+  const members = [...(await memberNames(supabase, businessId))];
+  const ownerNamed = text => { const k = text.trim().toLowerCase(); const hits = members.filter(([, name]) => [name.trim().toLowerCase(), name.trim().split(' ')[0].toLowerCase()].includes(k)); return hits.length === 1 ? hits[0][0] : null; };
 
   let inserted = 0, updated = 0;
   const errors = [];
@@ -272,6 +288,11 @@ export async function importOpportunities(supabase, businessId, csvText) {
     }
 
     if (rowError) { errors.push({ row: rowNum, reason: rowError }); continue; }
+    if (payload.owner) {
+      const id = ownerNamed(payload.owner);
+      if (id) payload.owner_user_id = id; else errors.push({ row: rowNum, reason: `owner "${payload.owner}" is not a Member - owner left as it was` });
+    }
+    delete payload.owner;
     if (!payload.organization) { errors.push({ row: rowNum, reason: 'organization is required' }); continue; }
 
     const orgLower = payload.organization.toLowerCase();

@@ -31,8 +31,8 @@ export const ENTITIES = [
     } },
   { entity: 'employers', label: 'Employers', open: id => company('employer', id),
     async search(sb, { businessId, q, limit }) {
-      const rows = must(await sb.from('sales_opportunities').select('id, organization, stage, cohort, notes, owner, client_status, updated_at').eq('business_id', businessId).is('archived_at', null).or(`organization.ilike.${pat(q)},cohort.ilike.${pat(q)},notes.ilike.${pat(q)}`).order('updated_at', { ascending: false }).limit(limit));
-      return rows.map(r => ({ id: r.id, title: r.organization, subtitle: [r.client_status ? `client · ${r.client_status}` : r.stage?.replace(/_/g, ' '), r.cohort].filter(Boolean).join(' · '), date: day(r.updated_at), text: [r.organization, 'employer', r.client_status ? `client ${r.client_status}` : `stage ${r.stage?.replace(/_/g, ' ')}`, r.cohort, r.owner ? `owner ${r.owner}` : null, r.notes ? cleanText(r.notes, 160) : null].filter(Boolean).join(' · ') }));
+      const rows = must(await sb.from('sales_opportunities').select('id, organization, stage, cohort, notes, client_status, updated_at').eq('business_id', businessId).is('archived_at', null).or(`organization.ilike.${pat(q)},cohort.ilike.${pat(q)},notes.ilike.${pat(q)}`).order('updated_at', { ascending: false }).limit(limit));
+      return rows.map(r => ({ id: r.id, title: r.organization, subtitle: [r.client_status ? `client · ${r.client_status}` : r.stage?.replace(/_/g, ' '), r.cohort].filter(Boolean).join(' · '), date: day(r.updated_at), text: [r.organization, 'employer', r.client_status ? `client ${r.client_status}` : `stage ${r.stage?.replace(/_/g, ' ')}`, r.cohort, r.notes ? cleanText(r.notes, 160) : null].filter(Boolean).join(' · ') }));
     } },
   { entity: 'targets', label: 'Targets', open: id => company('target', id),
     async search(sb, { businessId, q, limit }) {

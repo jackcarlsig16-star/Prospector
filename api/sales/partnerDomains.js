@@ -41,6 +41,17 @@ export async function listDomainsRoute(req, res) {
   try { await respondDomains(supabase, partner, req.params.businessId, res); } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// data-keys-v1 K7: sales_goals.company_domain is DERIVED - the partner's confirmed domain, primary first (what the
+// company window shows), null when there is none. Refreshed after every partner_domains write; no form writes it.
+export async function refreshCompanyDomain(supabase, businessId, goalId) {
+  const { data, error } = await supabase.from('partner_domains').select('id, domain, is_primary, updated_at').eq('business_id', businessId).eq('goal_id', goalId).eq('confirmed', true);
+  if (error) throw new Error(error.message);
+  const first = [...data].sort((a, b) => Number(b.is_primary) - Number(a.is_primary) || String(a.updated_at).localeCompare(String(b.updated_at)) || String(a.id).localeCompare(String(b.id)))[0];
+  const { error: wErr } = await supabase.from('sales_goals').update({ company_domain: first?.domain ?? null }).eq('business_id', businessId).eq('id', goalId);
+  if (wErr) throw new Error(wErr.message);
+  return first?.domain ?? null;
+}
+
 // POST /goals/partners/:id/domains  body { domain, dismiss? } - confirms a
 // suggestion or adds a domain by hand (confirmed); dismiss = true stores a
 // confirmed=false row so the suggestion stops being offered. The first
@@ -67,6 +78,7 @@ export async function addDomainRoute(req, res) {
       : supabase.from('partner_domains').insert({ business_id: businessId, goal_id: partner.id, domain, source: suggestion ? suggestion.source : 'manual', created_by: req.auth.user.id, ...patch });
     const { error: wErr } = await q;
     if (wErr) throw new Error(wErr.message);
+    await refreshCompanyDomain(supabase, businessId, partner.id);
     await respondDomains(supabase, partner, businessId, res, existing ? 200 : 201);
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -98,6 +110,7 @@ export async function updateDomainRoute(req, res) {
     }
     const { error: wErr } = await supabase.from('partner_domains').update(patch).eq('id', row.id);
     if (wErr) throw new Error(wErr.message);
+    await refreshCompanyDomain(supabase, businessId, partner.id);
     await respondDomains(supabase, partner, businessId, res);
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -113,7 +126,7 @@ export async function deleteDomainRoute(req, res) {
   if (!row) return res.status(404).json({ error: 'domain not found' });
   const { error } = await supabase.from('partner_domains').delete().eq('id', row.id);
   if (error) return res.status(500).json({ error: error.message });
-  try { await respondDomains(supabase, partner, businessId, res); } catch (e) { res.status(500).json({ error: e.message }); }
+  try { await refreshCompanyDomain(supabase, businessId, partner.id); await respondDomains(supabase, partner, businessId, res); } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
 async function workspaceExport(supabase, businessId) {

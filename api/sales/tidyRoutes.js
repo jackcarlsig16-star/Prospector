@@ -159,7 +159,7 @@ export async function todoFor(supabase, businessId, s, today) {
   const due = DUE_DAYS[s.kind];
   if (due == null) return null;
   let link = null;
-  if (['partner', 'target', 'opportunity'].includes(s.ref_type)) link = [s.ref_type, s.ref_id];
+  if (['partner', 'target', 'opportunity'].includes(s.ref_type)) link = [s.ref_type === 'opportunity' ? 'employer' : s.ref_type, s.ref_id];
   else if (s.ref_type === 'todo' || s.ref_type === 'flag') {
     const { data } = await supabase.from('sales_week_goals').select('link_type, link_id, text, waiting_on').eq('business_id', businessId).eq('id', s.ref_id).maybeSingle();
     if (data?.link_type) link = [data.link_type, data.link_id];

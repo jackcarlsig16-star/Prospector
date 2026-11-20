@@ -167,7 +167,7 @@ test('Add › Client: idempotent on domain (then name); a new employer Undo dele
   const r2 = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: NOW });
   assert.equal(r2.status, 201, JSON.stringify(r2.body)); assert.equal(r2.body.created, true);
   const nova = sb.db.sales_opportunities.find(o => o.organization === 'Nova Health');
-  assert.equal(nova.stage, 'contract'); assert.equal(nova.domain, 'nova.example'); assert.equal(nova.owner, 'Jack');
+  assert.equal(nova.stage, 'contract'); assert.equal(nova.domain, 'nova.example'); assert.deepEqual([nova.owner_user_id, 'owner' in nova], [U, false], 'K8: the owner is the person - the text is never written');
   const r3 = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: later(1000) });
   assert.equal(r3.status, 200); assert.equal(r3.body.updated, true); assert.equal(r3.body.unchanged, true);
   assert.equal(sb.db.sales_opportunities.filter(o => o.organization === 'Nova Health').length, 1);

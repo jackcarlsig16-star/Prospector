@@ -1,7 +1,8 @@
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText, hasPii } from './scrubText.js';
-import { normName, resolveCompany } from './intakeMatch.js';
+import { resolveCompany } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { trackedMatch } from './trackedFields.js';
 
 // intake-insights-v1 Stage 2 (server) - the notes upload's same Claude call also proposes what to TRACK, what to OPTIMIZE

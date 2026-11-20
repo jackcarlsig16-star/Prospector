@@ -14,7 +14,7 @@ import { salesWrites, salesVerbs } from './scoutVerbs.js';
 import { copyPack, PACK_MAX } from './targetsRoutes.js';
 import { editCompanyFields } from './companyFields.js';
 import { buildPeopleTable, peopleRows, windowOf } from './peopleActivityRoutes.js';
-import { readType, diskType } from './readType.js';
+import { readType, aliasCount } from './readType.js';
 
 const A = 'aaaaaaaa-0000-4000-8000-000000000001';
 const u = n => `${n}0000000-0000-4000-8000-000000000000`;
@@ -102,7 +102,7 @@ test('the exact Nov 10 ask -> ① five people ② five tasks: per-part reads, th
 test('D2 details: a pronoun carries the part before\'s company into the to-do read; an empty part keeps its section with one line; labels of another part are dropped; D9 a named person is a brief', async () => {
   const sb = seed(), registry = await reg();
   salesReads.companyBrief = async () => ({ status: 200, body: { company: { type: 'employer', id: u('4'), name: 'Northrop Grumman' }, score: { score: 70, band: 'P1' }, next_step: null, lines: [{ ref: 'B1', kind: 'visit', text: 'Visited pricing twice' }] } });
-  const linked = { ...todo(1, '2026-11-12'), link_type: 'opportunity', link_id: u('4'), text: 'Send the agreement' };
+  const linked = { ...todo(1, '2026-11-12'), link_type: 'employer', link_id: u('4'), text: 'Send the agreement' };
   salesReads.openTodosFor = async () => ({ rows: [linked, todo(2, null), { ...todo(3, null), text: 'Prep the Northrop Grumman deck' }], total: 3 });
   const c = await buildContext(sb, registry, { auth: ana, scope: A, q: 'pull the intel on Northrop Grumman and show my tasks for them', now: NOW });
   assert.deepEqual(c.parts.map(p => p.intent), ['brief', 'todos']);
@@ -336,7 +336,7 @@ test('D7 dates and the command reader: next weekday never today, tomorrow / next
   assert.equal(parseCommand('Please assign those to Bo', salesVerbs).verb.id, 'assign');
   assert.equal(parseCommand('pull everything on Northrop for Claude', salesVerbs).verb.id, 'copy');
   assert.equal(parseCommand('what should I focus on', salesVerbs), null);
-  assert.equal(readType('opportunity'), 'employer'); assert.equal(diskType('employer'), 'opportunity'); assert.equal(readType('partner'), 'partner');
+  const fired = aliasCount(); assert.equal(readType('partner'), 'partner'); assert.equal(readType('employer'), 'employer'); assert.equal(aliasCount(), fired); assert.equal(readType('opportunity'), 'employer'); assert.equal(aliasCount(), fired + 1);
 });
 
 test('D10 / R12: one builder - a company pack carries the Brief\'s lines, a person pack their signals and their company; capped at 6,000 characters by dropping the oldest list lines; a pack that still holds an "@" is not copied', async () => {

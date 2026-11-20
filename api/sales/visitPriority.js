@@ -1,7 +1,7 @@
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { PRIORITIES } from '../../src/constants/salesChannels.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { scheduleRecompute } from './intentScoreRun.js';
 
 // sales-ia-v2 P3 - a person's P1-P4 / Not a fit for a visiting company

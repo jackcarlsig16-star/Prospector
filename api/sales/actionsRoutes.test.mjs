@@ -25,7 +25,7 @@ const members = new Map([[JACK, 'Jack Zz'], [CY, 'Cyrus Yy']]);
 test('buildActions: six kinds, company + priority resolved, ranked band -> company P -> due -> age', () => {
   const todos = [
     row('todo', { id: 'todo-late', text: 'Send the deck', due_date: '2026-10-19', link_type: 'partner', link_id: P.north }),
-    row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'opportunity', link_id: O.mill, category: 'Signals' }),
+    row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'employer', link_id: O.mill, category: 'Signals' }),
     row('todo', { id: 'todo-later', text: 'Draft the one-pager', due_date: '2026-10-23', owner_user_id: CY }),
     row('todo', { id: 'todo-nodate', text: 'Read the S-1', due_date: null }),
     row('todo', { id: 'todo-done', text: 'Done one', status: 'done' }),
@@ -126,7 +126,7 @@ const seed = () => fakeSupabase({
     row('todo', { id: 'todo-old-nodate', text: 'Read the S-1', due_date: null, week_start: '2026-10-05', created_at: '2026-10-06T10:00:00Z' }),
     row('todo', { id: 'todo-old-ticked', text: 'Ticked', due_date: null, week_start: '2026-10-05' }),
     row('todo', { id: 'flag-1', text: 'Follow up the lead', prospect_contact_id: 'pc1', flagged_by: CY, contacts: ['Lead'] }),
-    row('waiting', { id: 'wait-late', text: 'the MSA', waiting_on: 'Pat', due_date: '2026-10-10', week_start: '2026-10-05', link_type: 'opportunity', link_id: O.mill, owner_user_id: null }),
+    row('waiting', { id: 'wait-late', text: 'the MSA', waiting_on: 'Pat', due_date: '2026-10-10', week_start: '2026-10-05', link_type: 'employer', link_id: O.mill, owner_user_id: null }),
     row('commitment', { id: 'focus-a', text: 'Book two meetings', plan_id: 'pl', plan_rank: 1 }),
   ],
   sales_week_goal_steps: [{ id: randomUUID(), business_id: B, goal_id: 'todo-old-ticked', done: true }],

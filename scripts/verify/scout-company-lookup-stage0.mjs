@@ -9,7 +9,7 @@ cap(90);
 const { createRegistry } = await import('../../api/scout/registry.js');
 const { parseAsk, splitAsk, mergeVocab } = await import('../../api/scout/retrieve.js');
 const sales = await import('../../api/sales/scoutEntities.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { laDateString } = await import('../../api/sales/laDate.js');
 const { addDays } = await import('../../api/sales/goalsShared.js');
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');

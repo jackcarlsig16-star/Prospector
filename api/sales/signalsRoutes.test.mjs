@@ -141,7 +141,7 @@ test('accept, employer match: a notes line + one to-do linked to the employer, n
   assert.equal(r.status, 200, r.body.error);
   assert.equal(sb.db.sales_opportunities[0].notes, 'Met at expo\n(10/19) Signal: Benefits RFP · Why now: Renewal in Q1');
   const todo = sb.db.sales_week_goals[0];
-  assert.deepEqual([todo.link_type, todo.link_id], ['opportunity', sb.db.sales_opportunities[0].id], 'FIX loop-quickfixes Q1: the to-do carries the employer');
+  assert.deepEqual([todo.link_type, todo.link_id], ['employer', sb.db.sales_opportunities[0].id], 'FIX loop-quickfixes Q1: the to-do carries the employer');
   assert.equal(todo.text, 'Reach out: Brightmill Foods — CHRO · Sam T. (cc Brad)');
   const u = await undo(sb, byCompany(sb, 'Brightmill Foods'));
   assert.equal(u.status, 200, u.body.error);
@@ -254,7 +254,7 @@ test('Done, employer match: the notes line + a done to-do, 0 partner events; don
   const r = await done(sb, byCompany(sb, 'Brightmill Foods'));
   assert.equal(r.status, 200, r.body.error);
   assert.equal(sb.db.sales_opportunities[0].notes, 'Met at expo\n(10/19) Signal: Benefits RFP · Why now: Renewal in Q1');
-  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_week_goals[0].link_type, sb.db.sales_week_goals[0].link_id, sb.db.sales_partner_events.length], ['done', 'opportunity', sb.db.sales_opportunities[0].id, 0]);
+  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_week_goals[0].link_type, sb.db.sales_week_goals[0].link_id, sb.db.sales_partner_events.length], ['done', 'employer', sb.db.sales_opportunities[0].id, 0]);
   const before = JSON.stringify(sb.db);
   const bad = await acceptSignal(sb, { businessId: B, userId: U, id: byCompany(sb, 'Kestrel Pay').id, now: NOW, done: 'yes' });
   assert.deepEqual([bad.status, bad.body.error], [400, 'done must be true']);

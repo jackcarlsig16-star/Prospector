@@ -15,7 +15,7 @@ import { seenBeforeKeys, isNewCompany } from './visitRules.js';
 // seen_to, the pre-Oct-27 daily pulls) covers that one day. Windows pulled on the same day whose ranges overlap merge
 // into one bar (companies de-duplicated, new / returning decided once per company). Sunday pulls stay their own bars.
 const DAY = 864e5;
-const RECORD_ROW = { partner: 'partner', opportunity: 'employer', target: 'target' };
+const RECORD_ROW = { partner: 'partner', employer: 'employer', target: 'target' };
 export const DAYS_DEFAULT = 30, DAYS_MIN = 7, DAYS_MAX = 90;
 const reply = (status, body) => ({ status, body });
 const send = (res, r) => res.status(r.status).json(r.body);

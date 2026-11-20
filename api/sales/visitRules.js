@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { cleanText } from './scrubText.js';
 import { findDupes } from './partnerDupeCheck.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
@@ -91,7 +91,7 @@ export function liveMatch(v, ctx) {
   if (!hit) return null;
   const list = { partner: ctx.partners, opportunity: ctx.opportunities, target: ctx.targets }[hit.type];
   const row = list.find(r => r.id === hit.id) || {};
-  return { type: hit.type, id: hit.id, name: hit.name, owner_team: row.owner_team || null, kind: row.kind || null };
+  return { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name, owner_team: row.owner_team || null, kind: row.kind || null };
 }
 
 // Typed-in Apollo account headcount is the only size Prospector holds for
@@ -109,7 +109,7 @@ export function prioritize(v, { match, small = false, skip = new Set() }) {
   if (small && !match && n <= 2) return noise('Under 500 employees with 1–2 visits');
   const p = (priority, priority_rule) => ({ priority, priority_rule, noise_reason: null, maybe_user: false });
   if (match?.type === 'partner') return p('P1', 'Matched partner visited');
-  if (match?.type === 'opportunity') return p('P1', 'Matched employer visited');
+  if (match?.type === 'employer') return p('P1', 'Matched employer visited');
   if (match?.type === 'target' && UPSIDE.includes(match.owner_team)) return p('P1', 'Upside-owned target visited');
   if (v.us_500 && (n >= 5 || people >= 3)) return p('P1', 'US 500+ with 5+ visits in 7 days or 3+ unique visitors (Apollo)');
   if (paths.some(x => CONTACT_PATH.test(x)) && n >= 2) return p('P1', 'Employer/contact page plus a repeat visit');

@@ -11,21 +11,13 @@ import { openTodosFor } from './openTodos.js';
 // src/constants/homeCards.js) and by owner, open to-dos per owner (openTodosFor - the rows Actions and Needs attention
 // count - split overdue by due date), open waiting-on rows (no owner: team-wide whatever the filter says) and covered
 // lives = the KPI table's covered_lives_pipeline (pipelineKpis) with that metric's latest goal. Owner = a member's
-// user id: partners by owner_user_id, employers by the typed owner name (full or first name), to-dos by owner.
+// user id: partners and employers by owner_user_id, to-dos by owner.
 const err = (status, error) => Object.assign(new Error(error), { status });
 const must = r => { if (r.error) throw err(500, r.error.message); return r.data; };
 
-export function ownerMatcher(members, ownerId) {
-  const m = members.find(x => x.user_id === ownerId);
-  if (!m) return () => false;
-  const names = new Set([m.name, m.name.split(' ')[0]].map(s => s.trim().toLowerCase()));
-  return name => !!name && names.has(String(name).trim().toLowerCase());
-}
-
 export function buildHomeCards({ today, owner = null, members = [], partners = [], opportunities = [], todos = [], waiting = [], livesGoal = null }) {
-  const isOwnerName = ownerMatcher(members, owner);
   const myPartners = partners.filter(p => !owner || p.owner_user_id === owner);
-  const myOpps = opportunities.filter(o => !owner || isOwnerName(o.owner));
+  const myOpps = opportunities.filter(o => !owner || o.owner_user_id === owner);
   const by_stage = [...STAGE_ORDER, ...SIDE_LANES].map(id => ({ id, label: STAGE_LABELS[id], count: myOpps.filter(o => o.stage === id).length }))
     .filter(s => STAGE_ORDER.includes(s.id) || s.count > 0);
   const statusOf = p => p.pipeline_status || 'not_started';
@@ -56,7 +48,7 @@ export async function loadDashboard(supabase, businessId, { owner = null } = {},
   const [members, partners, opportunities, openTodos, waiting, goalRows] = await Promise.all([
     supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null).order('created_at').then(must),
     all('sales_goals', 'id, pipeline_status, owner_user_id', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
-    all('sales_opportunities', 'id, stage, owner, covered_lives', q => q.is('archived_at', null)),
+    all('sales_opportunities', 'id, stage, owner_user_id, covered_lives', q => q.is('archived_at', null)),
     openTodosFor(supabase, businessId, null, { cols: 'id, status, owner_user_id, due_date, created_at' }),
     all('sales_week_goals', 'id, kind, status, due_date', q => q.eq('kind', 'waiting').eq('status', 'open')),
     supabase.from('sales_metric_targets').select('period_start, goal').eq('business_id', businessId).eq('metric_key', LIVES_METRIC)

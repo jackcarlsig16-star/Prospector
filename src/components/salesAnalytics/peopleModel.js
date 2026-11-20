@@ -1,4 +1,5 @@
 import { STATUS_OPTIONS, CLOSED_STATUSES, statusKey } from '../../constants/prospectStatus';
+import { normName } from '../../lib/normName';
 
 // sales-ia-v2 P5 - Pipeline > People: the filter row, the closed-row rule,
 // the remembered sort and the masked name, as pure functions over the rows
@@ -51,7 +52,6 @@ export const writeSort = s => { try { localStorage.setItem(SORT_KEY, JSON.string
 // The Pipeline board row behind a person's company: the linked opportunity
 // first, else the record (partner / employer / target / Apollo-only / visitor)
 // whose name matches. null = nothing in the Pipeline yet.
-const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(inc|llc|ltd|co|corp|corporation|company)\b/g, '').trim();
 export function companyRowFor(person, boardRows) {
   // sales-ia-v2 A1: an Actions item names its row outright ({ type, id }).
   if (person.link?.type && person.link.id) {
@@ -62,8 +62,8 @@ export function companyRowFor(person, boardRows) {
     const opp = boardRows.find(r => r.type === 'employer' && r.id === person.opportunity_id);
     if (opp) return opp;
   }
-  const key = norm(person.company);
+  const key = normName(person.company);
   if (!key) return null;
   const order = ['partner', 'employer', 'target', 'apollo', 'visitor'];
-  return boardRows.filter(r => order.includes(r.type) && norm(r.name) === key).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))[0] || null;
+  return boardRows.filter(r => order.includes(r.type) && normName(r.name) === key).sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type))[0] || null;
 }

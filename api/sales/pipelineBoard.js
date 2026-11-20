@@ -2,11 +2,10 @@ import ExcelJS from 'exceljs';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { getSupabase, addDays } from './goalsShared.js';
-import { orgKey } from './opportunityMatch.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { cleanText } from './scrubText.js';
 import { laDateString } from './laDate.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { openFlagRows } from './huddleFlags.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { dueFor } from './fitLevel.js';
@@ -26,19 +25,18 @@ const isEmployer = o => o.org_type === 'employer' || o.org_type === 'membership'
 const DAY = 864e5;
 export const CALL_NOTE_DAYS = 30; // REVISABLE (spec P1)
 // A to-do's link_type -> the board row type it counts on.
-const LINK_ROW = { partner: 'partner', opportunity: 'employer', target: 'target', company: 'apollo' };
+const LINK_ROW = { partner: 'partner', employer: 'employer', target: 'target', company: 'apollo' };
 const RECORD_TYPES = ['partner', 'employer', 'target'];
 const pInt = p => (p ? Number(String(p).replace('P', '')) : null);
 
 // signals-v1 Stage 4 (D11): the latest visit per matched record, keyed as the
-// board keys its rows (an opportunity match lands on the employer row).
+// board keys its rows.
 // sales-ia-v2 P3: priority is the effective one (a person's override first).
-const VISIT_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target' };
 export function visitedByRow(visits, overrides = new Map()) {
   const out = new Map();
   for (const raw of visits) {
     const v = effectiveVisit(raw, overrides.get(raw.company_key));
-    const key = `${VISIT_TYPE[v.matched_type]}:${v.matched_id}`;
+    const key = `${v.matched_type}:${v.matched_id}`;
     const prior = out.get(key);
     if (!prior || v.pulled_on > prior.pulled_on) out.set(key, { last_visit: v.last_visit || v.pulled_on, visits_7d: v.visits_7d ?? null, pulled_on: v.pulled_on, priority: pInt(v.priority) });
   }
@@ -66,7 +64,7 @@ export function employerTouches(oppEvents, linked) {
   const out = new Map();
   const bump = (id, at) => { if (at && (!out.has(id) || at > out.get(id))) out.set(id, at); };
   for (const e of oppEvents) if (e.event_type === 'stage_change') bump(e.opportunity_id, e.changed_at);
-  for (const t of linked) if (t.link_type === 'opportunity' && t.status === 'done') bump(t.link_id, t.completed_at);
+  for (const t of linked) if (t.link_type === 'employer' && t.status === 'done') bump(t.link_id, t.completed_at);
   return out;
 }
 
@@ -122,7 +120,7 @@ export function buildBoard({
   for (const o of employers) {
     rows.push({
       type: 'employer', id: o.id, name: o.organization, ...boardStage('employer', o),
-      owner_team: o.owner_team || null, owner: o.owner || null, tier: o.tier || null,
+      owner_team: o.owner_team || null, owner: (memberNames.get(o.owner_user_id) || '').split(' ')[0] || null, tier: o.tier || null,
       next_step: o.next_action || null, next_step_due: o.next_action_date || null, last_touch_at: touches.get(o.id) || null,
       ...starOf(o, now), record_id: o.record_id || null, channel: o.channel || 'unknown', priority: o.priority ?? null, ...setBy(o.priority_set_by, o.priority_set_at),
       covered_lives: o.covered_lives ?? null, ...size(o), domain: o.domain ?? null, domain_source: o.domain_source ?? null, reach_employees: null, reach_clients: null, owner_user_id: o.owner_user_id || null,
@@ -143,10 +141,10 @@ export function buildBoard({
   if (filters.includeApollo) {
     // Linked = any opportunity (employer or not) carrying the Apollo id or the same org key.
     const linkedIds = new Set(opportunities.map(o => o.apollo_account_id).filter(Boolean));
-    const linkedKeys = new Set(opportunities.map(o => orgKey(o.organization)).filter(Boolean));
+    const linkedKeys = new Set(opportunities.map(o => normName(o.organization)).filter(Boolean));
     const seen = new Set();
     for (const s of sequenced) {
-      if (seen.has(s.account_id) || linkedIds.has(s.account_id) || linkedKeys.has(orgKey(s.name))) continue;
+      if (seen.has(s.account_id) || linkedIds.has(s.account_id) || linkedKeys.has(normName(s.name))) continue;
       seen.add(s.account_id);
       rows.push({
         type: 'apollo', id: s.account_id, name: s.name || 'Unnamed company', ...boardStage('apollo', s),
@@ -164,7 +162,7 @@ export function buildBoard({
   const firstSeen = new Map();
   for (const v of allVisits) { const d = String(v.first_visit || v.pulled_on || '').slice(0, 10); if (d && (!firstSeen.has(v.company_key) || d < firstSeen.get(v.company_key))) firstSeen.set(v.company_key, d); }
   const firstSeenByRow = new Map();
-  for (const v of visits) { const key = `${LINK_ROW[v.matched_type === 'opportunity' ? 'opportunity' : v.matched_type]}:${v.matched_id}`; const d = firstSeen.get(v.company_key); if (d && (!firstSeenByRow.has(key) || d < firstSeenByRow.get(key))) firstSeenByRow.set(key, d); }
+  for (const v of visits) { const key = `${v.matched_type}:${v.matched_id}`; const d = firstSeen.get(v.company_key); if (d && (!firstSeenByRow.has(key) || d < firstSeenByRow.get(key))) firstSeenByRow.set(key, d); }
   const dueDates = new Map();
   for (const l of linked) if (l.kind === 'todo' && l.status === 'open' && l.due_date && LINK_ROW[l.link_type]) { const k = `${LINK_ROW[l.link_type]}:${l.link_id}`; if (!dueDates.has(k)) dueDates.set(k, []); dueDates.get(k).push(l.due_date); }
   for (const r of rows) {
@@ -236,7 +234,7 @@ async function loadBoard(businessId, filters) {
   const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout, scoreRows] = await Promise.all([
     all('sales_goals', 'id, name, category, tier, pipeline_status, pinned_until, pin_reason, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
       x => x.eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, pinned_until, pin_reason, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
+    all('sales_opportunities', 'id, organization, org_type, stage, owner_user_id, owner_team, tier, next_action, next_action_date, pinned_until, pin_reason, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
       x => x.is('archived_at', null).order('id')),
     all('sales_targets', 'id, name, status, owner_team, owner_user_id, record_id, channel, created_at, employees, employees_source, domain, domain_source', x => x.in('status', ['proposed', 'researching']).order('id')),
     filters.includeApollo ? all('sales_sequenced_accounts', 'account_id, name, first_sequenced_at, employees', x => x.order('account_id')) : [],

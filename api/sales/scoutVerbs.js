@@ -1,9 +1,8 @@
 import { cleanText, hasPii } from './scrubText.js';
 import { addDays } from './goalsShared.js';
 import { findCompany, findPerson, salesReads } from './scoutIntents.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { loadPerson } from './personWrite.js';
-import { readType } from './readType.js';
 import { linkFor } from './todoLink.js';
 import { laMonday } from './goalsShared.js';
 import { FIVE } from './todayRank.js';
@@ -498,7 +497,7 @@ const assignOwner = {
       if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
       const row = { ...base(t, taskTitle(todo)), kind: 'task', from: nameOf(todo.owner_user_id) || 'Unassigned' };
       if (todo.owner_user_id) { rows.push({ ...row, to: row.from, skipped: 'already has an owner' }); continue; }
-      const c = todo.link_id ? await loadCompany(sb, ctx.businessId, readType(todo.link_type), todo.link_id) : null;
+      const c = todo.link_id ? await loadCompany(sb, ctx.businessId, todo.link_type, todo.link_id) : null;
       const owner = c?.owner_user_id && nameOf(c.owner_user_id) ? c.owner_user_id : null;
       rows.push(owner ? { ...row, to: nameOf(owner), note: `${c.name}'s owner`, exec: { todo: todo.id, to: owner } } : { ...row, to: 'Unassigned', skipped: c ? `${c.name} has no owner` : 'no company to take an owner from' });
     }

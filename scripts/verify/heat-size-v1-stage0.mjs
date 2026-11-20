@@ -17,7 +17,7 @@ const { scoreProspect, huddleSignals, HEAT, HEAT_BANDS, isBotOpen } = await impo
 const { SCANNER_CLICK_WITHIN_SECONDS } = await import('../../api/sales/nextBestAction.js');
 const { peopleRows } = await import('../../api/sales/peopleActivityRoutes.js');
 const { mergePeople } = await import('../../api/sales/peopleMerge.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { laDateString } = await import('../../api/sales/laDate.js');
 const { addDays } = await import('../../api/sales/goalsShared.js');
 

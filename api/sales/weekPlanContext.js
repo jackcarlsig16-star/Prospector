@@ -9,6 +9,7 @@ import { openFlagRows } from './huddleFlags.js';
 import { loadPartnerData, partnerWeekMetrics, isContact, PEOPLE_METRIC } from './partnerMetrics.js';
 import { weekStripCounts } from './weekStripRoutes.js';
 import { PIPELINE_STATUSES, stepOf } from '../../src/constants/partnerPipeline.js';
+import { normName } from './normName.js';
 
 // weekly-plan-v1 - the compact context "Plan this week" sends to Claude, for
 // one owner and one week. Read-only. Names, titles, companies, stages, dates
@@ -27,7 +28,6 @@ const DAY_MS = 864e5;
 
 const stageLabel = id => PIPELINE_STATUSES.find(s => s.id === id)?.label || 'Not started';
 const days = (fromMs, nowMs) => Math.floor((nowMs - fromMs) / DAY_MS);
-const normName = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 export async function loadPlanData(supabase, businessId, ownerId, weekStart) {
   const lastWeek = addDays(weekStart, -7);
@@ -69,7 +69,7 @@ export function assemblePlanContext(data, { ownerId, weekStart, nowMs = Date.now
   const prospectById = new Map(data.prospects.map(p => [p.contact_id, p]));
   const partnerById = new Map(data.partnerData.partners.map(p => [p.id, p]));
   const accountById = new Map(data.accounts.map(a => [a.account_id, a]));
-  const recordName = new Map([...(data.opportunities || []).map(o => [`opportunity:${o.id}`, `employer ${o.organization}`]), ...(data.prospectTargets || []).map(t => [`target:${t.id}`, `target ${t.name}`])]);
+  const recordName = new Map([...(data.opportunities || []).map(o => [`employer:${o.id}`, `employer ${o.organization}`]), ...(data.prospectTargets || []).map(t => [`target:${t.id}`, `target ${t.name}`])]);
   const linkName = g => {
     if (g.link_type === 'partner') { const p = partnerById.get(g.link_id); return p ? `partner ${p.name} (${stageLabel(p.pipeline_status)})` : null; }
     if (g.link_type === 'company') return accountById.get(g.link_id)?.name ? `company ${accountById.get(g.link_id).name}` : null;

@@ -12,7 +12,7 @@ import { indexDated, funnelOf, journeyLine, ALL_STAGES } from './sourceFunnel.js
 // keeps a read-only chain.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NAME_COL = { partner: 'name', employer: 'organization', target: 'name' };
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPES = ['partner', 'employer', 'target'];
 const EXTRA_COLS = { partner: '', employer: '', target: ', status, decided_at' };
 const NOTE_MAX = 200;
 const err = (status, error) => Object.assign(new Error(error), { status });
@@ -42,7 +42,7 @@ export async function recordFunnel(supabase, { businessId, type, id, row = null 
     type === 'target' ? [] : selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, opportunity_id, goal_id').eq('business_id', businessId).eq(type === 'partner' ? 'goal_id' : 'opportunity_id', id).order('contact_id')),
     type === 'partner' ? scoped('sales_partner_events', 'id, goal_id, event, at, touch_type, to_status', x => x.eq('goal_id', id).in('event', ['touch', 'status'])) : [],
     type === 'employer' ? scoped('sales_opportunity_events', 'id, opportunity_id, event_type, to_stage, changed_at', x => x.eq('opportunity_id', id).in('event_type', ['created', 'stage_change'])) : [],
-    scoped('sales_week_goals', 'id, link_type, link_id, completed_at, text', x => x.eq('kind', 'todo').eq('status', 'done').eq('link_type', LINK_TYPE[type]).eq('link_id', id)),
+    scoped('sales_week_goals', 'id, link_type, link_id, completed_at, text', x => x.eq('kind', 'todo').eq('status', 'done').eq('link_type', type).eq('link_id', id)),
     scoped('sales_stage_marks', 'id, record_type, record_id, stage, at, note, reason, by_user', x => x.eq('record_type', type).eq('record_id', id)),
     type === 'target' ? scoped('sales_signals', 'id, source, status, decided_at, target_id', x => x.eq('status', 'accepted').eq('target_id', id)) : [],
     r.source_partner_id ? supabase.from('sales_goals').select('name').eq('business_id', businessId).eq('id', r.source_partner_id).maybeSingle().then(must) : null,

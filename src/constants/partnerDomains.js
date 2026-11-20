@@ -2,6 +2,7 @@
 // to Apollo accounts. Shared by the API (suggestions, matching, the Apollo
 // CSV) and the drop-down. Suggestions are never stored: a partner_domains
 // row exists only once someone confirms, adds or dismisses one.
+import { normName } from '../lib/normName.js';
 
 // Same shape the table's CHECK enforces, plus a real TLD (2+ letters).
 const HOST_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
@@ -36,13 +37,6 @@ export function parseDomainsFromSources(sources) {
 // The sheet lists the partner's own site first; the rest are press links.
 export const ownDomainFromSources = sources => parseDomainsFromSources(sources)[0] || null;
 
-const LEGAL_SUFFIX = /\b(inc|llc|corp|corporation|co|ltd|limited|plc|group)\b/g;
-export function normalizeName(name) {
-  if (typeof name !== 'string') return '';
-  return name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    .replace(/\([^)]*\)/g, ' ').replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ')
-    .replace(LEGAL_SUFFIX, ' ').replace(/\s+/g, ' ').trim();
-}
 
 const accountDomain = a => normalizeDomain(a.domain || '');
 
@@ -50,12 +44,12 @@ const accountDomain = a => normalizeDomain(a.domain || '');
 // exact host on any of the given domains, or the same normalized name.
 export function matchApolloAccounts({ name, domains = [] }, accounts) {
   const wanted = new Set(domains.map(normalizeDomain).filter(Boolean));
-  const key = normalizeName(name);
+  const key = normName(name);
   const byDomain = [], byName = [];
   for (const a of accounts || []) {
     const d = accountDomain(a);
     if (d && wanted.has(d)) byDomain.push(a);
-    if (key && normalizeName(a.name) === key) byName.push(a);
+    if (key && normName(a.name) === key) byName.push(a);
   }
   return { byDomain, byName };
 }

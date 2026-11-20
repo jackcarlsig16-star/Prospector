@@ -196,7 +196,7 @@ test('quick menu: Draft email copies the REACH bundle (never sends); Add to-do l
   fireEvent.change(within(detail).getByLabelText('To-do'), { target: { value: 'Send the deck' } });
   fireEvent.change(within(detail).getByLabelText('To-do due date'), { target: { value: '2026-11-10' } });
   fireEvent.click(within(detail).getByRole('button', { name: 'Save to-do' }));
-  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledWith('b1', { week_start: '2026-11-09', kind: 'todo', text: 'Send the deck', owner_user_id: 'u1', due_date: '2026-11-10', link_type: 'opportunity', link_id: 'o1', person_key: expect.any(String) }));
+  await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledWith('b1', { week_start: '2026-11-09', kind: 'todo', text: 'Send the deck', owner_user_id: 'u1', due_date: '2026-11-10', link_type: 'employer', link_id: 'o1', person_key: expect.any(String) }));
   await waitFor(() => expect(goalsApi.peopleActivity).toHaveBeenCalledTimes(2), { timeout: 2000 }); // onChanged re-reads
   fireEvent.click(menu.getByRole('button', { name: 'Not a fit' }));
   await waitFor(() => expect(updateProspect).toHaveBeenCalledWith('b1', 'CrystalPringle', { status: 'dead' }));

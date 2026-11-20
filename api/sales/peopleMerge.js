@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { SOURCE_ORDER } from '../../src/constants/peopleSource.js';
 
 // people-v2 P2 - one row per person over the three contact tables. Merge rule: the same Apollo contact id (a prospect's

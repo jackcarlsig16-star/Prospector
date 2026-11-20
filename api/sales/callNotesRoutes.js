@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { getSupabase, isDate, addDays, validate, fail, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
-import { LINKABLE_METRICS, WEEK_FIELDS, checkLink } from './goalsRoutes.js';
+import { LINKABLE_METRICS, WEEK_FIELDS, checkLink, aliasLink } from './goalsRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from './laDate.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
@@ -12,6 +12,7 @@ import { acceptIntake, parseIntake } from './intakeAccept.js';
 import { scrubExtract, signExtract, extractIfSigned, recentAccepts } from './intakeDeal.js';
 import { linkFor, linkRecords } from './todoLink.js';
 import { findPerson } from './scoutIntents.js';
+import { normName } from './normName.js';
 import { INSIGHT_RULES, INSIGHT_JSON, toInsights, enrichInsights, linkPeople, parseInsights } from './intakeInsights.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
@@ -84,7 +85,7 @@ async function context(supabase, businessId, today) {
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'todo').not('source_note_id', 'is', null)
       .gte('week_start', addDays(week, -7 * SIMILAR_WEEKS)).neq('status', 'dropped').limit(500),
     page('sales_sequenced_accounts', 'account_id, name', 'account_id'),
-    supabase.from('sales_opportunities').select('id, organization, owner, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, champion, decision_makers, objections, next_action, next_action_date, notes')
+    supabase.from('sales_opportunities').select('id, organization, owner_user_id, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, champion, decision_makers, objections, next_action, next_action_date, notes')
       .eq('business_id', businessId).is('archived_at', null),
     page('sales_targets', 'id, name, kind, status, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, research_notes', 'id'),
   ]);
@@ -98,20 +99,19 @@ async function context(supabase, businessId, today) {
   };
 }
 
-const norm = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(inc|llc|ltd|corp|co|the)\b/g, '').trim();
 function matchCompany(name, companies) {
-  const n = norm(name || '');
+  const n = normName(name);
   if (n.length < 3) return null;
-  const exact = companies.filter(c => norm(c.name) === n);
+  const exact = companies.filter(c => normName(c.name) === n);
   if (exact.length === 1) return exact[0];
-  const partial = companies.filter(c => { const cn = norm(c.name); return cn.length >= 3 && (cn.includes(n) || n.includes(cn)); });
+  const partial = companies.filter(c => { const cn = normName(c.name); return cn.length >= 3 && (cn.includes(n) || n.includes(cn)); });
   return partial.length === 1 ? partial[0] : null;
 }
 
 // Same action from an earlier call: most words in common, counted against
 // the longer of the two so a short task can't match a long one by subset.
 const STOP = new Set(['a', 'an', 'and', 'to', 'of', 'for', 'with', 'on', 'in', 'at', 'by', 'about', 'from', 'up']);
-const taskWords = s => new Set(norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w)));
+const taskWords = s => new Set(normName(s).split(' ').filter(w => w.length > 1 && !STOP.has(w)));
 export function similarTask(text, existing) {
   const a = taskWords(text);
   let best = null, score = 0;
@@ -233,7 +233,7 @@ export async function createFromCallNotesRoute(req, res) {
   try {
     const rows = [];
     for (const [i, t] of tasks.entries()) {
-      const { steps = [], ...fields } = t || {};
+      const { steps = [], ...fields } = aliasLink(t) || {};
       if (!Array.isArray(steps) || steps.length > MAX_STEPS || !steps.every(s => typeof s === 'string' && s.trim())) {
         return res.status(400).json({ error: `task ${i + 1}: steps must be up to ${MAX_STEPS} non-empty lines` });
       }

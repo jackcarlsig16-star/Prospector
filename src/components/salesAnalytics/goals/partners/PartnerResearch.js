@@ -6,7 +6,7 @@ import { laDateString } from '../../periods';
 // partner-add-research-v1 Stage 2 - the research card: sits between the Intel
 // and Domains drawers so it shows even when Intel is folded (D2). A run never
 // writes to the partner; every line here is a click away from the record:
-// Confirm site -> partner_domains (confirmed) + company_domain when empty,
+// Confirm site -> partner_domains (confirmed; the server derives company_domain from it),
 // Wrong site -> nothing saved, Use -> appends "(M/D) AI: ..." to the mapped
 // intel field, Set category -> only when the partner has none. Viewer sees
 // the result, no buttons. api: { load(id), run(id), checkApollo(id), csvUrl() }; domains: { add };
@@ -70,7 +70,6 @@ export default function PartnerResearch({ partner, canEdit, api, domains, confir
   const confirmSite = () => act(async () => {
     const d = await domains.add(partner.id, { domain: r.domain });
     if (onDomainData) onDomainData(d);
-    if (!partner.company_domain) await onUpdate(partner.id, { company_domain: r.domain });
     await checkApollo();
   });
   const use = (field, column) => act(async () => { await onUpdate(partner.id, { [column]: appendAi(partner[column], r[field]) }); setUsed(u => ({ ...u, [field]: true })); });

@@ -9,7 +9,7 @@ import ExcelJS from 'exceljs';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { visitReport, visitExport, nameScrubber, addSkip, removeSkip, listSkip, EXPORT_COLUMNS } from './visitReport.js';
 import { hasPii } from './scrubText.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { salesGate } from '../lib/requireAuth.js';
 
 const NOW = Date.parse('2026-10-20T17:00:00Z'); // Tue Oct 20, 10:00 LA
@@ -24,7 +24,7 @@ const seed = (extra = {}) => ({
   web_visits: [
     visit('Harbor Lane', '2026-10-19', { first_visit: '2026-10-14', priority: 'P1', priority_rule: 'Matched partner visited', matched_type: 'partner', matched_id: P.harbor, visits_7d: 2 }),
     visit('Harbor Lane', '2026-10-20', { first_visit: '2026-10-16', last_visit: '2026-10-20', priority: 'P1', priority_rule: 'Matched partner visited', matched_type: 'partner', matched_id: P.harbor, visits_7d: 3, unique_visitors_7d: 2 }),
-    visit('Brightmill Foods', '2026-10-20', { priority: 'P1', priority_rule: 'Matched employer visited', matched_type: 'opportunity', matched_id: O.brightmill }),
+    visit('Brightmill Foods', '2026-10-20', { priority: 'P1', priority_rule: 'Matched employer visited', matched_type: 'employer', matched_id: O.brightmill }),
     visit('Quarry Labs', '2026-10-20', { priority: 'P1', priority_rule: 'Upside-owned target visited', matched_type: 'target', matched_id: T.quarry }),
     visit('Nimbus Freight', '2026-10-20', { us_500: true, priority: 'P2', priority_rule: 'US 500+ with 2+ visits in 7 days or 2+ unique visitors (Apollo)', visits_7d: 2, top_paths: [{ path: '/for-employees', visits: 2 }] }),
     visit('Sizeless Co', '2026-10-20', { visits_7d: 6 }),

@@ -4,7 +4,7 @@
 import fs from 'fs';
 import { svc, HL, cap, footer, ROOT } from './homelover-data-model-v1-lib.mjs';
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { laDateString } = await import('../../api/sales/laDate.js');
 const { addDays, laMonday } = await import('../../api/sales/goalsShared.js');
 const { salesReads } = await import('../../api/sales/scoutIntents.js');

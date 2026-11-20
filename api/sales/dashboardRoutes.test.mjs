@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { buildHomeCards, loadDashboard, ownerMatcher } from './dashboardRoutes.js';
+import { buildHomeCards, loadDashboard } from './dashboardRoutes.js';
 import { PARTNER_STATUS_GROUPS } from '../../src/constants/homeCards.js';
 
 const B = randomUUID(), JACK = randomUUID(), CY = randomUUID();
@@ -17,9 +17,9 @@ const partners = [
   partner('not_started', JACK), partner('not_started', CY), partner(null, null), partner('researching', JACK), partner('first_email_sent', CY),
   partner('in_sequence', JACK), partner('replied', CY), partner('meeting_set', JACK), partner('proposal_pilot', JACK), partner('live', CY), partner('paused', JACK),
 ];
-const opp = (stage, owner, covered_lives = 0) => ({ id: randomUUID(), stage, owner, covered_lives });
+const opp = (stage, owner_user_id, covered_lives = 0) => ({ id: randomUUID(), stage, owner_user_id, covered_lives });
 const opportunities = [
-  opp('target', 'Jack'), opp('target', 'Cyrus Yy'), opp('contacted', 'Jack'), opp('nurture', 'Jack'), opp('verbal', 'Jack', 390), opp('meeting', 'Cyrus', 150), opp('on_hold', null), opp('lost', 'Jack', 50),
+  opp('target', JACK), opp('target', CY), opp('contacted', JACK), opp('nurture', JACK), opp('verbal', JACK, 390), opp('meeting', CY, 150), opp('on_hold', null), opp('lost', JACK, 50),
 ];
 const todos = [
   { id: 't1', owner_user_id: JACK, due_date: '2026-10-15' }, { id: 't2', owner_user_id: JACK, due_date: '2026-11-20' }, { id: 't3', owner_user_id: JACK, due_date: null },
@@ -45,7 +45,7 @@ test('buildHomeCards: every main stage (a side lane only when used, Lost include
   assert.equal(JSON.stringify(d).includes('@'), false);
 });
 
-test('owner filter: partners by owner id, employers by the typed owner name (full or first), to-dos that owner only; waiting-on stays team-wide; Unassigned row only when it has rows', () => {
+test('owner filter: partners by owner id, employers by owner id, to-dos that owner only; waiting-on stays team-wide; Unassigned row only when it has rows', () => {
   const d = buildHomeCards({ ...input, owner: JACK });
   assert.deepEqual(d.employers.by_stage.filter(s => s.count).map(s => `${s.id}:${s.count}`), ['target:1', 'contacted:1', 'verbal:1', 'lost:1', 'nurture:1']);
   assert.deepEqual(d.partners.by_owner, [{ owner_user_id: JACK, name: 'Jack Zz', count: 6 }]);
@@ -56,7 +56,6 @@ test('owner filter: partners by owner id, employers by the typed owner name (ful
   const c = buildHomeCards({ ...input, owner: CY, livesGoal: null });
   assert.equal(c.employers.by_stage.find(s => s.id === 'target').count, 1, 'the full name matches too');
   assert.deepEqual(c.lives, { value: 150, goal: null, metric: 'covered_lives_pipeline' });
-  assert.ok(ownerMatcher(members, JACK)('  jack ')); assert.equal(ownerMatcher(members, 'nobody')('Jack'), false);
   const empty = buildHomeCards({ ...input, partners: [], opportunities: [], todos: [], waiting: [] });
   assert.deepEqual(empty.partners.by_owner.map(r => r.name), ['Jack Zz', 'Cyrus Yy'], 'no Unassigned row without rows');
   assert.equal(empty.employers.total, 0); assert.equal(empty.lives.value, 0);
@@ -72,9 +71,9 @@ test('loadDashboard: reads the live tables (partnership goals, open opportunitie
       { id: 'g4', business_id: B, goal_type: 'other', pipeline_status: 'live', owner_user_id: JACK, archived_at: null },
     ],
     sales_opportunities: [
-      { id: 'o1', business_id: B, stage: 'verbal', owner: 'Jack', covered_lives: 390, archived_at: null },
-      { id: 'o2', business_id: B, stage: 'target', owner: 'Cyrus', covered_lives: 0, archived_at: null },
-      { id: 'o3', business_id: B, stage: 'launched', owner: 'Jack', covered_lives: 999, archived_at: '2026-10-01T00:00:00Z' },
+      { id: 'o1', business_id: B, stage: 'verbal', owner_user_id: JACK, covered_lives: 390, archived_at: null },
+      { id: 'o2', business_id: B, stage: 'target', owner_user_id: CY, covered_lives: 0, archived_at: null },
+      { id: 'o3', business_id: B, stage: 'launched', owner_user_id: JACK, covered_lives: 999, archived_at: '2026-10-01T00:00:00Z' },
     ],
     sales_week_goals: [
       { id: 't1', business_id: B, kind: 'todo', status: 'open', owner_user_id: JACK, due_date: '2026-10-01', prospect_contact_id: null, week_start: '2026-09-28', created_at: '2026-09-20T00:00:00Z' },

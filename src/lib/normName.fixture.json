@@ -1,0 +1,402 @@
+[
+ {
+  "name": "InShapeMD® Corporate",
+  "norm": "inshapemd corporate"
+ },
+ {
+  "name": "L'Oréal",
+  "norm": "l oreal"
+ },
+ {
+  "name": "Hospitales Star Médica",
+  "norm": "hospitales star medica"
+ },
+ {
+  "name": "CALIFORNIA ASSOCIATION OF REALTORS®",
+  "norm": "california association of realtors"
+ },
+ {
+  "name": "Instituto Geográfico Nacional de España y O.A. CNIG",
+  "norm": "instituto geografico nacional de espana y o a cnig"
+ },
+ {
+  "name": "Cégep de la Pocatière",
+  "norm": "cegep de la pocatiere"
+ },
+ {
+  "name": "Secretaría de Educación Pública",
+  "norm": "secretaria de educacion publica"
+ },
+ {
+  "name": "Universidad del Valle de México",
+  "norm": "universidad del valle de mexico"
+ },
+ {
+  "name": "Tecnológico de Monterrey",
+  "norm": "tecnologico de monterrey"
+ },
+ {
+  "name": "Forté Flavors",
+  "norm": "forte flavors"
+ },
+ {
+  "name": "CENTURY 21®",
+  "norm": "century 21"
+ },
+ {
+  "name": "Piñata",
+  "norm": "pinata"
+ },
+ {
+  "name": "Resort Český les",
+  "norm": "resort cesky les"
+ },
+ {
+  "name": "Reachr Soluções Inovadoras em RH",
+  "norm": "reachr solucoes inovadoras em rh"
+ },
+ {
+  "name": "DTW Group Tianjin Daitian Group Co., Ltd. (DTW Group 天津大田集团有限公司)",
+  "norm": "dtw group tianjin daitian group"
+ },
+ {
+  "name": "Citizen Agency 🐻",
+  "norm": "citizen agency"
+ },
+ {
+  "name": "Bureau des Élèves Télécom SudParis & Institut Mines-Télécom Business School",
+  "norm": "bureau des eleves telecom sudparis and institut mines telecom business school"
+ },
+ {
+  "name": "K. Hovnanian® Homes",
+  "norm": "k hovnanian homes"
+ },
+ {
+  "name": "MTS Sales Compass™",
+  "norm": "mts sales compass"
+ },
+ {
+  "name": "U.S. Border Patrol",
+  "norm": "u s border patrol"
+ },
+ {
+  "name": "U.S. Food and Drug Administration",
+  "norm": "u s food and drug administration"
+ },
+ {
+  "name": "Mellano & Company/Enterprises",
+  "norm": "mellano and company enterprises"
+ },
+ {
+  "name": "Gate Gourmet, Inc.",
+  "norm": "gate gourmet"
+ },
+ {
+  "name": "Domino's",
+  "norm": "domino s"
+ },
+ {
+  "name": "Bloomin' Brands",
+  "norm": "bloomin brands"
+ },
+ {
+  "name": "StarPlus Energy, LLC",
+  "norm": "starplus energy"
+ },
+ {
+  "name": "Johnson & Johnson",
+  "norm": "johnson and johnson"
+ },
+ {
+  "name": "T&T Power Group",
+  "norm": "t and t power group"
+ },
+ {
+  "name": "Papa John's",
+  "norm": "papa john s"
+ },
+ {
+  "name": "7-Eleven Franchise",
+  "norm": "7 eleven franchise"
+ },
+ {
+  "name": "Ski & Snowboard Club Vail",
+  "norm": "ski and snowboard club vail"
+ },
+ {
+  "name": "S&P Global",
+  "norm": "s and p global"
+ },
+ {
+  "name": "Nike, Inc.",
+  "norm": "nike"
+ },
+ {
+  "name": "Appcast, Inc",
+  "norm": "appcast"
+ },
+ {
+  "name": "Walmart, Inc.",
+  "norm": "walmart"
+ },
+ {
+  "name": "Sheriff's Protective Association",
+  "norm": "sheriff s protective association"
+ },
+ {
+  "name": "Passport Technology USA, Inc.",
+  "norm": "passport technology usa"
+ },
+ {
+  "name": "U.S. Court",
+  "norm": "u s court"
+ },
+ {
+  "name": "Brinker International (Chili's)",
+  "norm": "brinker international"
+ },
+ {
+  "name": "Macy's",
+  "norm": "macy s"
+ },
+ {
+  "name": "Big Joe Lift Trucks, Inc.",
+  "norm": "big joe lift trucks"
+ },
+ {
+  "name": "Bally's",
+  "norm": "bally s"
+ },
+ {
+  "name": "LifeCare, Inc",
+  "norm": "lifecare"
+ },
+ {
+  "name": "ezCater, Inc.",
+  "norm": "ezcater"
+ },
+ {
+  "name": "Wendy's",
+  "norm": "wendy s"
+ },
+ {
+  "name": "G&M Oil Company, Inc.",
+  "norm": "g and m oil company"
+ },
+ {
+  "name": "The Anchor Group Inc.",
+  "norm": "anchor group"
+ },
+ {
+  "name": "Third Federal Savings & Loan",
+  "norm": "third federal savings and loan"
+ },
+ {
+  "name": "Piedmont Ear Nose and Throat Assoc., PA",
+  "norm": "piedmont ear nose and throat assoc pa"
+ },
+ {
+  "name": "Personal / other",
+  "norm": "personal other"
+ },
+ {
+  "name": "U.S. District Court and Probation",
+  "norm": "u s district court and probation"
+ },
+ {
+  "name": "McDonald's",
+  "norm": "mcdonald s"
+ },
+ {
+  "name": "Independent Purchasing Cooperative, Inc. (Subway) Master Site",
+  "norm": "independent purchasing cooperative inc master site"
+ },
+ {
+  "name": "Noodles & Company",
+  "norm": "noodles and company"
+ },
+ {
+  "name": "Soapy Joe's",
+  "norm": "soapy joe s"
+ },
+ {
+  "name": "Miller Cooper & Company LTD",
+  "norm": "miller cooper and company"
+ },
+ {
+  "name": "Dine Brands (IHOP / Applebee's)",
+  "norm": "dine brands"
+ },
+ {
+  "name": "Americas Styrenics, LLC",
+  "norm": "americas styrenics"
+ },
+ {
+  "name": "HPI Real Estate Services & Investments",
+  "norm": "hpi real estate services and investments"
+ },
+ {
+  "name": "Emirates Palace (Mandarin Oriental)",
+  "norm": "emirates palace"
+ },
+ {
+  "name": "Hamner, Jewell & Associates",
+  "norm": "hamner jewell and associates"
+ },
+ {
+  "name": "Dave & Buster's",
+  "norm": "dave and buster s"
+ },
+ {
+  "name": "Enterprise Rent-A-Car",
+  "norm": "enterprise rent a car"
+ },
+ {
+  "name": "PhenomeX Inc.",
+  "norm": "phenomex"
+ },
+ {
+  "name": "GlaxoSmithKline",
+  "norm": "glaxosmithkline"
+ },
+ {
+  "name": "Netskope",
+  "norm": "netskope"
+ },
+ {
+  "name": "Citi",
+  "norm": "citi"
+ },
+ {
+  "name": "Citizens Bank of Kansas",
+  "norm": "citizens bank of kansas"
+ },
+ {
+  "name": "AutoNation",
+  "norm": "autonation"
+ },
+ {
+  "name": "Chop Shop",
+  "norm": "chop shop"
+ },
+ {
+  "name": "Best Western",
+  "norm": "best western"
+ },
+ {
+  "name": "DHL Express",
+  "norm": "dhl express"
+ },
+ {
+  "name": "College Basketball Officials Organization",
+  "norm": "college basketball officials organization"
+ },
+ {
+  "name": "Shake Shack",
+  "norm": "shake shack"
+ },
+ {
+  "name": "El Camino Health",
+  "norm": "el camino health"
+ },
+ {
+  "name": "City of Santa Monica",
+  "norm": "city of santa monica"
+ },
+ {
+  "name": "Bass Pro Shops",
+  "norm": "bass pro shops"
+ },
+ {
+  "name": "Veterinary Specialty Hospital",
+  "norm": "veterinary specialty hospital"
+ },
+ {
+  "name": "Six Flags",
+  "norm": "six flags"
+ },
+ {
+  "name": "Feeding America",
+  "norm": "feeding america"
+ },
+ {
+  "name": "Mace",
+  "norm": "mace"
+ },
+ {
+  "name": "Geico",
+  "norm": "geico"
+ },
+ {
+  "name": "Blue Shield of California",
+  "norm": "blue shield of california"
+ },
+ {
+  "name": "Delaware North",
+  "norm": "delaware north"
+ },
+ {
+  "name": "Restaurant Brands International",
+  "norm": "restaurant brands international"
+ },
+ {
+  "name": "Sysco",
+  "norm": "sysco"
+ },
+ {
+  "name": "BrainPOP",
+  "norm": "brainpop"
+ },
+ {
+  "name": "Andy Gump",
+  "norm": "andy gump"
+ },
+ {
+  "name": "Habitat for Humanity",
+  "norm": "habitat for humanity"
+ },
+ {
+  "name": "IXL Learning",
+  "norm": "ixl learning"
+ },
+ {
+  "name": "Silverado Senior Living",
+  "norm": "silverado senior living"
+ },
+ {
+  "name": "American Marketing Association",
+  "norm": "american marketing association"
+ },
+ {
+  "name": "Memorial Health",
+  "norm": "memorial health"
+ },
+ {
+  "name": "US Foods",
+  "norm": "us foods"
+ },
+ {
+  "name": "Bob Evans",
+  "norm": "bob evans"
+ },
+ {
+  "name": "Stingray Boats",
+  "norm": "stingray boats"
+ },
+ {
+  "name": "Wyndham Hotels",
+  "norm": "wyndham hotels"
+ },
+ {
+  "name": "Boston Pharmaceuticals",
+  "norm": "boston pharmaceuticals"
+ },
+ {
+  "name": "Torani",
+  "norm": "torani"
+ },
+ {
+  "name": "Trinity Health",
+  "norm": "trinity health"
+ }
+]

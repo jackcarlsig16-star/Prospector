@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { isStalePartner, daysSinceTouch, PIPELINE_STATUSES, STALE_DAYS } from '../../src/constants/partnerPipeline.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { KIND_LABEL, KINDS } from '../../src/constants/tidy.js';
@@ -95,7 +95,7 @@ export function flagCold({ flags, now }) {
 
 // call-notes-targets-v1 REV5 - something they owe us, overdue by 2+ days.
 export function waitingOverdue({ waiting = [], partners, opportunities = [], today }) {
-  const name = new Map([...partners.map(p => [`partner:${p.id}`, p.name]), ...opportunities.map(o => [`opportunity:${o.id}`, o.organization])]);
+  const name = new Map([...partners.map(p => [`partner:${p.id}`, p.name]), ...opportunities.map(o => [`employer:${o.id}`, o.organization])]);
   return waiting
     .filter(w => isOpen(w) && w.due_date && Math.round((Date.parse(today) - Date.parse(w.due_date)) / DAY) >= WAITING_LATE_DAYS)
     .map(w => {

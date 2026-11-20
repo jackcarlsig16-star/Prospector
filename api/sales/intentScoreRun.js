@@ -1,7 +1,7 @@
 import { pinOverride } from './pinState.js';
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { scoreProspect } from './heatScore.js';
 import { laDateString } from './laDate.js';
 import { cleanText } from './scrubText.js';
@@ -24,7 +24,7 @@ export const NEEDS_TOUCH_MIN = 40;
 export const COUNT_PARTNER_VISITORS = true;
 const DAY = 864e5;
 const NAMED_FIELDS = ['co_owner_name', 'no_double_touch', 'source_person', 'source_set_by'];
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPES = ['partner', 'employer', 'target'];
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const later = (a, b) => (!a ? b : !b ? a : a > b ? a : b);
 
@@ -57,7 +57,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors, fitByKey] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, category, last_touch_at, priority, priority_set_at, pinned_until, pinned_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, priority, priority_set_at, pinned_until, pinned_at, archived_at, updated_at, created_at, notes'),
-    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, pinned_until, pinned_at, updated_at, created_at, decided_at, promoted_goal_id'),
+    all('sales_targets', 'id, name, kind, status, employer_id, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, employees_source, pinned_until, pinned_at, updated_at, created_at, decided_at, promoted_goal_id'),
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, first_visit, last_visit, pulled_on, seen_from'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
@@ -92,8 +92,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const firstSeen = new Map();
   for (const v of visits) { const d = String(v.first_visit || v.seen_from || v.pulled_on || '').slice(0, 10); if (d && (!firstSeen.has(v.company_key) || d < firstSeen.get(v.company_key))) firstSeen.set(v.company_key, d); }
   const visitByRecord = new Map();
-  // web_visits says 'opportunity' for an employer match (visitRules liveMatch); the score keys employers as 'employer'.
-  for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type === 'opportunity' ? 'employer' : v.matched_type}:${v.matched_id}`, v);
+  for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type}:${v.matched_id}`, v);
   const skipKeys = new Set(skip.map(s => s.company_key));
   const overrideByKey = new Map(overrides.map(o => [o.company_key, o]));
   const researchBy = new Map();
@@ -132,7 +131,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   }
   for (const e of partnerEvents) addTouch(`partner:${e.goal_id}`, { at: e.at, who: names.get(e.by_user) || null, channel: e.event === 'touch' ? (e.touch_type || 'touch') : e.event === 'note' ? 'note' : 'stage' });
   for (const e of oppEvents) if (e.event_type === 'stage_change') addTouch(`employer:${e.opportunity_id}`, { at: e.changed_at, who: null, channel: 'stage' });
-  for (const t of doneTodos) { const type = Object.keys(LINK_TYPE).find(k => LINK_TYPE[k] === t.link_type); if (type && t.completed_at) addTouch(`${type}:${t.link_id}`, { at: t.completed_at, who: names.get(t.owner_user_id) || null, channel: 'to-do done' }); }
+  for (const t of doneTodos) { const type = LINK_TYPES.includes(t.link_type) ? t.link_type : null; if (type && t.completed_at) addTouch(`${type}:${t.link_id}`, { at: t.completed_at, who: names.get(t.owner_user_id) || null, channel: 'to-do done' }); }
 
   const companies = [
     ...partners.filter(p => !p.archived_at).map(p => ({ type: 'partner', id: p.id, name: p.name, stage: p.pipeline_status || 'not_started', row: p, created_at: p.updated_at })),
@@ -168,10 +167,9 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     };
   });
   // visitor-people-follow-record-v1 (Stage 2 ruling): an accepted target whose promoted record exists counts once, as that
-  // record - a partner by promoted_goal_id, an employer by the "from target <id>" its notes carry (no link column).
-  const fromTarget = new Set(opps.map(o => /from target ([0-9a-f-]{36})/i.exec(o.notes || '')?.[1]).filter(Boolean));
-  const partnerIds = new Set(partners.map(p => p.id));
-  const promotedOn = t => t.status === 'accepted' && ((t.promoted_goal_id && partnerIds.has(t.promoted_goal_id)) || fromTarget.has(t.id));
+  // record - a partner by promoted_goal_id, an employer by employer_id (data-keys-v1 K2).
+  const partnerIds = new Set(partners.map(p => p.id)), employerIds = new Set(opps.map(o => o.id));
+  const promotedOn = t => t.status === 'accepted' && ((t.promoted_goal_id && partnerIds.has(t.promoted_goal_id)) || (t.employer_id && employerIds.has(t.employer_id)));
   // brad-attribution-v1 F2: the dated rows the funnel reads - the same single pass, nothing fetched twice.
   const src = r => ({ source_kind: r.source_kind || null, source_partner_id: r.source_partner_id || null, source_person: r.source_person || null, source_set_by: r.source_set_by || null, source_set_at: r.source_set_at || null, owner_team: r.owner_team || null, co_owner_name: r.co_owner_name || null, created_at: r.created_at || null });
   const dated = {

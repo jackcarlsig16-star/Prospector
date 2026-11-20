@@ -2,8 +2,8 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import PartnerResearch, { appendAi, stampDate } from './PartnerResearch';
 
 // partner-add-research-v1 Stage 2 - the research card against a fake api:
-// Researching… then the result; Confirm site writes the domain + fills
-// company_domain; Wrong site writes nothing; Use appends "(M/D) AI: " to the
+// Researching… then the result; Confirm site writes the domain row (the
+// server derives company_domain); Wrong site writes nothing; Use appends "(M/D) AI: " to the
 // mapped field; Set category only when empty; Viewer sees no buttons.
 const result = { website: 'https://www.bbinsurance.com/', domain: 'bbinsurance.com', website_confidence: 'high', source_urls: ['https://www.bbinsurance.com/about'], summary: 'Insurance broker for mid-market employers.', mission: '"We help people."', positioning: null, size: '16,000 employees', hq_city: 'Daytona Beach, FL', recent_news: null, housing_perk: 'no housing perk found', suggested_category: '4. Mid-Market Benefits Brokers', why_homelover: 'Clients ask for financial wellness.', first_angle: 'Brokers win renewals with a benefit nobody else has.', watch_outs: 'Slow procurement.', titles: 'VP Benefits', web_searches: 2 };
 const done = { id: 'r1', status: 'done', created_at: '2026-10-16T17:00:00Z', cost_usd: 0.0425, result };
@@ -19,7 +19,7 @@ function setup({ runs = [done], today = 1, canEdit = true, over = {}, confirmedD
   return { api, domains, onUpdate, onDomainData, onPeopleChanged };
 }
 
-test('result: site line with confidence + source, fields, suggested category; Confirm site writes the domain and fills company_domain', async () => {
+test('result: site line with confidence + source, fields, suggested category; Confirm site writes the domain row and never the derived company_domain', async () => {
   const { domains, onUpdate, onDomainData } = setup();
   await screen.findByText('bbinsurance.com');
   expect(screen.getByText('· high')).toBeInTheDocument();
@@ -30,7 +30,7 @@ test('result: site line with confidence + source, fields, suggested category; Co
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Confirm site' })); });
   expect(domains.add).toHaveBeenCalledWith('p1', { domain: 'bbinsurance.com' });
   expect(onDomainData).toHaveBeenCalled();
-  expect(onUpdate).toHaveBeenCalledWith('p1', { company_domain: 'bbinsurance.com' });
+  expect(onUpdate).not.toHaveBeenCalled();
 });
 
 test('Wrong site saves nothing; Use appends the stamped line to the mapped column; Set category only when empty; Re-run calls the api', async () => {

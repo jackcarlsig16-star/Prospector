@@ -25,7 +25,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { chromium } = require('playwright');
 const AXE = fs.readFileSync(path.join(ROOT, 'node_modules', 'axe-core', 'axe.min.js'), 'utf8');
 const { SESSION_COOKIE } = await import('../../api/lib/authUser.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const OUT = path.join(ROOT, '.screenshots', 'people-v2-stage3');
 const SKETCH = path.join(ROOT, 'specs', 'design', 'people-v2', 'People.html');
 const PORT = 3995, BASE = `http://localhost:${PORT}`;

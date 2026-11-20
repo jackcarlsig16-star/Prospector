@@ -1,5 +1,5 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 
 // visitor-people-follow-record-v1 - identified visitors follow the company record. V1: a promoted target's sales_people
 // move with it (to an employer: re-pointed; to a partner: a partner_contacts row each + the old row archived, never

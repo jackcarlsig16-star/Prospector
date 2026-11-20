@@ -1,5 +1,5 @@
 import { cleanText, hasPii } from './scrubText.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { normalizeLinkedinUrl } from '../lib/linkedinUrl.js';
 

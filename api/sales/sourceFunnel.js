@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { laDateString } from './laDate.js';
 
 // brad-attribution-v1 Stage 1 (F1 / F2) - the per-company funnel as five dates (plus lost), computed from the rows
@@ -26,7 +26,7 @@ export function indexDated(dated = {}) {
   for (const v of dated.visits || []) {
     const d = day(v.seen_from || v.pulled_on);
     if (!d) continue;
-    if (v.matched_type && v.matched_id) { const k = `${v.matched_type === 'opportunity' ? 'employer' : v.matched_type}:${v.matched_id}`; visitsByRecord.set(k, first(visitsByRecord.get(k), d)); }
+    if (v.matched_type && v.matched_id) { const k = `${v.matched_type}:${v.matched_id}`; visitsByRecord.set(k, first(visitsByRecord.get(k), d)); }
     const n = normName(v.company_name); if (n) visitsByName.set(n, first(visitsByName.get(n), d));
   }
   const contactCompany = new Map();
@@ -42,7 +42,7 @@ export function indexDated(dated = {}) {
   const oppEvents = new Map();
   for (const e of dated.oppEvents || []) { const k = `employer:${e.opportunity_id}`; if (!oppEvents.has(k)) oppEvents.set(k, []); oppEvents.get(k).push(e); }
   const meetingTodos = new Map();
-  for (const t of dated.doneTodos || []) { if (!t.completed_at || !/meeting/i.test(t.text || '')) continue; const type = t.link_type === 'opportunity' ? 'employer' : t.link_type; if (!type || !t.link_id) continue; const k = `${type}:${t.link_id}`; meetingTodos.set(k, first(meetingTodos.get(k), day(t.completed_at))); }
+  for (const t of dated.doneTodos || []) { if (!t.completed_at || !/meeting/i.test(t.text || '')) continue; const type = t.link_type; if (!type || !t.link_id) continue; const k = `${type}:${t.link_id}`; meetingTodos.set(k, first(meetingTodos.get(k), day(t.completed_at))); }
   const marks = new Map();
   for (const m of dated.marks || []) { const k = `${m.record_type}:${m.record_id}`; if (!marks.has(k)) marks.set(k, {}); marks.get(k)[m.stage] = first(marks.get(k)[m.stage], day(m.at)); }
   const inboundAccepted = new Map();

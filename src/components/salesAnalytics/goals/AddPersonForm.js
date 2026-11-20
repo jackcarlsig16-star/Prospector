@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { SA } from '../theme';
 import { goalsApi } from './goalsApi';
 import { inputStyle, numStyle, ErrorNote } from './goalsUi';
-import { normName } from '../../../utils/normAccount';
+import { normName } from '../../../lib/normName';
 
 // FIX pipeline-quick-fixes-v1 A - "+ Add ▾ › Person": name, title, company (a typeahead over the partners, employers
 // and targets on the board plus the parked company names Pipeline › People knows; or "New company" -> a parked person),

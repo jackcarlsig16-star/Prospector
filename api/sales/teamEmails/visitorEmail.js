@@ -33,7 +33,7 @@ export const SETTINGS_URL = `${ORIGIN}/?tab=settings&view=team-emails`;
 export const TREND_URL = `${VISITORS_URL}&visitors=1`;
 export const STRIP_WINDOWS = 7;
 export const FOOTER_WORDS = 'Sent by Prospector to the HomeLover team · manage recipients · Sales › Settings › Team emails';
-const TYPE = { opportunity: 'employer', target: 'target', partner: 'partner' };
+const TYPE = { employer: 'employer', target: 'target', partner: 'partner' };
 const KIND_LABEL = { employer: 'Employer', target: 'Target', partner: 'Partner' };
 const sentence = s => { const t = String(s || '').replace(/_/g, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
 const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
@@ -122,10 +122,10 @@ export async function loadVisitorData(supabase, businessId, { window: w, members
   const buyerTitles = ((await supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle()).data?.buyer_titles || []).map(b => String(b).toLowerCase());
   const isBuyer = t => { const x = String(t || '').toLowerCase(); return !!x && buyerTitles.some(b => x.includes(b) || b.includes(x)); };
   const [opps, targets, partners, scores, people] = await Promise.all([
-    ids('opportunity').length ? must(await supabase.from('sales_opportunities').select('id, organization, stage, owner_user_id, client_status').eq('business_id', businessId).in('id', ids('opportunity'))) : [],
+    ids('employer').length ? must(await supabase.from('sales_opportunities').select('id, organization, stage, owner_user_id, client_status').eq('business_id', businessId).in('id', ids('employer'))) : [],
     ids('target').length ? must(await supabase.from('sales_targets').select('id, name, status, owner_user_id').eq('business_id', businessId).in('id', ids('target'))) : [],
     ids('partner').length ? must(await supabase.from('sales_goals').select('id, name, pipeline_status, owner_user_id, last_touch_at').eq('business_id', businessId).in('id', ids('partner'))) : [],
-    must(await supabase.from('sales_company_scores').select('company_type, company_id, score, band').eq('business_id', businessId).in('company_id', [...ids('opportunity'), ...ids('target'), ...ids('partner')])),
+    must(await supabase.from('sales_company_scores').select('company_type, company_id, score, band').eq('business_id', businessId).in('company_id', [...ids('employer'), ...ids('target'), ...ids('partner')])),
     visits.length ? selectAllPages(() => supabase.from('sales_people').select('id, visit_id, title').eq('business_id', businessId).in('visit_id', visits.map(v => v.id)).is('archived_at', null).order('id')) : [],
   ]);
   const rec = new Map([

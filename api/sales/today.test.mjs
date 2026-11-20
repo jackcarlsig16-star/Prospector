@@ -35,20 +35,20 @@ const people = [
   person('prospect:p3', 'Lee Stone', null, { company: { type: 'account', id: null, name: 'Solid Co' }, emails: { sent: 1, opened: 0, clicked: 0, replied: 1, bot_opens: 0 }, last_email: { at: '2026-11-16T10:00:00Z', what: 'replied', reply_class: 'follow_up_question' } }),
   person('person:x9', 'Quiet Person', CO.cloud, { emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null }),
 ];
-const visits = [{ company_key: 'qubika', company_name: 'Qubika', matched_type: 'opportunity', matched_id: CO.qub, visits_7d: 4, last_visit: '2026-11-17', seen_to: '2026-11-18', pulled_on: '2026-11-18', top_paths: [{ path: '/pricing' }] }];
+const visits = [{ company_key: 'qubika', company_name: 'Qubika', matched_type: 'employer', matched_id: CO.qub, visits_7d: 4, last_visit: '2026-11-17', seen_to: '2026-11-18', pulled_on: '2026-11-18', top_paths: [{ path: '/pricing' }] }];
 let seq = 0;
 const todo = (text, extra = {}) => ({ id: u(String(++seq).padStart(1, '0')).replace(/^./, c => c) && `${String(seq).padStart(8, '0')}-0000-4000-8000-000000000000`, kind: 'todo', status: 'open', text, due_date: null, owner_user_id: ANA, origin: 'manual', link_type: null, link_id: null, person_key: null, created_at: `2026-11-${String(10 + (seq % 9)).padStart(2, '0')}T10:00:00Z`, updated_at: '2026-11-18T10:00:00Z', snooze_until: null, ...extra });
 const late = n => new Date(Date.parse(`${TODAY}T00:00:00Z`) - n * 864e5).toISOString().slice(0, 10);
 const flat = v => v.groups.flatMap(g => g.rows);
 
 const TODOS = [
-  todo('Send the benefits one-pager', { due_date: late(3), link_type: 'opportunity', link_id: CO.north }),
+  todo('Send the benefits one-pager', { due_date: late(3), link_type: 'employer', link_id: CO.north }),
   todo('Confirm the December demo time', { due_date: TODAY }),
   todo('Old overdue A', { due_date: late(40) }), todo('Old overdue B', { due_date: late(20) }), todo('Old overdue C', { due_date: late(9) }), todo('Old overdue D', { due_date: late(5) }),
-  todo('Email the People team', { due_date: '2026-11-20', link_type: 'opportunity', link_id: CO.cloud, person_key: 'prospect:p1' }),
+  todo('Email the People team', { due_date: '2026-11-20', link_type: 'employer', link_id: CO.cloud, person_key: 'prospect:p1' }),
   todo('Find the benefits lead', { link_type: 'target', link_id: CO.flow, owner_user_id: null, origin: 'call_notes' }),
-  todo('Follow up after the pricing visit', { link_type: 'opportunity', link_id: CO.qub, owner_user_id: BO }),
-  todo('Call Cloudflare about the pilot', { link_type: 'opportunity', link_id: CO.cloud }),
+  todo('Follow up after the pricing visit', { link_type: 'employer', link_id: CO.qub, owner_user_id: BO }),
+  todo('Call Cloudflare about the pilot', { link_type: 'employer', link_id: CO.cloud }),
   todo('Draft the partner recap', { origin: 'system' }),
   todo('Ask Flowserve for the org chart', { owner_user_id: null }),
 ];
@@ -288,7 +288,7 @@ test('work: Prep call = one call with the Brief + grounds; Next steps = one call
 
 test('A4 fixes: worst first, never more than five, a failed feed on top; each button is a Scout verb with its rows (25 at most)', () => {
   const team = buildToday({ ...base, filter: {} }), mine = { groups: [{ rows: flat(team).filter(r => r.owner_user_id === ANA) }] };
-  const records = [{ type: 'target', id: CO.flow, name: 'Flowserve' }, { type: 'opportunity', id: CO.cloud, name: 'Cloudflare' }];
+  const records = [{ type: 'target', id: CO.flow, name: 'Flowserve' }, { type: 'employer', id: CO.cloud, name: 'Cloudflare' }];
   const f = buildFixes({ team, mine, todos: TODOS, records, feeds: [{ id: 'apollo', label: 'Apollo sync', failed: false, line: 'ok' }] });
   assert.deepEqual(f.items.map(i => [i.id, i.n, i.action?.verb, i.action?.rows.length]), [['replies', 2, 'reply_todos', 2], ['unowned', 2, 'assign_owner', 2], ['unlinked', 7, 'link_named', 1], ['undated', 2, 'task_due', 2]]);
   assert.equal(f.n, 4, 'a healthy feed does not count');
@@ -325,7 +325,7 @@ const fakeWrites = todos => {
     todoEventUndo: async (_sb, a) => { log.push(['todoEventUndo', a.eventId]); return {}; },
     todoOn: async (_sb, a) => { log.push(['todoOn', a.type, a.id, a.text, a.dueDate, a.origin, a.personKey, a.batchId]); return { id: 'new', event_id: `ev-${log.length}` }; },
     prospect: async ({ params, body }) => { log.push(['prospect', params.contactId, body.status, body.expect]); return { status: 200, body: {} }; },
-    linkable: async () => [{ type: 'opportunity', id: CO.cloud, name: 'Cloudflare' }, { type: 'opportunity', id: CO.qub, name: 'Qubika' }],
+    linkable: async () => [{ type: 'employer', id: CO.cloud, name: 'Cloudflare' }, { type: 'employer', id: CO.qub, name: 'Qubika' }],
   });
   return log;
 };
@@ -366,7 +366,7 @@ test('Q6 reply to-dos, A4 assign to the company owner and link the named company
   assert.deepEqual(log.map(l => l[0]), ['todoEventUndo', 'todoEventUndo']);
   // assign: the company's owner per row; no company or no owner = listed and left Unassigned
   log.length = 0;
-  const unowned = [{ ...TODOS[7], link_type: 'opportunity', link_id: CO.cloud }, { ...TODOS[11] }, { ...TODOS[8], owner_user_id: null }];
+  const unowned = [{ ...TODOS[7], link_type: 'employer', link_id: CO.cloud }, { ...TODOS[11] }, { ...TODOS[8], owner_user_id: null }];
   fakeWrites(unowned).length = 0;
   const log2 = fakeWrites(unowned);
   r = await run(sb, registry, { verb: 'assign_owner', rows: unowned.map(trow), keys: unowned.map(t => `todos:${t.id}`) });
@@ -378,7 +378,7 @@ test('Q6 reply to-dos, A4 assign to the company owner and link the named company
   const log3 = fakeWrites(loose);
   r = await run(sb, registry, { verb: 'link_named', rows: loose.map(trow), keys: loose.map(t => `todos:${t.id}`) });
   assert.deepEqual(r.p.body.rows.map(x => [x.to, x.skipped]), [['Cloudflare', null], ['no company', 'names no company'], ['no company', 'names more than one company']]);
-  assert.deepEqual(log3, [['todo', loose[0].id, { link_type: 'opportunity', link_id: CO.cloud }, 'link', { link_type: null, link_id: null }, 'scout', r.p.body.plan_id]]);
+  assert.deepEqual(log3, [['todo', loose[0].id, { link_type: 'employer', link_id: CO.cloud }, 'link', { link_type: null, link_id: null }, 'scout', r.p.body.plan_id]]);
 });
 
 test('A6 Scout opens the work panel on a to-do row: "draft the email for the first one", "what should I do next on #2", "prep me for ..."; with no to-do pointed at it stays a question', async () => {

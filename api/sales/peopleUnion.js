@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { isPartialName } from './peopleFind.js';
 
 // visitor-to-record-v1 REV2 V3 - one People search over the three contact tables (sales_people + its company,

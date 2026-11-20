@@ -41,7 +41,7 @@ test('edit: typed numbers are manual (null clears); owner person on employers / 
   const r = await editCompanyFields(s, { businessId: B, type: 'employer', id: O, body: { employees: '1,500', owner_user_id: CY } });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const o = s.db.sales_opportunities[0];
-  assert.deepEqual([o.employees, o.employees_source, o.owner_user_id, o.owner], [1500, 'manual', CY, 'Cyrus']);
+  assert.deepEqual([o.employees, o.employees_source, o.owner_user_id, o.owner], [1500, 'manual', CY, null], 'K8: the owner text is not written');
   await applyResearchNumbers(s, { businessId: B, type: 'employer', id: O, result: { employees_count: 10 } });
   assert.equal(o.employees, 1500, 'research never overwrites a typed value');
   assert.equal((await editCompanyFields(s, { businessId: B, type: 'employer', id: O, body: { employees: null } })).status, 200);
@@ -61,5 +61,5 @@ test('ownerOrCaller: the pick when it is a Member, else the caller; a Viewer pic
   assert.equal((await ownerOrCaller(s, B, CY, JACK)).person.user_id, CY);
   assert.equal((await ownerOrCaller(s, B, null, JACK)).person.user_id, JACK);
   assert.ok((await ownerOrCaller(s, B, VIC, JACK)).error);
-  assert.deepEqual(employerOwner({ user_id: CY, name: 'Cyrus Yy' }), { owner_user_id: CY, owner: 'Cyrus' });
+  assert.deepEqual(employerOwner({ user_id: CY, name: 'Cyrus Yy' }), { owner_user_id: CY });
 });

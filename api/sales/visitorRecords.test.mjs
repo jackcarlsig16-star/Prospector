@@ -23,7 +23,7 @@ test('V1 bar: P1 creates; P2 creates only with us_500; P3 / noise / maybe_user /
 test('matched records attach, never a second record; an Upside-owned match is stamp-only', () => {
   assert.deepEqual(autoCreateDecision(visit('Zz Harbor', { matched_type: 'partner', matched_id: 'p1' })), { action: 'attach', reason: 'matched', stampOnly: false });
   assert.deepEqual(autoCreateDecision(visit('Zz Quarry', { matched_type: 'target', matched_id: 't1', match_owner_team: 'upside' })), { action: 'attach', reason: 'matched', stampOnly: true });
-  assert.equal(autoCreateDecision(visit('Zz Both', { matched_type: 'opportunity', matched_id: 'o1', match_owner_team: 'both' })).stampOnly, true);
+  assert.equal(autoCreateDecision(visit('Zz Both', { matched_type: 'employer', matched_id: 'o1', match_owner_team: 'both' })).stampOnly, true);
   const note = attachNote(visit('Zz Harbor', { matched_type: 'partner', matched_id: 'p1' }));
   assert.deepEqual([note.last_visit, note.matched_type, note.matched_id], ['2026-10-26', 'partner', 'p1']);
   assert.match(note.evidence, /^Visited 6 times in 7 days/);
@@ -83,7 +83,7 @@ test('undo: reopens the signal, rejects the target (archive, never delete), arch
 test('match column: Created wins, then the match type, else None', () => {
   assert.equal(matchLabel(visit('Zz Alder'), { createdKeys: new Set(['zz alder']) }), 'Created');
   assert.equal(matchLabel(visit('Zz X', { matched_type: 'partner' })), 'Partner');
-  assert.equal(matchLabel(visit('Zz X', { matched_type: 'opportunity' })), 'Employer');
+  assert.equal(matchLabel(visit('Zz X', { matched_type: 'employer' })), 'Employer');
   assert.equal(matchLabel(visit('Zz X', { matched_type: 'target' })), 'Target');
   assert.equal(matchLabel(visit('Zz X')), 'None');
 });

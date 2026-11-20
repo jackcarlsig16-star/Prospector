@@ -4,7 +4,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { loadDupeContext } from './partnerDupeCheck.js';
 import { laMonday, matchOf } from './scoutImport.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { cleanText } from './scrubText.js';
 import { VISITOR_DOMAINS, US_500_FILTERS, SEED_SKIP, mergeResults, toVisit, liveMatch, knownSmall, prioritize, toWebSignal } from './visitRules.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';

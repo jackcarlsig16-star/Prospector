@@ -59,7 +59,7 @@ const seed = () => fakeSupabase({
     visit(V.river, 'riverbend logistics', 'Riverbend Logistics', { domain: 'riverbend.example', first_visit: TODAY, pulled_on: TODAY, last_visit: TODAY, visits_7d: 9, unique_visitors_7d: 4, priority: 'P1' }),
     visit(V.mace1, 'mace', 'Mace', { domain: 'macegroup.example', first_visit: '2026-10-22', pulled_on: '2026-10-22', last_visit: '2026-10-22' }),
     visit(V.mace2, 'mace', 'Mace', { domain: 'macegroup.example', first_visit: '2026-10-29', pulled_on: '2026-10-29', last_visit: '2026-10-29', visits_7d: 2 }),
-    visit(V.acme, 'acme health', 'Acme Health', { domain: 'acmehealth.example', first_visit: '2026-10-28', visits_7d: 6, unique_visitors_7d: 3, top_paths: [{ path: '/pricing' }], apollo_intent: 'high', matched_type: 'opportunity', matched_id: ID.acme, priority: 'P1' }),
+    visit(V.acme, 'acme health', 'Acme Health', { domain: 'acmehealth.example', first_visit: '2026-10-28', visits_7d: 6, unique_visitors_7d: 3, top_paths: [{ path: '/pricing' }], apollo_intent: 'high', matched_type: 'employer', matched_id: ID.acme, priority: 'P1' }),
     visit(V.newco, 'newco', 'NewCo', { domain: 'newco.example' }),
   ],
   research_runs: [{ id: randomUUID(), business_id: B, entity_type: 'employer', entity_id: ID.acme, status: 'done', trigger: 'manual', created_at: ago(2), result: { why_homelover: 'Their staff relocate often', first_angle: 'relocation', titles: 'VP People', housing_perk: 'no housing perk found', watch_outs: '', us_footprint: 'mostly_us' } }],
@@ -93,9 +93,9 @@ const seed = () => fakeSupabase({
   ],
   sales_week_goals: [
     { id: randomUUID(), business_id: B, kind: 'todo', status: 'open', text: 'Research Riverbend', week_start: '2026-11-02', link_type: 'target', link_id: ID.river, owner_user_id: JACK, due_date: TODAY },
-    { id: randomUUID(), business_id: B, kind: 'todo', status: 'open', text: 'Send Beta the deck', week_start: '2026-11-02', link_type: 'opportunity', link_id: ID.beta, owner_user_id: JACK, due_date: '2026-11-07' },
-    { id: randomUUID(), business_id: B, kind: 'todo', status: 'open', text: 'Call Mace', week_start: '2026-11-02', link_type: 'opportunity', link_id: ID.mace, owner_user_id: CYRUS, due_date: TODAY },
-    { id: randomUUID(), business_id: B, kind: 'todo', status: 'done', text: 'Old one', week_start: '2026-10-26', link_type: 'opportunity', link_id: ID.gamma, owner_user_id: JACK, due_date: '2026-10-27', completed_at: ago(8) },
+    { id: randomUUID(), business_id: B, kind: 'todo', status: 'open', text: 'Send Beta the deck', week_start: '2026-11-02', link_type: 'employer', link_id: ID.beta, owner_user_id: JACK, due_date: '2026-11-07' },
+    { id: randomUUID(), business_id: B, kind: 'todo', status: 'open', text: 'Call Mace', week_start: '2026-11-02', link_type: 'employer', link_id: ID.mace, owner_user_id: CYRUS, due_date: TODAY },
+    { id: randomUUID(), business_id: B, kind: 'todo', status: 'done', text: 'Old one', week_start: '2026-10-26', link_type: 'employer', link_id: ID.gamma, owner_user_id: JACK, due_date: '2026-10-27', completed_at: ago(8) },
   ],
   sales_email_activity: [], sales_opportunity_events: [], sales_visit_skip: [], visit_priority_override: [], sales_stage_marks: [], sales_signals: [],
   sales_company_scores: [], sales_company_score_days: [], sales_flow_events: [], sales_outreach_contacts: [], partner_domains: [], sales_sequenced_accounts: [], sales_call_notes: [],
@@ -326,7 +326,7 @@ test('ruling F-d: visits match on create and promote (name or domain); the backf
   assert.equal(s.db.web_visits.filter(v => !v.matched_id).length, 4, 'a dry run writes nothing');
   const applied = await backfillVisitMatches(s, B, { apply: true });
   assert.deepEqual([applied.matched, applied.after.unmatched], [3, 1]);
-  assert.ok(s.db.web_visits.filter(v => v.company_key === 'mace').every(v => v.matched_type === 'opportunity' && v.matched_id === ID.mace), "Mace's rows point at the Mace employer");
+  assert.ok(s.db.web_visits.filter(v => v.company_key === 'mace').every(v => v.matched_type === 'employer' && v.matched_id === ID.mace), "Mace's rows point at the Mace employer");
   // Create: the still-unmatched NewCo row follows a new employer with that domain.
   const made = await insertCompanyRecord(s, { businessId: B, userId: JACK, name: 'New Company', domain: 'newco.example', to: 'employer', channel: 'manual', evidence: 'typed', now: new Date(NOW) });
   assert.deepEqual([made.created.type, made.visits_matched], ['employer', 1]);
@@ -336,7 +336,7 @@ test('ruling F-d: visits match on create and promote (name or domain); the backf
   const s2 = seed();
   const p = await promoteTarget(s2, { businessId: B, userId: JACK, targetId: ID.river, body: { to: 'employer' } });
   assert.equal(p.status, 201, p.body.error);
-  assert.deepEqual([p.body.visits_moved, s2.db.web_visits.find(v => v.id === V.river).matched_type, s2.db.web_visits.find(v => v.id === V.river).matched_id], [1, 'opportunity', p.body.created.id]);
+  assert.deepEqual([p.body.visits_moved, s2.db.web_visits.find(v => v.id === V.river).matched_type, s2.db.web_visits.find(v => v.id === V.river).matched_id], [1, 'employer', p.body.created.id]);
 });
 
 test('ruling F-b: member colors are stored per member; a member without one gets the next free MEMBER_COLORS entry by join order and keeps it', async () => {
@@ -371,9 +371,9 @@ test('F1 Map Assign on an employer / target is Activity + Undo (the prior owner 
   const s = seed();
   const r = await editCompanyFields(s, { businessId: B, type: 'employer', id: ID.acme, body: { owner_user_id: JACK }, byUser: JACK, now: new Date(NOW) });
   assert.equal(r.status, 200, r.body.error);
-  assert.deepEqual([r.body.fields.owner_user_id, r.body.fields.owner, r.body.before], [JACK, 'Jack', { owner_user_id: CYRUS }]);
+  assert.deepEqual([r.body.fields.owner_user_id, r.body.before], [JACK, { owner_user_id: CYRUS }]);
   const ev = s.db.sales_flow_events.find(e => e.id === r.body.event.id);
-  assert.deepEqual([ev.kind, ev.text, ev.prev, ev.meta.set], ['assign', 'Assigned to Jack', { owner_user_id: CYRUS, owner: 'Cyrus' }, { owner_user_id: JACK, owner: 'Jack' }]);
+  assert.deepEqual([ev.kind, ev.text, ev.prev, ev.meta.set], ['assign', 'Assigned to Jack', { owner_user_id: CYRUS }, { owner_user_id: JACK }]);
   const u = await undoFlow(s, { businessId: B, eventId: ev.id, byUser: JACK, now: new Date(NOW + 5000) });
   assert.equal(u.status, 200, u.body.error);
   assert.deepEqual([s.db.sales_opportunities.find(o => o.id === ID.acme).owner_user_id, s.db.sales_opportunities.find(o => o.id === ID.acme).owner], [CYRUS, 'Cyrus']);

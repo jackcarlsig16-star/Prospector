@@ -11,8 +11,9 @@ const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
 const { createClient } = require('@supabase/supabase-js');
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
-const { orgKey } = await import('../../api/sales/opportunityMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
+// orgKey as it was before data-keys-v1 Stage 1 replaced it with normName (kept here so this Stage 0 read still runs).
+const orgKey = name => String(name || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w && !['inc', 'llc', 'corp', 'co'].includes(w)).join(' ');
 
 setTimeout(() => { console.log('CAP: 90 s'); process.exit(1); }, 90000).unref();
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });

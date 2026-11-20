@@ -1,6 +1,6 @@
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { cleanText } from './scrubText.js';
 
 // homelover-flow-v1 F6 - "Reached n of m people", computed live, never stored. People known = the distinct people

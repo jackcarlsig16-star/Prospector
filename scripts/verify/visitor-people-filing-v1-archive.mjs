@@ -35,7 +35,7 @@ globalThis.fetch = async (input, init = {}) => {
 const { createClient } = require('@supabase/supabase-js');
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { hasBuyerTitle, RECORD_MIN_EMPLOYEES } = await import('../../api/sales/visitorRecords.js');
 const { rejectTarget } = await import('../../api/sales/targetsRoutes.js');
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };

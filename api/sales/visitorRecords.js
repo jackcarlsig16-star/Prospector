@@ -90,7 +90,7 @@ export function undoPlan({ signal, target, people = [] }, { now = new Date() } =
 export function matchLabel(v, { createdKeys = new Set() } = {}) {
   if (createdKeys.has(v.company_key)) return 'Created';
   if (v.matched_type === 'partner') return 'Partner';
-  if (v.matched_type === 'opportunity') return 'Employer';
+  if (v.matched_type === 'employer') return 'Employer';
   if (v.matched_type === 'target') return 'Target';
   return 'None';
 }

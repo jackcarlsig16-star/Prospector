@@ -9,6 +9,7 @@ import { promoteTarget, rejectTarget, copyBundle, listProspectTargets, validateP
 import { hasPii } from './scrubText.js';
 import { toIntake } from './intakeMatch.js';
 import { listRuns } from './partnerResearch.js';
+import { companyDetail } from './companyPanel.js';
 
 
 const B = randomUUID(), U = randomUUID(), N1 = randomUUID();
@@ -178,8 +179,13 @@ test('promote -> employer: opportunity at target with the evidence in notes, own
   const s = seed();
   const r = await promoteTarget(s, { businessId: B, userId: U, targetId: T.deloitte, body: { to: 'employer' } });
   assert.equal(r.status, 201, JSON.stringify(r.body));
-  assert.equal(r.body.created.type, 'opportunity');
+  assert.equal(r.body.created.type, 'employer');
   const opp = s.db.sales_opportunities.find(o => o.organization === 'Deloitte');
+  // data-keys-v1 K2 / K10: the target keeps its employer's id, the window says where it went, the Activity notes the re-stamp.
+  assert.equal(s.db.sales_targets.find(t => t.id === T.deloitte).employer_id, opp.id);
+  const win = await companyDetail(s, { businessId: B, type: 'target', id: T.deloitte });
+  assert.deepEqual(win.body.record.promoted_to, { type: 'employer', id: opp.id, name: 'Deloitte' });
+  assert.deepEqual((s.db.sales_flow_events || []).filter(e => e.kind === 'restamp').map(e => [e.record_type, e.record_id, e.text]), [['employer', opp.id, 'Promoted from the target Deloitte · 0 visit rows followed']]);
   assert.equal(opp.stage, 'target');
   assert.equal(opp.source, 'manual');
   assert.equal(opp.org_type, 'employer');
@@ -199,7 +205,7 @@ test('promote -> employer on a name already in the pipeline (opportunityMatch): 
   const before = s.db.sales_opportunities.length;
   const r = await promoteTarget(s, { businessId: B, userId: U, targetId: T.solidcore, body: { to: 'employer' } });
   assert.equal(r.status, 200);
-  assert.equal(r.body.already.type, 'opportunity');
+  assert.equal(r.body.already.type, 'employer');
   assert.equal(r.body.already.name, '[solidcore]');
   assert.equal(s.db.sales_opportunities.length, before);
   assert.equal(s.db.sales_targets.find(t => t.id === T.solidcore).status, 'researching');
@@ -281,7 +287,7 @@ test('copy bundle (employer + target): scrubbed, source note named, 404 / 400 on
   // FIX loop-quickfixes Q2: the employer's open to-dos and waiting-on rows, same format as a partner's; still scrubbed.
   assert.match(e.body.markdown, /## Waiting on them\n- nothing\n\n## Open to-dos\n- none/);
   const opp = s.db.sales_opportunities[0].id;
-  const row = extra => ({ id: randomUUID(), business_id: B, week_start: WEEK, status: 'open', owner_user_id: null, link_type: 'opportunity', link_id: opp, ...extra });
+  const row = extra => ({ id: randomUUID(), business_id: B, week_start: WEEK, status: 'open', owner_user_id: null, link_type: 'employer', link_id: opp, ...extra });
   s.db.sales_week_goals.push(row({ kind: 'todo', text: 'Send the pilot terms to crystal@solidcore.example', due_date: '2026-10-20' }),
     row({ kind: 'waiting', text: 'the eligibility file', waiting_on: 'Crystal', due_date: '2026-10-18' }),
     row({ kind: 'todo', text: 'Already done', status: 'done' }));

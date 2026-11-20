@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 
 // intent-score-v1 S1 / S6 - one 0-100 intent score per company record from inputs the gatherer (Stage 2) assembles;
 // nothing here reads or writes a table, so HumanKind can call scoreCompany with its own inputs + weights row.

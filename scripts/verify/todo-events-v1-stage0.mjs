@@ -4,7 +4,7 @@
 import { svc, HL, cap, footer } from './homelover-data-model-v1-lib.mjs';
 cap(60);
 const { openTodosFor, todoCounts } = await import('../../api/sales/openTodos.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { laDateString } = await import('../../api/sales/laDate.js');
 const today = laDateString(new Date());
 const page = async (table, cols, f = q => q) => { const out = []; for (let i = 0; ; i += 1000) { const r = await f(svc.from(table).select(cols).eq('business_id', HL)).order('id').range(i, i + 999); if (r.error) throw new Error(r.error.message); out.push(...r.data); if (r.data.length < 1000) break; } return out; };

@@ -70,7 +70,7 @@ const cell = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 const csv = (rows, headers = EXPORT) => [headers.join(','), ...rows.map(r => headers.map(h => cell(r[h] ?? '')).join(','))].join('\r\n');
 
 const P = (id, name, status, extra = {}) => ({ id, name, record_id: null, tier: '2', category: '3. Brokers', owner_user_id: 'u-jack', owner_team: 'homelover', co_owner_name: null, next_step: null, notes: 'mine', company_domain: null, pipeline_status: status, last_touch_at: '2026-10-01T00:00:00Z', ...extra });
-const O = (id, organization, stage, extra = {}) => ({ id, organization, stage, record_id: null, tier: null, cohort: null, next_action: null, next_action_date: null, owner: 'Jack', owner_team: 'upside', co_owner_name: null, org_type: 'employer', notes: null, decision_makers: null, apollo_account_id: null, ...extra });
+const O = (id, organization, stage, extra = {}) => ({ id, organization, stage, record_id: null, tier: null, cohort: null, next_action: null, next_action_date: null, owner_user_id: 'u-jack', owner_team: 'upside', co_owner_name: null, org_type: 'employer', notes: null, decision_makers: null, apollo_account_id: null, ...extra });
 const state = () => ({
   partners: [P('p1', 'Gallagher', 'replied'), P('p2', 'OneDigital', 'first_email_sent'), P('p3', 'Lockton', 'not_started'), P('p4', 'Aon', 'proposal_pilot', { record_id: 'HLU-0009' }), P('p5', 'Brown & Brown', 'replied')],
   domains: [], opps: [O('o1', 'Solidcore', 'contacted'), O('o2', 'Marriott', 'responded', { org_type: 'membership' })],

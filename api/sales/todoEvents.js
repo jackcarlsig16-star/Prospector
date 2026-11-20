@@ -2,6 +2,7 @@ import { getSupabase, laStartOfDayMs, isDate } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { listTodoEvents } from './todoWrite.js';
 import { cleanText } from './scrubText.js';
+import { readType } from './readType.js';
 import { todoEventWords } from '../../src/constants/todoEventWords.js';
 
 // todo-events-v1 T8 (ruling R8) - the readers of sales_todo_events: the week's lines ("Pipeline moves this week"),
@@ -9,7 +10,7 @@ import { todoEventWords } from '../../src/constants/todoEventWords.js';
 // An event holds no text; each line carries its to-do's text (scrubbed, cut) and link from the row as it is now.
 // by_user is a user id - the screen resolves the name from the members it already has.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LINK_TYPES = ['partner', 'opportunity', 'target'];
+const LINK_TYPES = ['partner', 'employer', 'target'];
 export const EVENTS_MAX = 200;
 const IN_CHUNK = 100;
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
@@ -37,7 +38,7 @@ export async function todoEventLines(supabase, businessId, { from = null, to = n
 
 // GET goals/week/events?from=YYYY-MM-DD&to=YYYY-MM-DD (LA days, to exclusive) | ?todo_id= | ?link_type=&link_id= -> { events }
 export async function listTodoEventsRoute(req, res) {
-  const { from, to, todo_id, link_type, link_id } = req.query;
+  const { from, to, todo_id, link_id } = req.query, link_type = readType(req.query.link_type);
   if ((from && !isDate(from)) || (to && !isDate(to))) return res.status(400).json({ error: 'from and to must be YYYY-MM-DD' });
   if (todo_id && !UUID.test(todo_id)) return res.status(400).json({ error: 'todo_id must be a uuid' });
   if ((link_type || link_id) && !(LINK_TYPES.includes(link_type) && UUID.test(link_id || ''))) return res.status(400).json({ error: `link_type must be one of ${LINK_TYPES.join('|')} with a link_id` });

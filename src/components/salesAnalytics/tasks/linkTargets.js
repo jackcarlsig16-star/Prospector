@@ -33,7 +33,7 @@ export const LINK_GROUPS = [
   { type: 'partner', label: 'Partners', chip: 'Partner' },
   { type: 'company', label: 'Companies', chip: 'Company' },
   { type: 'target', label: 'Targets', chip: 'Target' },
-  { type: 'opportunity', label: 'Employers', chip: 'Employer' },
+  { type: 'employer', label: 'Employers', chip: 'Employer' },
 ];
 
 const ALL_WEEKS_FROM = '2020-01-06'; // same as GoalsTab's all-companies list
@@ -71,7 +71,7 @@ export function useLinkOptions(businessId, week) {
         partner: (ok(ps) || []).map(p => ({ id: p.id, label: p.name })).sort((a, b) => a.label.localeCompare(b.label)),
         company: (ok(co)?.companies || []).map(c => ({ id: c.account_id, label: c.name || c.account_id })).sort((a, b) => a.label.localeCompare(b.label)),
         target: (ok(ts) || []).filter(t => t.status !== 'rejected').map(t => ({ id: t.id, label: t.name })).sort((a, b) => a.label.localeCompare(b.label)),
-        opportunity: (ok(os) || []).map(o => ({ id: o.id, label: o.organization })).sort((a, b) => a.label.localeCompare(b.label)),
+        employer: (ok(os) || []).map(o => ({ id: o.id, label: o.organization })).sort((a, b) => a.label.localeCompare(b.label)),
       });
       setLoaded(true);
     });

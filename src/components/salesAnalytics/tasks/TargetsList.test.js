@@ -74,7 +74,7 @@ test('Member: Promote → partner opens the confirm panel with the suggested cat
 });
 
 test('Promote → employer sends no category; an "already" reply shows the notice and creates nothing', async () => {
-  goalsApi.promoteTarget.mockResolvedValue({ already: { type: 'opportunity', id: 'o1', name: '[solidcore]' } });
+  goalsApi.promoteTarget.mockResolvedValue({ already: { type: 'employer', id: 'o1', name: '[solidcore]' } });
   const onOpenRecord = jest.fn(), onChanged = jest.fn();
   render(<TargetsList businessId="b1" targets={targets} canEdit onChanged={onChanged} onOpenRecord={onOpenRecord} />);
   const row = screen.getByText('Deloitte').closest('li');
@@ -87,7 +87,7 @@ test('Promote → employer sends no category; an "already" reply shows the notic
   await screen.findByText('Already here: [solidcore] (employer)');
   expect(onChanged).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Open' }));
-  expect(onOpenRecord).toHaveBeenCalledWith({ targetId: 't2', type: 'opportunity', id: 'o1', name: '[solidcore]' });
+  expect(onOpenRecord).toHaveBeenCalledWith({ targetId: 't2', type: 'employer', id: 'o1', name: '[solidcore]' });
 });
 
 test('Not a fit drops via the reject route and Undo sends the dropped to-dos back', async () => {

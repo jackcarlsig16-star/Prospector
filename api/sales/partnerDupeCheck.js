@@ -1,7 +1,8 @@
 import { hasRole } from '../lib/requireAuth.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
-import { nameMatches, normName } from './intakeMatch.js';
+import { nameMatches } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 
 // partner-add-research-v1 REV3 Stage 1 (D1) - "is this company already in

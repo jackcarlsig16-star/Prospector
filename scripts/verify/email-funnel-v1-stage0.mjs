@@ -20,7 +20,7 @@ const { replyAt } = await import('../../api/sales/replyTime.js');
 const { countExternalMeetings } = await import('../../api/sales/scorecardMath.js');
 const { visitIndex, VISIT_TYPE } = await import('../../api/sales/visitJoin.js');
 const { nameKey } = await import('../../api/sales/peopleMerge.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { coveredDays } = await import('../../api/sales/visitTrend.js');
 
 setTimeout(() => { console.log('CAP: 180 s'); process.exit(1); }, 180000).unref();

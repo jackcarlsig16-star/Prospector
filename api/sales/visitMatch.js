@@ -1,5 +1,5 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { loadDupeContext } from './partnerDupeCheck.js';
 import { liveMatch } from './visitRules.js';
@@ -8,13 +8,13 @@ import { liveMatch } from './visitRules.js';
 // target / employer / partner is created or promoted (same normalized domain, or the same normalized name), and once
 // over every record (backfillVisitMatches, reported before -> after). Only rows with no match move; a row already
 // matched to a record is never re-pointed here (promote moves those itself). Mace's rows are the live check.
-const VISIT_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const VISIT_TYPES = ['partner', 'employer', 'target'];
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 
 // -> the number of rows matched to the record.
 export async function rematchVisits(supabase, { businessId, type, id, name, domain = null }) {
-  const matchedType = VISIT_TYPE[type];
-  if (!matchedType) return 0;
+  if (!VISIT_TYPES.includes(type)) return 0;
+  const matchedType = type;
   const key = normName(name || ''), dom = normalizeDomain(domain || '');
   let n = 0;
   if (key) n += must(await supabase.from('web_visits').update({ matched_type: matchedType, matched_id: id }).eq('business_id', businessId).eq('company_key', key).is('matched_id', null).select('id')).length;
@@ -33,7 +33,7 @@ export function planVisitMatches(visits, { ctx, domains = [] }) {
   for (const v of visits) {
     if (v.matched_id) continue;
     const live = liveMatch(v, ctx);
-    if (live) { out.push({ visit_id: v.id, company_key: v.company_key, type: live.type === 'opportunity' ? 'employer' : live.type, id: live.id, name: live.name, via: 'name' }); continue; }
+    if (live) { out.push({ visit_id: v.id, company_key: v.company_key, type: live.type, id: live.id, name: live.name, via: 'name' }); continue; }
     const hits = (byDomain.get(normalizeDomain(v.domain || '')) || []).sort((a, b) => RANK[a.type] - RANK[b.type]);
     if (hits.length) out.push({ visit_id: v.id, company_key: v.company_key, type: hits[0].type, id: hits[0].id, name: hits[0].name, via: 'domain' });
   }
@@ -64,7 +64,7 @@ export async function backfillVisitMatches(supabase, businessId, { apply = false
   let matched = 0;
   if (apply) {
     for (const m of plan) {
-      matched += must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[m.type], matched_id: m.id }).eq('business_id', businessId).eq('id', m.visit_id).is('matched_id', null).select('id')).length;
+      matched += must(await supabase.from('web_visits').update({ matched_type: m.type, matched_id: m.id }).eq('business_id', businessId).eq('id', m.visit_id).is('matched_id', null).select('id')).length;
     }
   }
   const byType = plan.reduce((o, m) => ({ ...o, [m.type]: (o[m.type] || 0) + 1 }), {});

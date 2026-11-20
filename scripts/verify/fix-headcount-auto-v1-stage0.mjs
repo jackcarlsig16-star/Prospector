@@ -20,7 +20,7 @@ const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
 const { createClient } = require('@supabase/supabase-js');
 const { apolloRequest, apolloBalance } = await import('../../api/sales/apolloClient.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
 const OUT = path.join(ROOT, '.screenshots', 'fix-headcount-auto-v1');
 const BASE = 'https://api.apollo.io/api/v1';

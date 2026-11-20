@@ -1,7 +1,8 @@
 // node --test api/sales/intakeMatch.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toIntake, findByName, resolveCompany, normName } from './intakeMatch.js';
+import { toIntake, findByName, resolveCompany } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { parseIntake, researchPrompt } from './intakeAccept.js';
 
 const ctx = {

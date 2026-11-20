@@ -19,7 +19,7 @@ import { PIPELINE_STATUSES } from '../../../../constants/partnerPipeline';
 // flow event's undo; a partner's = the partner undo). Brief and Write email stay as a quiet last row. On an Upside-owned /
 // no-double-touch row the touching items are disabled with the reason. Never a stage move outside advanceStage /
 // applyPartnerSignal with expect.
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPE = { partner: 'partner', employer: 'employer', target: 'target' };
 const LOCK_REASON = 'Upside-owned with no double touch - coordinate with Brad before touching this company';
 const TOUCHING = new Set(['claim', 'draft', 'contacted', 'call', 'book', 'todo', 'they_replied', 'next', 'promote']);
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });

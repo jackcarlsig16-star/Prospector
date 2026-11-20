@@ -44,7 +44,7 @@ export function dueFor(dates, today) {
   return { due: date <= today ? 'today' : date <= weekEnd ? 'week' : 'later', date };
 }
 
-const LINK_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target' };
+const LINK_TYPE = { partner: 'partner', employer: 'employer', target: 'target' };
 
 // One pass for a list: Map '<type>:<id>' -> { due, date } over the workspace's open to-dos with a due date and every
 // live employer's next_action_date. Deprioritized records are left to the caller (they never sit on a Due list).

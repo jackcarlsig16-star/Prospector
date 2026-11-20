@@ -17,7 +17,7 @@ import HeatSparkline from './HeatSparkline';
 // a person whose company is not in the pipeline gets the reasons, not greyed mysteries. Viewers: Open company only.
 // heat-v2 Stage 2 (H5): the Heat block shows the one pill, the why lines and a 30-day sparkline from the detail route's
 // history (sales_person_heat_days) - "—" until a day row exists.
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPE = { partner: 'partner', employer: 'employer', target: 'target' };
 const KIND = { sent: ['Sent', SA.muted], open: ['Opened', SA.link], click: ['Clicked', SA.warn], reply: ['Replied', SA.good] };
 const LA = 'America/Los_Angeles';
 const when = iso => (iso ? new Date(iso).toLocaleString('en-US', { timeZone: LA, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'time unknown');

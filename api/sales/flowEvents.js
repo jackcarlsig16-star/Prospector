@@ -7,8 +7,9 @@ import { cleanText } from './scrubText.js';
 // Every row holds prev (what each changed column held) and meta.set (what it was set to), so Undo restores the exact
 // prior values and refuses when something changed since (same rule as partner undo). Rows are never deleted: an Undo
 // stamps undone_at and adds an 'undo' row. Partner stage / owner moves never go through here (applyPartnerSignal).
-// 'pin' / 'pin_renew' / 'unpin' (top-targets-v1) need 20261114_top_targets_v1_flow_kinds.sql: the table's CHECK lists the kinds.
-export const FLOW_KINDS = ['deprioritize', 'bring_back', 'fit_set', 'assign', 'reply_move', 'meeting_move', 'they_replied', 'pin', 'pin_renew', 'unpin', 'undo'];
+// 'pin' / 'pin_renew' / 'unpin' (top-targets-v1) need 20261114_top_targets_v1_flow_kinds.sql and 'restamp' (data-keys-v1 K10)
+// needs 20261121_data_keys_v1_stage1b_flow_kind.sql: the table's CHECK lists the kinds.
+export const FLOW_KINDS = ['deprioritize', 'bring_back', 'fit_set', 'assign', 'reply_move', 'meeting_move', 'they_replied', 'pin', 'pin_renew', 'unpin', 'restamp', 'undo'];
 export const UNDO_WINDOW_MS = 2 * 60e3; // the client shows 10 s; the slack covers slow networks
 export const AUTO_UNDO_WINDOW_MS = 7 * 864e5; // an automatic move (by_user null) stays undoable for 7 days (F7)
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -63,6 +64,7 @@ export async function undoFlow(supabase, { businessId, eventId, byUser = null, n
     const ev = must(await supabase.from('sales_flow_events').select('*').eq('business_id', businessId).eq('id', eventId).maybeSingle());
     if (!ev) return reply(404, { error: 'event not found' });
     if (ev.kind === 'undo') return reply(409, { error: 'an undo cannot be undone' });
+    if (ev.kind === 'restamp') return reply(409, { error: 'a rename or a promote is not undone from its Activity line' });
     if (ev.undone_at) return reply(409, { error: 'already undone' });
     const window = ev.by_user ? UNDO_WINDOW_MS : AUTO_UNDO_WINDOW_MS;
     if (now - Date.parse(ev.at) > window) return reply(409, { error: 'too late to undo' });

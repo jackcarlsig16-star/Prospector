@@ -35,7 +35,7 @@ const NAME_COL = { partner: 'name', employer: 'organization', target: 'name' };
 const NOTES_COL = { partner: 'notes', employer: 'notes', target: 'research_notes' };
 const COLS = {
   partner: `id, name, notes, pipeline_status, category, owner_user_id, owner_team, co_owner_name, last_touch_at, channel, created_at, ${SOURCE_COLS}`,
-  employer: `id, organization, notes, stage, owner, owner_team, co_owner_name, covered_lives, client_status, eligible_now, eligible_added, channel, created_at, ${SOURCE_COLS}`,
+  employer: `id, organization, notes, stage, owner_user_id, owner_team, co_owner_name, covered_lives, client_status, eligible_now, eligible_added, channel, created_at, ${SOURCE_COLS}`,
   target: `id, name, research_notes, status, owner_team, co_owner_name, channel, created_at, ${SOURCE_COLS}`,
 };
 const BACKFILL_CHUNK = 10;
@@ -57,8 +57,7 @@ async function companies(supabase, businessId, { partnerId = null } = {}) {
 async function members(supabase, businessId) {
   return new Map(must(await supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null)).map(m => [m.user_id, m.name || '']));
 }
-const ownerOf = (r, team) => (r.type === 'partner' ? (team.get(r.owner_user_id) || '').split(' ')[0] || TEAM_LABEL[r.owner_team] || null
-  : r.type === 'employer' ? (r.owner || '').split(' ')[0] || TEAM_LABEL[r.owner_team] || null : TEAM_LABEL[r.owner_team] || null);
+const ownerOf = (r, team) => (r.type === 'target' ? TEAM_LABEL[r.owner_team] || null : (team.get(r.owner_user_id) || '').split(' ')[0] || TEAM_LABEL[r.owner_team] || null);
 const nameOf = r => r[NAME_COL[r.type]];
 
 async function recordOr404(supabase, businessId, type, id) {

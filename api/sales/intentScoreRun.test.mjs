@@ -41,7 +41,7 @@ const seed = (extra = {}) => ({
   web_visits: [
     { id: randomUUID(), business_id: B, company_key: 'quarry labs', company_name: 'Quarry Labs', matched_type: 'target', matched_id: ID.quarry, priority: 'P1', visits_7d: 6, unique_visitors_7d: 3, apollo_intent: 'high', intent_score: 60, top_paths: [{ path: '/pricing' }], maybe_user: false, us_500: true, last_visit: day(1), pulled_on: day(0) },
     { id: randomUUID(), business_id: B, company_key: 'quarry labs', company_name: 'Quarry Labs', matched_type: 'target', matched_id: ID.quarry, priority: 'P3', visits_7d: 1, unique_visitors_7d: 1, apollo_intent: 'low', intent_score: 5, top_paths: [{ path: '/' }], maybe_user: false, us_500: true, last_visit: day(9), pulled_on: day(8) },
-    { id: randomUUID(), business_id: B, company_key: 'hilton hotels example', company_name: 'Hilton Hotels Example', matched_type: 'opportunity', matched_id: ID.hilton, priority: 'P2', visits_7d: 2, unique_visitors_7d: 2, apollo_intent: 'low', intent_score: 10, top_paths: [{ path: '/employers' }], maybe_user: false, us_500: true, last_visit: day(2), pulled_on: day(0) },
+    { id: randomUUID(), business_id: B, company_key: 'hilton hotels example', company_name: 'Hilton Hotels Example', matched_type: 'employer', matched_id: ID.hilton, priority: 'P2', visits_7d: 2, unique_visitors_7d: 2, apollo_intent: 'low', intent_score: 10, top_paths: [{ path: '/employers' }], maybe_user: false, us_500: true, last_visit: day(2), pulled_on: day(0) },
   ],
   sales_visit_skip: [],
   research_runs: [
@@ -57,7 +57,7 @@ const seed = (extra = {}) => ({
   sales_email_activity: [{ id: 1, business_id: B, contact_id: 'c-pat', apollo_message_id: 'm1', event: 'open', occurred_at: ago(9), user_agent: 'Gmail', tracking_service: null }],
   sales_partner_events: [{ id: 1, business_id: B, goal_id: ID.harbor, event: 'touch', at: ago(12), touch_type: 'call', source: null, by_user: CYRUS }],
   sales_opportunity_events: [{ id: 1, business_id: B, opportunity_id: ID.hilton, event_type: 'stage_change', changed_at: ago(20) }],
-  sales_week_goals: [{ id: 1, business_id: B, kind: 'todo', status: 'done', link_type: 'opportunity', link_id: ID.ixl, completed_at: ago(1), owner_user_id: JACK, text: 'Call them' }],
+  sales_week_goals: [{ id: 1, business_id: B, kind: 'todo', status: 'done', link_type: 'employer', link_id: ID.ixl, completed_at: ago(1), owner_user_id: JACK, text: 'Call them' }],
   visit_priority_override: [],
   sales_company_scores: [], sales_company_score_days: [],
   ...extra,
@@ -99,7 +99,7 @@ test('gatherInputs: one pass -> inputs per live record with the NAMED rule, the 
   assert.deepEqual([harbor.meta.last_touch_channel, harbor.meta.last_touch_who], ['apollo reply', null], 'the newest touch wins (the Apollo reply at 9 d beats the call at 12 d)');
   const hilton = inputs.find(i => i.name === 'Hilton Example');
   assert.deepEqual([hilton.source.via_upside, hilton.source.named], [true, true], 'no_double_touch makes it NAMED');
-  assert.equal(hilton.visit.visits_7d, 2, "the employer's visit row (web_visits matched_type 'opportunity'), not a name match");
+  assert.equal(hilton.visit.visits_7d, 2, "the employer's visit row (web_visits matched_type 'employer'), not a name match");
   assert.equal(hilton.meta.last_touch_channel, 'stage');
   const ixl = inputs.find(i => i.name === 'IXL Learning, Inc.');
   assert.deepEqual([ixl.source.via_upside, ixl.source.named], [true, false], 'backfilled Upside row = LIST');

@@ -114,7 +114,7 @@ test('one pull: 4 calls, measured delta 1 recorded, merged rows, P1-P4 rules, ph
   assert.equal(new Set(rules).size, rules.length, 'each rule fired exactly once');
   assert.equal(byName(sb, 'Juniper Bank').maybe_user, true);
   assert.deepEqual([byName(sb, 'Harbor Lane').matched_type, byName(sb, 'Harbor Lane').matched_id], ['partner', P.harbor]);
-  assert.deepEqual([byName(sb, 'Brightmill Foods').matched_type, byName(sb, 'Brightmill Foods').matched_id], ['opportunity', O.brightmill]);
+  assert.deepEqual([byName(sb, 'Brightmill Foods').matched_type, byName(sb, 'Brightmill Foods').matched_id], ['employer', O.brightmill]);
   assert.deepEqual(byName(sb, 'Cedar Row').top_paths, [{ path: '/contact', visits: 2 }]);
   assert.equal(byName(sb, 'Nimbus Freight').last_visit, '2026-10-19');
 
@@ -256,7 +256,7 @@ test('Board: the latest visit lands on the matched partner and employer rows', (
     visits: [
       { matched_type: 'partner', matched_id: 'p1', last_visit: '2026-10-18', visits_7d: 2, pulled_on: '2026-10-19' },
       { matched_type: 'partner', matched_id: 'p1', last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20' },
-      { matched_type: 'opportunity', matched_id: 'o1', last_visit: '2026-10-19', visits_7d: 1, pulled_on: '2026-10-20' },
+      { matched_type: 'employer', matched_id: 'o1', last_visit: '2026-10-19', visits_7d: 1, pulled_on: '2026-10-20' },
     ],
   });
   assert.deepEqual(rows.find(r => r.id === 'p1').visited, { last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20', priority: null });

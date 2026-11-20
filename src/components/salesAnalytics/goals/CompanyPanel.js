@@ -100,7 +100,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     goalsApi.fitOf(businessId, row.type, row.id).then(d => alive && setFit(d)).catch(() => alive && setFit(null));
     goalsApi.scoreOf(businessId, row.type, row.id).then(d => alive && setScore(d)).catch(() => alive && setScore(null));
     goalsApi.flowEvents(businessId, row.type, row.id).then(d => alive && setFlow(d)).catch(() => alive && setFlow([]));
-    goalsApi.todoEvents(businessId, { link_type: row.type === 'employer' ? 'opportunity' : row.type, link_id: row.id })
+    goalsApi.todoEvents(businessId, { link_type: row.type, link_id: row.id })
       .then(ev => alive && setTodoLines(ev.filter(e => e.todo).map(e => ({ id: `todo-${e.id}`, at: e.at, kind: e.kind, by_user: e.by_user || 'system', undone_at: e.undone_at, text: `To-do ${e.words}: ${e.todo.text}` }))))
       .catch(() => alive && setTodoLines([]));
     if (live) goalsApi.referredBy(businessId, row.id).then(d => alive && setNetwork(d.network || null)).catch(() => alive && setNetwork(null));
@@ -162,6 +162,11 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0 }}>
       <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: SA.text, overflowWrap: 'anywhere', minWidth: 0 }}>{row.name}</h2>
       {live ? <KindStageChip row={row} /> : <TypeChip row={row} style={{ height: 24 }} />}
+      {detail?.record?.promoted_to && (
+        <button type="button" data-promoted-to onClick={() => onConvert?.(detail.record.promoted_to, true)} style={{ ...SA_TYPE.body, fontSize: 13, color: SA.link, background: 'none', border: 0, padding: 0, minHeight: 24, cursor: 'pointer', textDecoration: 'underline' }}>
+          promoted → {detail.record.promoted_to.name}
+        </button>
+      )}
       {live && <LiveChip since={liveSince(detail?.stage_history)} />}
       {canEdit && (row.type === 'partner' || row.type === 'employer') && (
         <span data-window-pin style={{ display: 'inline-flex' }}><style>{TT_CSS}</style>

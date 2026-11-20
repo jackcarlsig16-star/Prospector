@@ -35,8 +35,8 @@ const activity = [
   { business_id: B, person_key: 'prospect:cD', contact_id: 'cD', sent: 2, opened_h: 1, bot_opens: 0, clicked: 0, replied: 0, last_sent_at: '2026-11-01T12:00:00Z', last_open_at: '2026-11-02T12:00:00Z', last_click_at: null, last_reply_at: null, reply_class: null, heat: null, heat_band: null, computed_at: '2026-11-06T13:00:00Z' },
 ];
 const visits = [
-  { id: 'v1', business_id: B, company_key: 'acme health', company_name: 'Acme Health', matched_type: 'opportunity', matched_id: O, visits_7d: 6, last_visit: '2026-11-05', seen_to: '2026-11-06', top_paths: [{ path: '/pricing' }], pulled_on: '2026-11-06' },
-  { id: 'v0', business_id: B, company_key: 'acme health', company_name: 'Acme Health', matched_type: 'opportunity', matched_id: O, visits_7d: 2, last_visit: '2026-10-20', seen_to: '2026-10-21', top_paths: [], pulled_on: '2026-10-21' },
+  { id: 'v1', business_id: B, company_key: 'acme health', company_name: 'Acme Health', matched_type: 'employer', matched_id: O, visits_7d: 6, last_visit: '2026-11-05', seen_to: '2026-11-06', top_paths: [{ path: '/pricing' }], pulled_on: '2026-11-06' },
+  { id: 'v0', business_id: B, company_key: 'acme health', company_name: 'Acme Health', matched_type: 'employer', matched_id: O, visits_7d: 2, last_visit: '2026-10-20', seen_to: '2026-10-21', top_paths: [], pulled_on: '2026-10-21' },
   { id: 'v2', business_id: B, company_key: 'quarry labs', company_name: 'Quarry Labs', matched_type: null, matched_id: null, visits_7d: 1, last_visit: '2026-10-22', seen_to: '2026-10-23', top_paths: ['/'], pulled_on: '2026-10-23' },
 ];
 const settings = [{ business_id: B, buyer_titles: ['vp people', 'benefits'] }];

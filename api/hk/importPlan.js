@@ -5,7 +5,8 @@
 // duplicate for Review (SALT vs Hogsalt), never merged. Addresses go ONLY into contacts: one found inside free text is
 // moved out to a contact and removed from the text before cleanText. The legacy DB rows are a cross-check, nothing is
 // read from them into a brand.
-import { normName, nameMatches } from '../sales/intakeMatch.js';
+import { nameMatches } from '../sales/intakeMatch.js';
+import { normName } from '../sales/normName.js';
 import { cleanText } from '../sales/scrubText.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { normalizeStatus, mostAdvanced } from './importStatus.js';

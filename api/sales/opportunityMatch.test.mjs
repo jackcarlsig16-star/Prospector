@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { orgKey, matchOpportunity, moveForward } from './opportunityMatch.js';
+import { matchOpportunity, moveForward } from './opportunityMatch.js';
+import { normName } from './normName.js';
 
 const OPPS = [
   { id: 'o1', organization: 'Solidcore', stage: 'responded', apollo_account_id: 'ap-solid' },
@@ -10,10 +11,10 @@ const OPPS = [
 ];
 
 test('the key drops brackets, punctuation, case, extra spaces and inc / llc / corp / co', () => {
-  assert.equal(orgKey('[solidcore]'), 'solidcore');
-  assert.equal(orgKey('  Nike,  Inc. '), 'nike');
-  assert.equal(orgKey('Foo LLC'), orgKey('foo corp'));
-  assert.equal(orgKey('Costco'), 'costco', 'a word ending in "co" is not a suffix');
+  assert.equal(normName('[solidcore]'), 'solidcore');
+  assert.equal(normName('  Nike,  Inc. '), 'nike');
+  assert.equal(normName('Foo LLC'), normName('foo corp'));
+  assert.equal(normName('Costco'), 'costco', 'a word ending in "co" is not a suffix');
 });
 
 test('match: apollo id first, then the key; never a partial name', () => {

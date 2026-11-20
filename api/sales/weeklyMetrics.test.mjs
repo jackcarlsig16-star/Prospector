@@ -53,7 +53,7 @@ const seed = (extra = {}) => fakeSupabase({
   sales_prospect_state: [{ business_id: B, contact_id: 'c2', name: 'Dana Mayer', company: 'Beta Co', opportunity_id: null, goal_id: null }, { business_id: B, contact_id: 'c5', name: 'Lee Stone', company: 'Beta Co', opportunity_id: null, goal_id: null }],
   sales_opportunities: [{ id: u('1'), business_id: B, organization: 'Acme', apollo_account_id: 'a1' }],
   web_visits: [
-    { id: 1, business_id: B, company_key: 'acme', pulled_on: '2026-11-12', seen_from: '2026-11-12', seen_to: '2026-11-12', matched_type: 'opportunity', matched_id: u('1') },
+    { id: 1, business_id: B, company_key: 'acme', pulled_on: '2026-11-12', seen_from: '2026-11-12', seen_to: '2026-11-12', matched_type: 'employer', matched_id: u('1') },
     { id: 2, business_id: B, company_key: 'beta co', pulled_on: '2026-11-18', seen_from: '2026-11-18', seen_to: '2026-11-18', matched_type: null, matched_id: null },
   ],
   sales_people: [{ id: u('7'), business_id: B, name: 'Lee Stone', company_name: 'Beta Co', opportunity_id: null, target_id: null, apollo_person_id: null, created_at: '2026-11-18T20:00:00Z', source_kind: 'web_visit', archived_at: null }],

@@ -153,7 +153,7 @@ test('no account for an employer / target -> ONE enrich to-do linked to the oppo
   assert.equal(e.status, 'no_account'); assert.equal(e.todo_created, true); assert.deepEqual(calls(), []);
   const t = await company(sb, 'target', T.none);
   assert.equal(t.status, 'no_account'); assert.equal(t.todo_created, true);
-  assert.deepEqual(sb.db.sales_week_goals.map(x => [x.link_type, x.link_id, x.text]), [['opportunity', E.none, enrichText('Nowhere Employer', 'no_account')], ['target', T.none, enrichText('Unknown Target', 'no_account')]]);
+  assert.deepEqual(sb.db.sales_week_goals.map(x => [x.link_type, x.link_id, x.text]), [['employer', E.none, enrichText('Nowhere Employer', 'no_account')], ['target', T.none, enrichText('Unknown Target', 'no_account')]]);
   assert.equal((await company(sb, 'employer', E.none)).todo_created, false);
   const p = await company(sb, 'partner', G.two);
   assert.equal(p.status, 'found'); assert.equal(sb.db.partner_contacts.length, 2, 'partners still store their people');

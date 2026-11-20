@@ -16,7 +16,7 @@ export const TOP_LIMIT = 50, TOP_LIMIT_MAX = 1000;
 export const SIZE_IDS = ['5000', '1000', '200', 'small', 'unknown'];
 export const sizeId = e => (e == null ? 'unknown' : e >= 5000 ? '5000' : e >= 1000 ? '1000' : e >= 200 ? '200' : 'small');
 const SIZE_SHORT = { 5000: '5,000+', 1000: '1,000–4,999', 200: '200–999', small: 'under 200', unknown: 'size unknown' };
-const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const LINK_TYPES = ['partner', 'employer', 'target'];
 const STAGE_FIELD = { partner: 'pipeline_status', employer: 'stage', target: 'status' };
 const BANDS = ['P1', 'P2', 'P3', 'P4'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -86,7 +86,7 @@ export async function topTargets(supabase, businessId, query = {}, { now = Date.
     all('sales_goals', `${cols}, name, priority, priority_set_at, next_meeting_at`, x => x.eq('goal_type', 'partnership')),
     all('sales_opportunities', `${cols}, priority, priority_set_at, next_action_date`),
     all('sales_targets', cols),
-    all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, carried_from_id', x => x.eq('kind', 'todo').in('link_type', Object.values(LINK_TYPE))),
+    all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, carried_from_id', x => x.eq('kind', 'todo').in('link_type', LINK_TYPES)),
   ]);
   const next = nextTodos(todos);
   const rec = new Map([...partners.map(r => [`partner:${r.id}`, r]), ...employers.map(r => [`employer:${r.id}`, r]), ...targets.map(r => [`target:${r.id}`, r])]);
@@ -95,7 +95,7 @@ export async function topTargets(supabase, businessId, query = {}, { now = Date.
     const row = rec.get(`${r.type}:${r.id}`) || null;
     const pin = row ? pinState(row, now) : null;
     const nextDate = [row?.next_meeting_at, row?.next_action_date].find(d => d && String(d).slice(0, 10) >= new Date(now).toISOString().slice(0, 10)) || null;
-    const todo = next.get(`${LINK_TYPE[r.type]}:${r.id}`) || null;
+    const todo = next.get(`${r.type}:${r.id}`) || null;
     const said = r.stage ? String(r.stage).replace(/_/g, ' ') : null;
     const stageLabel = boardStage(r.type, { [STAGE_FIELD[r.type]]: r.stage })?.stage_label || (said ? said[0].toUpperCase() + said.slice(1) : null);
     const from = partnerName.get(r.source_partner_id) || null;

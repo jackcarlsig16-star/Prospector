@@ -107,8 +107,8 @@ test('routes: partner update / employer-that-is-a-partner / target / possible / 
 
   const fit = by['HLU-0006'];
   assert.equal(fit.route, 'opp_insert');
-  assert.deepEqual([fit.row.stage, fit.row.owner, fit.row.owner_team, fit.row.tier, fit.row.decision_makers, fit.row.record_id],
-    ['meeting', 'Jack', 'homelover', '2', 'Jill Vaslow — Benefits lead', 'HLU-0006']);
+  assert.deepEqual([fit.row.stage, 'owner' in fit.row, fit.row.owner_team, fit.row.tier, fit.row.decision_makers, fit.row.record_id],
+    ['meeting', false, 'homelover', '2', 'Jill Vaslow — Benefits lead', 'HLU-0006']);
   assert.equal(by['HLU-0005'].patch.cohort, 'Hospitality');
   assert.ok(!/Segment/.test(by['HLU-0005'].patch.notes || ''), 'opps keep segment as cohort, not in notes');
   assert.deepEqual([by['HLU-0007'].row.org_type, by['HLU-0007'].row.stage], ['membership', 'on_hold']);

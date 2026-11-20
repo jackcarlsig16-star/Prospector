@@ -11,7 +11,7 @@ import { applyPartnerSignal } from './partnerSignals.js';
 import { moveTargetPeople, relinkParked } from './visitorPeopleMove.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
-import { rematchVisits } from './visitMatch.js';
+import { restampVisits, logRestamp } from './restampVisits.js';
 import { isSnoozed } from '../../src/constants/todoSnooze.js';
 
 // call-notes-targets-v1 - companies named in notes that aren't a partner or
@@ -20,7 +20,7 @@ import { isSnoozed } from '../../src/constants/todoSnooze.js';
 // Copy-for-Claude bundle for a partner, employer or target.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TARGET_COLS = `id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, owner_user_id, employees, employees_source, employees_at, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at, ${SOURCE_COLS}`;
+const TARGET_COLS = `id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, owner_user_id, employees, employees_source, employees_at, evidence, research_notes, promoted_goal_id, employer_id, source_note_id, channel, created_at, decided_at, ${SOURCE_COLS}`;
 const NOTE_COLS = 'title, call_date, source_label';
 const PROMOTE_TO = ['partner', 'employer'];
 const REOPEN_MAX = 50;
@@ -110,22 +110,22 @@ export function validatePromote(body, target) {
 // runs and the web visits matched to the target. Signals and priority
 // overrides key on the company name, so they follow on their own; to-dos
 // are relinked by the partner path only (an employer has no link type yet).
-const VISIT_TYPE = { partner: 'partner', employer: 'opportunity' };
 // visitor-people-follow-record-v1 V1 / V5: the target's people move too, and parked people of the same name join.
 async function moveTargetData(supabase, { businessId, userId, target, to, id, undo, manifest }) {
   const runs = must(await supabase.from('research_runs').update({ entity_type: to, entity_id: id })
     .eq('business_id', businessId).eq('entity_type', 'target').eq('entity_id', target.id).select('id'));
   if (runs.length) undo.push(() => supabase.from('research_runs').update({ entity_type: 'target', entity_id: target.id }).in('id', runs.map(r => r.id)));
   if (manifest) manifest.runs = runs.map(r => r.id);
-  const visits = must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[to], matched_id: id })
-    .eq('business_id', businessId).eq('matched_type', 'target').eq('matched_id', target.id).select('id'));
-  if (visits.length) undo.push(() => supabase.from('web_visits').update({ matched_type: 'target', matched_id: target.id }).in('id', visits.map(v => v.id)));
-  if (manifest) { manifest.visits = visits.map(v => v.id); manifest.people = []; }
+  // data-keys-v1 K10: the visit rows matched to the target follow the new record, and still-unmatched rows of the
+  // same name / domain join it (homelover-flow-v1 ruling F-d).
+  const stamped = await restampVisits(supabase, { businessId, from: { type: 'target', id: target.id }, to: { type: to, id, name: target.name, domain: target.domain || null } });
+  if (stamped.ids.length) undo.push(() => supabase.from('web_visits').update({ matched_type: 'target', matched_id: target.id }).in('id', stamped.ids));
+  if (manifest) { manifest.visits = stamped.ids; manifest.people = []; }
   const people = await moveTargetPeople(supabase, { businessId, userId, targetId: target.id, to, id, undo, collect: manifest?.people });
   const parked = await relinkParked(supabase, { businessId, userId, type: to, id, name: target.name, undo, collect: manifest?.people });
-  // homelover-flow-v1 ruling F-d: still-unmatched visit rows of the same name / domain follow the promoted record.
-  const matched = await rematchVisits(supabase, { businessId, type: to, id, name: target.name, domain: target.domain || null });
-  return { research_moved: runs.length, visits_moved: visits.length + matched, people_moved: people + parked };
+  const visits = stamped.ids.length + stamped.matched;
+  await logRestamp(supabase, { businessId, to: { type: to, id }, text: `Promoted from the target ${target.name} · ${visits} visit ${visits === 1 ? 'row' : 'rows'} followed`, moved: stamped.ids.length, matched: stamped.matched, meta: { from_target_id: target.id }, byUser: userId });
+  return { research_moved: runs.length, visits_moved: visits, people_moved: people + parked };
 }
 
 // lead-source-v1: a promoted target hands its source on unchanged (a person's pick stays theirs).
@@ -185,9 +185,9 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
 async function promoteToEmployer(supabase, { businessId, userId, target, payload, apolloAccountId, manifest }) {
   const prev = { target_status: target.status, target_decided_at: target.decided_at ?? null };
   const found = await findOpportunity(supabase, businessId, { name: payload.name, apolloAccountId });
-  if (found) return { already: { type: 'opportunity', id: found.id, name: found.organization } };
+  if (found) return { already: { type: 'employer', id: found.id, name: found.organization } };
   const now = new Date().toISOString();
-  // The notes carry the target id: there is no employer link column (REV4 T3).
+  // The target keeps the employer's id (data-keys-v1 K2: employer_id); the notes line is the readable trail.
   const notes = [`(${slash(laDateString())}) from target ${target.id}: ${cleanText(target.evidence, 400) || payload.name}`, cleanLines(target.research_notes, 400)].filter(Boolean).join('\n');
   const ins = await supabase.from('sales_opportunities').insert({
     business_id: businessId, organization: payload.name, org_type: 'employer', stage: 'target', source: 'manual', channel: target.channel || 'unknown', notes,
@@ -202,9 +202,9 @@ async function promoteToEmployer(supabase, { businessId, userId, target, payload
     await logInherited(supabase, { businessId, target, type: 'employer', id: opportunity.id, userId });
     undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'employer').eq('record_id', opportunity.id));
     const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'employer', id: opportunity.id, undo, manifest });
-    const updated = await acceptTarget(supabase, target, {}, now);
+    const updated = await acceptTarget(supabase, target, { employer_id: opportunity.id }, now);
     if (manifest) Object.assign(manifest, prev);
-    return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
+    return { created: { type: 'employer', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
   } catch (e) {
     await rollback(undo);
     throw e;
@@ -232,7 +232,7 @@ export async function promoteTarget(supabase, { businessId, userId, targetId, bo
     v.payload.owner = who.person;
     const [ctx, note] = await Promise.all([companyContext(supabase, businessId, target.id), sourceNote(supabase, target)]);
     const hit = resolveCompany(v.payload.name, ctx);
-    if (hit && (hit.type === 'partner' || hit.type === 'opportunity')) return reply(200, { already: { type: hit.type, id: hit.id, name: hit.name } });
+    if (hit && (hit.type === 'partner' || hit.type === 'opportunity')) return reply(200, { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } });
     const out = v.payload.to === 'partner'
       ? await promoteToPartner(supabase, { businessId, userId, target, payload: v.payload, note })
       : await promoteToEmployer(supabase, { businessId, userId, target, payload: v.payload, apolloAccountId: hit?.type === 'account' ? hit.id : null });
@@ -291,14 +291,14 @@ export async function undoContactTarget(supabase, { businessId, targetId, body, 
     if (now - new Date(opp.created_at) > UNDO_WINDOW_MS) return reply(409, { error: 'too late to undo - archive the employer instead' });
     const stamp = now.toISOString();
     if (runs.length) must(await supabase.from('research_runs').update({ entity_type: 'target', entity_id: targetId }).eq('business_id', businessId).eq('entity_type', 'employer').eq('entity_id', opp.id).in('id', runs).select('id'));
-    if (visits.length) must(await supabase.from('web_visits').update({ matched_type: 'target', matched_id: targetId }).eq('business_id', businessId).eq('matched_type', 'opportunity').eq('matched_id', opp.id).in('id', visits).select('id'));
+    if (visits.length) must(await supabase.from('web_visits').update({ matched_type: 'target', matched_id: targetId }).eq('business_id', businessId).eq('matched_type', 'employer').eq('matched_id', opp.id).in('id', visits).select('id'));
     for (const p of people) {
       must(await supabase.from('sales_people').update({ company_type: p.company_type, target_id: p.company_type === 'target' ? targetId : null, opportunity_id: null, updated_at: stamp })
         .eq('business_id', businessId).eq('id', p.id).eq('opportunity_id', opp.id).select('id'));
     }
     if (b.todo_id != null) {
       const todo = await loadTodo(supabase, businessId, b.todo_id);
-      if (todo && isTodo(todo) && todo.link_type === 'opportunity' && todo.link_id === opp.id) await applyTodo(supabase, { businessId, row: todo, patch: { status: 'dropped' }, actor: userId, origin: 'panel', now });
+      if (todo && isTodo(todo) && todo.link_type === 'employer' && todo.link_id === opp.id) await applyTodo(supabase, { businessId, row: todo, patch: { status: 'dropped' }, actor: userId, origin: 'panel', now });
     }
     must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'employer').eq('record_id', opp.id));
     must(await supabase.from('sales_opportunities').delete().eq('business_id', businessId).eq('id', opp.id).select('id'));
@@ -436,12 +436,12 @@ async function employerBundle(supabase, businessId, id, names) {
   const [events, todos, waiting] = await Promise.all([
     supabase.from('sales_opportunity_events').select('event_type, from_stage, to_stage, changed_at')
       .eq('business_id', businessId).eq('opportunity_id', id).order('changed_at', { ascending: false }).limit(TOUCHES_MAX).then(must),
-    openTodos(supabase, businessId, 'opportunity', id, names),
-    openWaiting(supabase, businessId, 'opportunity', id),
+    openTodos(supabase, businessId, 'employer', id, names),
+    openWaiting(supabase, businessId, 'employer', id),
   ]);
   const head = [
     `# ${t(row.organization, 160)} — employer`,
-    [ownershipLine(row), row.owner ? `Owner: ${t(row.owner, 80)}` : null].filter(Boolean).join(' · '),
+    [ownershipLine(row), first(names, row.owner_user_id) ? `Owner: ${first(names, row.owner_user_id)}` : null].filter(Boolean).join(' · '),
     [`Stage: ${row.stage}`, row.org_type ? `Type: ${row.org_type}` : null, row.covered_lives != null ? `Covered lives: ${row.covered_lives}` : null, row.tier ? `Tier: ${row.tier}` : null, row.is_top ? 'Top' : null, row.archived_at ? 'Archived' : null].filter(Boolean).join(' · '),
     row.next_action ? `Next action: ${t(row.next_action)}${row.next_action_date ? ` (${onDay(row.next_action_date)})` : ''}` : null,
   ].filter(Boolean);

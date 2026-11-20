@@ -14,9 +14,9 @@ const visit = (id, key, name, seen_from, seen_to, extra = {}) => ({ id: `0000000
 function seed() {
   return {
     web_visits: [
-      visit('001', 'acme', 'Acme Health', '2026-10-20', '2026-10-21', { matched_type: 'opportunity', matched_id: O, naics_codes: ['6216'] }),
-      visit('002', 'acme', 'Acme Health', '2026-11-04', '2026-11-05', { matched_type: 'opportunity', matched_id: O, visits_7d: 5, naics_codes: ['6216'] }),
-      visit('003', 'acme', 'Acme Health', '2026-11-05', '2026-11-06', { matched_type: 'opportunity', matched_id: O, visits_7d: 6, naics_codes: ['6216'] }),
+      visit('001', 'acme', 'Acme Health', '2026-10-20', '2026-10-21', { matched_type: 'employer', matched_id: O, naics_codes: ['6216'] }),
+      visit('002', 'acme', 'Acme Health', '2026-11-04', '2026-11-05', { matched_type: 'employer', matched_id: O, visits_7d: 5, naics_codes: ['6216'] }),
+      visit('003', 'acme', 'Acme Health', '2026-11-05', '2026-11-06', { matched_type: 'employer', matched_id: O, visits_7d: 6, naics_codes: ['6216'] }),
       visit('004', 'quarry', 'Quarry Labs', '2026-11-03', '2026-11-04', { matched_type: 'target', matched_id: T, priority: 'P2' }),
       visit('005', 'harbor', 'Harbor Lane', '2026-10-22', '2026-10-23', { matched_type: 'partner', matched_id: G, sic_codes: ['6411'] }),
       visit('006', 'nobody', 'Nobody Co', '2026-11-05', '2026-11-06', { priority: 'P4', top_paths: [] }),

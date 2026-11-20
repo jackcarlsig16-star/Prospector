@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs';
 import { readInput, loadState, plan, applyPlan, ImportRefused } from './masterImport.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { getSupabase } from './goalsShared.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 import { STAGE_LABELS } from '../../src/components/salesAnalytics/pipelineStages.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';

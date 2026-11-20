@@ -35,7 +35,7 @@ const seed = () => fakeSupabase({
   ],
   sales_targets: [{ id: randomId(), business_id: HL, name: 'Known Target', domain: 'knowntarget.example', status: 'proposed', owner_team: 'both' }],
   partner_domains: [{ id: randomId(), business_id: HL, goal_id: ID.hub, domain: 'hub.example', confirmed: true }, { id: randomId(), business_id: HL, goal_id: ID.hub, domain: 'hubinternational.example', confirmed: false, source: 'apollo' }],
-  sales_week_goals: [{ id: randomId(), business_id: HL, kind: 'todo', status: 'open', text: 'Send agreement', link_type: 'opportunity', link_id: ID.mom }],
+  sales_week_goals: [{ id: randomId(), business_id: HL, kind: 'todo', status: 'open', text: 'Send agreement', link_type: 'employer', link_id: ID.mom }],
   sales_week_report: [], sales_source_events: [], sales_client_events: [], sales_opportunity_events: [], sales_outreach_contacts: [], sales_prospect_state: [], sales_people: [], web_visits: [], research_runs: [],
 }, { triggers: { sales_opportunities: opportunityEventsTrigger }, now: () => now.getTime() });
 function randomId() { return crypto.randomUUID(); }

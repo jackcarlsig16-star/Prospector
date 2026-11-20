@@ -6,6 +6,7 @@ import { touchStageMove, TOUCH_TYPE_IDS } from '../../src/constants/partnerPipel
 import { OWNER_TEAMS, doubleTouchWarning } from '../../src/constants/ownership.js';
 import { toDeal } from './intakeDeal.js';
 import { cleanReferral } from './leadSource.js';
+import { normName } from './normName.js';
 
 // call-notes-targets-v1 REV3 - the four Intake lists the model returns
 // (companies, people, touches, facts) checked against this workspace. The
@@ -24,13 +25,6 @@ export const EMPLOYER_FACT_COLUMN = { champion: 'champion', watch_outs: 'objecti
 export const SINGLE_VALUED = new Set(['next_step', 'next_action']);
 
 
-const SUFFIX = /\b(inc|llc|ltd|corp|corporation|co|plc)$/;
-export function normName(s) {
-  let n = String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
-    .replace(/\([^)]*\)/g, ' ').replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
-  while (SUFFIX.test(n)) n = n.replace(SUFFIX, '').trim();
-  return n.replace(/^the /, '');
-}
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const hasWords = (inner, outer) => new RegExp(`(^| )${escape(inner)}( |$)`).test(outer);
 // FIX dupe-generic-words-v1 - words that name nothing on their own: a stored row called "Enterprise" must not

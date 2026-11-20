@@ -1,4 +1,4 @@
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';

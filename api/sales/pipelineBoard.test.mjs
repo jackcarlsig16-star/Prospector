@@ -58,8 +58,8 @@ const state = () => ({
     { id: 'p3', name: 'Acme Partners', pipeline_status: 'live', category: '1. Current Partners (active)', tier: 'active' },
   ],
   opportunities: [
-    { id: 'o1', organization: 'Solidcore', org_type: 'employer', stage: 'meeting', owner: 'Jack', owner_team: 'both', tier: '2', next_action: 'Call', next_action_date: '2026-10-20', pinned_until: '2099-01-01T00:00:00+00:00', apollo_account_id: 'A1' },
-    { id: 'o2', organization: 'Big Union', org_type: 'membership', stage: 'contacted', owner: 'Cyrus', owner_team: null, tier: null },
+    { id: 'o1', organization: 'Solidcore', org_type: 'employer', stage: 'meeting', owner_user_id: 'u1', owner_team: 'both', tier: '2', next_action: 'Call', next_action_date: '2026-10-20', pinned_until: '2099-01-01T00:00:00+00:00', apollo_account_id: 'A1' },
+    { id: 'o2', organization: 'Big Union', org_type: 'membership', stage: 'contacted', owner_user_id: null, owner_team: null, tier: null },
     { id: 'o3', organization: 'Channel Co', org_type: 'channel_partner', stage: 'responded', apollo_account_id: 'A3' },
     { id: 'o4', organization: 'Early Bird', org_type: 'employer', stage: 'meeting', tier: '2', next_action_date: '2026-10-17' },
   ],
@@ -243,9 +243,9 @@ test('open to-dos and waiting per row: open only, newest carried copy, overdue =
     { id: 'a', kind: 'todo', status: 'open', due_date: '2026-10-19', link_type: 'partner', link_id: 'p1' },
     { id: 'b', kind: 'todo', status: 'open', due_date: '2026-10-20', link_type: 'partner', link_id: 'p1' },
     { id: 'c', kind: 'todo', status: 'done', due_date: '2026-10-01', link_type: 'partner', link_id: 'p1' },
-    { id: 'd', kind: 'todo', status: 'open', due_date: '2026-10-12', link_type: 'opportunity', link_id: 'o1' },
-    { id: 'e', kind: 'todo', status: 'open', due_date: '2026-10-19', link_type: 'opportunity', link_id: 'o1', carried_from_id: 'd' },
-    { id: 'f', kind: 'waiting', status: 'open', due_date: '2026-10-18', link_type: 'opportunity', link_id: 'o1' },
+    { id: 'd', kind: 'todo', status: 'open', due_date: '2026-10-12', link_type: 'employer', link_id: 'o1' },
+    { id: 'e', kind: 'todo', status: 'open', due_date: '2026-10-19', link_type: 'employer', link_id: 'o1', carried_from_id: 'd' },
+    { id: 'f', kind: 'waiting', status: 'open', due_date: '2026-10-18', link_type: 'employer', link_id: 'o1' },
     { id: 'g', kind: 'todo', status: 'dropped', link_type: 'target', link_id: 't1' },
   ];
   const rows = buildBoard(s);
@@ -257,7 +257,7 @@ test('open to-dos and waiting per row: open only, newest carried copy, overdue =
 test('employer last touch = latest stage change or linked to-do done; created / archived are not contact (FIX loop-quickfixes Q4)', () => {
   const s = v2();
   s.oppEvents = [{ opportunity_id: 'o1', event_type: 'stage_change', changed_at: '2026-10-10T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'created', changed_at: '2026-10-18T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'archived', changed_at: '2026-10-19T00:00:00Z' }, { opportunity_id: 'o4', event_type: 'archived', changed_at: '2026-10-19T00:00:00Z' }];
-  s.linked = [{ id: 'x', kind: 'todo', status: 'done', link_type: 'opportunity', link_id: 'o1', completed_at: '2026-10-12T00:00:00Z' }];
+  s.linked = [{ id: 'x', kind: 'todo', status: 'done', link_type: 'employer', link_id: 'o1', completed_at: '2026-10-12T00:00:00Z' }];
   const rows = buildBoard(s);
   assert.equal(rows.find(r => r.id === 'o1').last_touch_at, '2026-10-12T00:00:00Z');
   assert.equal(rows.find(r => r.id === 'o4').last_touch_at, null);

@@ -74,7 +74,6 @@ export async function checkPartnerApollo(supabase, { businessId, goalId, userId,
 }
 
 export const CHECK_TYPES = ['partner', 'employer', 'target'];
-const LINK_TYPE = { employer: 'opportunity', target: 'target' };
 
 // An employer or target: same shape as checkPartnerApollo; people are
 // returned, not stored.
@@ -99,7 +98,7 @@ async function checkRecordApollo(supabase, { businessId, type, id, userId, today
     if (people.length) return { ...out, status: 'found', people, truncated: !!result.truncated };
   }
   const why = account ? 'no_people' : 'no_account';
-  const { todo, created } = await ensureEnrichTodo(supabase, { businessId, goal, userId, why, today, linkType: LINK_TYPE[type] });
+  const { todo, created } = await ensureEnrichTodo(supabase, { businessId, goal, userId, why, today, linkType: type });
   return { ...out, status: why, todo, todo_created: created };
 }
 

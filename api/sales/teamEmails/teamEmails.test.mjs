@@ -405,11 +405,11 @@ test('visitor-email-clarity V3 loader: last touch comes from the company panel s
   const mk = (n, type, id) => ({ id: `00000000-0000-4000-8000-00000000c00${n}`, business_id: B, company_key: `k${n}`, company_name: `Co ${n}`, visits_7d: 4, unique_visitors_7d: 1, top_paths: [], intent_score: 60 - n, priority: 'P2', matched_type: type, matched_id: id, pulled_on: '2026-11-04', seen_from: '2026-11-03', seen_to: '2026-11-04', created_at: '2026-11-04T14:00:00Z', updated_at: '2026-11-04T14:00:00Z' });
   const G = '00000000-0000-4000-8000-00000000e001', O = '00000000-0000-4000-8000-00000000e002', O2 = '00000000-0000-4000-8000-00000000e003';
   const s = sb({
-    web_visits: [mk(1, 'partner', G), mk(2, 'opportunity', O), mk(3, 'opportunity', O2), mk(4, null, null)],
+    web_visits: [mk(1, 'partner', G), mk(2, 'employer', O), mk(3, 'employer', O2), mk(4, null, null)],
     sales_goals: [{ id: G, business_id: B, name: 'Co 1', pipeline_status: 'contacted', owner_user_id: U.m1, last_touch_at: '2026-11-03T17:00:00Z' }],
     sales_partner_events: [{ id: 'ev1', business_id: B, goal_id: G, event: 'touch', touch_type: 'call', at: '2026-11-03T17:00:00Z', by_user: U.m1 }],
     sales_opportunities: [{ id: O, business_id: B, organization: 'Co 2', stage: 'contacted', owner_user_id: U.m1, client_status: null }, { id: O2, business_id: B, organization: 'Co 3', stage: 'contacted', owner_user_id: null, client_status: null }],
-    sales_week_goals: [{ id: 'w1', business_id: B, kind: 'todo', link_type: 'opportunity', link_id: O, status: 'done', completed_at: '2026-11-02T20:00:00Z', text: 'Call Jordan Visitorperson back', owner_user_id: U.m1 }],
+    sales_week_goals: [{ id: 'w1', business_id: B, kind: 'todo', link_type: 'employer', link_id: O, status: 'done', completed_at: '2026-11-02T20:00:00Z', text: 'Call Jordan Visitorperson back', owner_user_id: U.m1 }],
   });
   const members = await loadMembers(s, B);
   const rows = await loadVisitorData(s, B, { window: dayWindowFor('2026-11-04'), members });
@@ -424,7 +424,7 @@ test('visitor-email-clarity V3 loader: last touch comes from the company panel s
 });
 
 test('the visitor email body carries titles only - no person names, emails or phones', async () => {
-  const visit = { id: '00000000-0000-4000-8000-00000000c001', business_id: B, company_key: 'acme', company_name: 'Acme Health', visits_7d: 5, unique_visitors_7d: 2, top_paths: [{ path: '/pricing', visits: 3 }], intent_score: 71, priority: 'P1', matched_type: 'opportunity', matched_id: '00000000-0000-4000-8000-00000000d001', pulled_on: '2026-11-04', seen_from: '2026-11-03', seen_to: '2026-11-04', created_at: '2026-11-04T14:00:00Z', updated_at: '2026-11-04T14:00:00Z' };
+  const visit = { id: '00000000-0000-4000-8000-00000000c001', business_id: B, company_key: 'acme', company_name: 'Acme Health', visits_7d: 5, unique_visitors_7d: 2, top_paths: [{ path: '/pricing', visits: 3 }], intent_score: 71, priority: 'P1', matched_type: 'employer', matched_id: '00000000-0000-4000-8000-00000000d001', pulled_on: '2026-11-04', seen_from: '2026-11-03', seen_to: '2026-11-04', created_at: '2026-11-04T14:00:00Z', updated_at: '2026-11-04T14:00:00Z' };
   const s = sb({
     web_visits: [visit],
     sales_people: [{ id: 'p1', business_id: B, visit_id: visit.id, name: 'Jordan Visitorperson', title: 'VP People', archived_at: null }, { id: 'p2', business_id: B, visit_id: visit.id, name: 'Sam Otherperson', title: 'Benefits Lead 312-555-0199', archived_at: null }],

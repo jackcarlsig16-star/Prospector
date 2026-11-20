@@ -1,7 +1,7 @@
 import { getSupabase } from './goalsShared.js';
 import { RECORD_TABLE } from './leadSource.js';
 import { cleanText, hasPii } from './scrubText.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { logFlow } from './flowEvents.js';
 import { scheduleRecompute } from './intentScoreRun.js';
 import { HAND_FIT_LEVELS, FIT_WORD, DEPRIORITIZE_REASON_IDS, DEPRIORITIZE_REASON_WORD, DEPRIORITIZE_NOTE_MAX } from '../../src/constants/fitLevels.js';

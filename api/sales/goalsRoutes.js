@@ -10,6 +10,8 @@ import { PARTNER_METRICS } from './partnerMetrics.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/partnerPipeline.js';
 import { laDateString } from './laDate.js';
+import { readType } from './readType.js';
+import { renamed } from './restampVisits.js';
 import { peopleCounts } from './partnerPeople.js';
 import { CHANNEL_IDS } from '../../src/constants/salesChannels.js';
 import { validateSource, sourceColumns, logSource } from './leadSource.js';
@@ -29,9 +31,11 @@ const WEEK_STATUSES = ['open', 'done', 'dropped'];
 const WEEK_KINDS = ['commitment', 'todo', 'waiting'];
 const WAITING_ON_MAX = 120;
 // task-drawer-v1 - what a to-do serves. link_id: a commitment's, partner's,
-// target's or employer's (sales-ia-v2: 'opportunity') id, a metric key, or a
+// target's or employer's id, a metric key, or a
 // company's Apollo account_id (Goals > Companies).
-export const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target', 'opportunity', 'todo'];
+export const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target', 'employer', 'todo'];
+// An old tab's payload may still say 'opportunity' (readType counts each one).
+export const aliasLink = body => (body && typeof body.link_type === 'string' ? { ...body, link_type: readType(body.link_type) } : body);
 export const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -39,7 +43,7 @@ const LAND_FIELDS = {
   goal_type: { kind: 'enum', values: GOAL_TYPES }, name: { kind: 'required' },
   status: { kind: 'enum', values: LAND_STATUSES }, owner_user_id: { kind: 'member' },
   target_date: { kind: 'date' }, priority: { kind: 'priority' }, est_covered_lives: { kind: 'int' },
-  company_domain: { kind: 'text' }, notes: { kind: 'text' },
+  notes: { kind: 'text' },
   linked_opportunity_id: { kind: 'ref', table: 'sales_opportunities' },
   meeting_status: { kind: 'text' }, champion: { kind: 'text' }, angle: { kind: 'text' }, motto: { kind: 'text' },
   watch_outs: { kind: 'text' }, first_email: { kind: 'text' }, first_email_note: { kind: 'text' }, sources: { kind: 'text' },
@@ -112,7 +116,7 @@ export async function checkLink(supabase, businessId, payload, existing) {
     return data.length ? null : notFound;
   }
   if (!UUID.test(id) || id === existing?.id) return notFound;
-  if (type === 'target' || type === 'opportunity') {
+  if (type === 'target' || type === 'employer') {
     const { data, error } = await supabase.from(type === 'target' ? 'sales_targets' : 'sales_opportunities').select('id').eq('business_id', businessId).eq('id', id).maybeSingle();
     if (error) return { status: 500, error: error.message };
     return data ? null : notFound;
@@ -215,6 +219,7 @@ export async function updateLandGoalRoute(req, res) {
     .update({ ...v.payload, ...landTimestamps(v.payload, existing), ...priorityStamp(v.payload, req.auth.user.id), updated_at: new Date().toISOString() })
     .eq('id', existing.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  if (existing.goal_type === 'partnership' && data.name !== existing.name) await renamed(supabase, { businessId: req.params.businessId, type: 'partner', id: existing.id, from: existing.name, to: data.name, userId: req.auth.user.id });
   res.json({ goal: data });
 }
 
@@ -305,7 +310,7 @@ export async function listWeekGoalsRoute(req, res) {
 // GET /goals/tasks?link_type=&link_id= - to-dos linked to one thing (or,
 // without link_id, to anything of that type), with steps, newest week first.
 export async function listLinkedTasksRoute(req, res) {
-  const { link_type, link_id, kind = 'todo' } = req.query;
+  const { link_id, kind = 'todo' } = req.query, link_type = readType(req.query.link_type);
   if (!LINK_TYPES.includes(link_type)) return res.status(400).json({ error: `bad enum: link_type must be one of ${LINK_TYPES.join('|')}` });
   if (!['todo', 'waiting'].includes(kind)) return res.status(400).json({ error: 'bad enum: kind must be one of todo|waiting' });
   try {
@@ -322,7 +327,7 @@ export async function listLinkedTasksRoute(req, res) {
 
 export async function createWeekGoalRoute(req, res) {
   const supabase = getSupabase();
-  const { origin = 'manual', ...body } = req.body || {};
+  const { origin = 'manual', ...body } = aliasLink(req.body) || {};
   if (!CLIENT_ORIGINS.includes(origin)) return res.status(400).json({ error: `origin must be one of ${CLIENT_ORIGINS.join('|')}` });
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, body);
   if (v.error) return fail(res, v);
@@ -354,7 +359,7 @@ export async function updateWeekGoalRoute(req, res) {
   const { data: existing, error: findErr } = await findRow(supabase, 'sales_week_goals', req.params.businessId, req.params.id);
   if (findErr) return res.status(500).json({ error: findErr.message });
   if (!existing) return res.status(404).json({ error: 'goal not found' });
-  const { expect = null, ...body } = req.body || {};
+  const { expect = null, ...body } = aliasLink(req.body) || {};
   if (expect != null && (typeof expect !== 'object' || Array.isArray(expect))) return res.status(400).json({ error: 'expect must be an object' });
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, body);
   if (v.error) return fail(res, v);

@@ -4,7 +4,8 @@ import { PIPELINE_STATUSES, PIPELINE_STATUS_IDS } from '../../src/constants/part
 import { STAGE_LABELS } from '../../src/components/salesAnalytics/pipelineStages.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { normName, findByName, matchOwner } from './intakeMatch.js';
+import { findByName, matchOwner } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { bulkStageRefusal } from './pipelineStages.js';
 import { validateFields } from './pipelineRoutes.js';
 import { applyPartnerSignal } from './partnerSignals.js';
@@ -334,7 +335,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
       const a = { route: 'partner_update', record_id: r.record_id, name: r.name, goal_id: p.id, matched_by: partnerHit.by, patch: {}, assign: {}, contacts: [], todo: null };
       if (r.record_id && p.record_id && p.record_id !== r.record_id) diff(r, 'record_id', p.record_id, r.record_id);
       else if (!p.record_id && r.record_id) a.patch.record_id = r.record_id;
-      for (const [field, value] of [['tier', r.tier], ['next_step', r.next_step], ['company_domain', r.company_domain]]) {
+      for (const [field, value] of [['tier', r.tier], ['next_step', r.next_step]]) {
         if (!value) continue;
         if (empty(p[field])) a.patch[field] = value;
         else if (one(String(p[field])).toLowerCase() !== value.toLowerCase()) diff(r, field, p[field], value);
@@ -407,15 +408,16 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     const extra = [...(r.company_domain ? [`Domain: ${r.company_domain}`] : []), ...(['health_plan', 'other'].includes(r.kind) ? [`Account type: ${r.kind === 'health_plan' ? 'Health plan' : 'Other'}`] : [])];
     const dmLines = people.map(c => `${c.name}${c.title ? ` — ${c.title}` : ''}${c.role ? ` (${c.role})` : ''}`);
     const seq = sequencedFor(r, state);
-    const owner = /^(jack|cyrus)$/i.test(r.owner_name) ? r.owner_name[0].toUpperCase() + r.owner_name.slice(1).toLowerCase() : isMember(r) ? r.owner_name : null;
     if (oppHit) {
       const o = oppHit.row;
       const patch = {};
       if (r.record_id && o.record_id && o.record_id !== r.record_id) diff(r, 'record_id', o.record_id, r.record_id);
       else if (!o.record_id && r.record_id) patch.record_id = r.record_id;
-      // A hand-typed non-member owner comes back from the board's export as Owner: it's the owner, not a co-owner.
-      const coOwner = r.co_owner_name && r.co_owner_name.toLowerCase() !== (o.owner || '').toLowerCase() ? r.co_owner_name : '';
-      for (const [field, value] of [['cohort', r.segment], ['tier', r.tier === 'active' ? '' : r.tier], ['next_action', r.next_step], ['next_action_date', r.next_step_due], ['owner', owner]]) {
+      // The board exports the owner's first name as Owner: the same name back is the owner, not a co-owner.
+      const ownerName = (state.members.find(m => m.id === o.owner_user_id)?.name || '').split(' ')[0];
+      const coOwner = r.co_owner_name && r.co_owner_name.toLowerCase() !== ownerName.toLowerCase() ? r.co_owner_name : '';
+      if (!o.owner_user_id && ownerId(r)) patch.owner_user_id = ownerId(r);
+      for (const [field, value] of [['cohort', r.segment], ['tier', r.tier === 'active' ? '' : r.tier], ['next_action', r.next_step], ['next_action_date', r.next_step_due]]) {
         if (!value) continue;
         if (empty(o[field])) patch[field] = value;
         else if (one(String(o[field])).toLowerCase() !== value.toLowerCase()) diff(r, field, o[field], value);
@@ -448,7 +450,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     const fields = {
       organization: r.name, org_type: r.kind === 'association' ? 'membership' : 'employer', stage: stage && stage !== 'lost' ? stage : 'target',
       ...(r.segment ? { cohort: r.segment } : {}), ...(r.tier && r.tier !== 'active' ? { tier: r.tier } : {}), ...(r.next_step ? { next_action: r.next_step } : {}),
-      ...(r.next_step_due ? { next_action_date: r.next_step_due } : {}), ...(owner ? { owner } : {}),
+      ...(r.next_step_due ? { next_action_date: r.next_step_due } : {}),
       ...(r.owner_team ? { owner_team: r.owner_team } : {}), ...(r.co_owner_name ? { co_owner_name: r.co_owner_name } : {}),
       ...(dmLines.length ? { decision_makers: dmLines.join('\n') } : {}),
     };

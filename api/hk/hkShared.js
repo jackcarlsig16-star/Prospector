@@ -5,7 +5,8 @@
 import { getServiceSupabase } from '../lib/authUser.js';
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { hasPii } from '../sales/scrubText.js';
-import { normName, nameMatches } from '../sales/intakeMatch.js';
+import { nameMatches } from '../sales/intakeMatch.js';
+import { normName } from '../sales/normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { canContact, hintName } from './rules.js';

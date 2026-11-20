@@ -77,7 +77,7 @@ test('personDetail.heat: a prospect at a visited employer carries the visit why 
     sales_opportunities: [{ id: O, business_id: B, organization: 'Acme Health' }],
     sales_targets: [{ id: T, business_id: B, name: 'Quarry Labs' }],
     sales_people: [{ id: 'sp1', business_id: B, note: null, company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: new Date(NOW).toISOString() }, { id: 'sp2', business_id: B, note: 'by hand', company_type: 'target', target_id: T, source_kind: null, created_at: '2026-10-01T00:00:00Z' }],
-    web_visits: [{ id: 'v1', business_id: B, company_key: 'acme health', matched_type: 'opportunity', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: today, seen_to: today, pulled_on: today }],
+    web_visits: [{ id: 'v1', business_id: B, company_key: 'acme health', matched_type: 'employer', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: today, seen_to: today, pulled_on: today }],
     sales_email_messages: msgs, sales_email_activity: evs,
     sales_person_heat_days: [
       { business_id: B, person_key: 'prospect:A', day: new Date(NOW - 40 * 864e5).toISOString().slice(0, 10), heat: 20, band: 'warm' },

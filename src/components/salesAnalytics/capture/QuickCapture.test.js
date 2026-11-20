@@ -164,5 +164,5 @@ test('scout-v3 R4: Scout\'s capture event opens the panel on Task, prefilled (te
   goalsApi.createWeekGoal.mockResolvedValue({ id: 'new' });
   fireEvent.submit(input.closest('form'));
   await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalledTimes(1));
-  expect(goalsApi.createWeekGoal.mock.calls[0][1]).toMatchObject({ text: 'Call Cloudflare', due_date: '2026-11-12', link_type: 'opportunity', link_id: 'e1' });
+  expect(goalsApi.createWeekGoal.mock.calls[0][1]).toMatchObject({ text: 'Call Cloudflare', due_date: '2026-11-12', link_type: 'employer', link_id: 'e1' });
 });

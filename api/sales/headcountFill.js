@@ -1,4 +1,5 @@
-import { normName, GENERIC_WORDS } from './intakeMatch.js';
+import { GENERIC_WORDS } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { MONTHLY_CREDIT_CAP } from './visitPull.js';
 

@@ -14,7 +14,7 @@ import { runVisitPull } from './visitPull.js';
 import { autoCreateSignal, uploadVisitedPeople, peopleSearch, addRecordFromPerson, addPerson } from './visitorRoutes.js';
 import { runVisitorPeoplePull, schedulePeoplePull, MAX_PAGES } from './visitorPeoplePull.js';
 import { VISITOR_LIST_NAME } from './peopleFind.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { undoSignal, listSignals } from './signalsRoutes.js';
 
 const NOW = Date.parse('2026-10-20T17:00:00Z'); // Tue Oct 20, 10:00 LA

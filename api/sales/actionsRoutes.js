@@ -31,7 +31,7 @@ export const KINDS = ['waiting', 'todo', 'flag', 'focus', 'campaign'];
 export const KIND_LABEL = { tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
 const DEFAULT_PRIORITY = { flag: 1, waiting: 2, focus: 2, tidy: 3, campaign: 2 };
 const DUE_GROUP = { now: 'today', today: 'today', week: 'week', housekeeping: 'later' };
-const CAMPAIGN_LINK = [['goal_id', 'partner'], ['opportunity_id', 'opportunity'], ['target_id', 'target']];
+const CAMPAIGN_LINK = [['goal_id', 'partner'], ['opportunity_id', 'employer'], ['target_id', 'target']];
 export const campaignLink = c => CAMPAIGN_LINK.map(([col, type]) => (c[col] ? { type, id: c[col] } : null)).find(Boolean) || null;
 const TIDY_PRIORITY = { visited_no_touch: 2, nudge: 2 };
 const DAY = 864e5;
@@ -40,8 +40,8 @@ const must = r => { if (r.error) throw err(500, r.error.message); return r.data;
 const lateDays = (due, today) => Math.round((Date.parse(today) - Date.parse(due)) / DAY);
 const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
 
-// link_type / match.type -> the company panel's row type.
-const PANEL_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target', company: 'apollo' };
+// link_type / a suggestion's ref_type (sales_suggestions still says 'opportunity') -> the company panel's row type.
+const PANEL_TYPE = { partner: 'partner', employer: 'employer', opportunity: 'employer', target: 'target', company: 'apollo' };
 
 export function buildActions({ todos = [], flags = [], waiting = [], suggestions = [], commitments = [], refTodos = [], campaign = null, notes = new Map(), companies, members = new Map(), today }) {
   const weekEnd = weekEndOf(today);
@@ -149,8 +149,8 @@ export async function listActions(supabase, businessId, now = new Date(), { snoo
   const weekRows = [...openTodos.rows, ...commitments];
   const refIds = suggestions.filter(s => ['todo', 'flag'].includes(s.ref_type)).map(s => s.ref_id);
   const refTodos = refIds.length ? must(await supabase.from('sales_week_goals').select('id, link_type, link_id').eq('business_id', businessId).in('id', refIds)) : [];
-  const ids = { partner: new Set(), opportunity: new Set(), target: new Set(), company: new Set() };
-  const note = (type, id) => { if (ids[type] && id) ids[type].add(id); };
+  const ids = { partner: new Set(), employer: new Set(), target: new Set(), company: new Set() };
+  const note = (type, id) => { const t = type === 'opportunity' ? 'employer' : type; if (ids[t] && id) ids[t].add(id); };
   for (const r of [...weekRows, ...flags, ...waiting, ...refTodos]) note(r.link_type, r.link_id);
   for (const s of suggestions) { note(s.ref_type === 'pair' ? 'partner' : s.ref_type, s.ref_id); }
   for (const r of [...campaign.sends, ...campaign.replies]) { const l = campaignLink(r); if (l) note(l.type, l.id); }
@@ -161,16 +161,16 @@ export async function listActions(supabase, businessId, now = new Date(), { snoo
   const [partners, opportunities, targets, apollo] = await Promise.all([
     pick('sales_goals', 'partner', 'id, name, priority, pipeline_status, category, owner_user_id, owner_team, last_touch_at',
       r => [r.id, { name: r.name, priority: r.priority, stage_label: boardStage('partner', r).stage_label, owner: ownerOf(r.owner_user_id, r.owner_team), last_touch_at: r.last_touch_at }]),
-    pick('sales_opportunities', 'opportunity', 'id, organization, priority, stage, owner, owner_team',
-      r => [r.id, { name: r.organization, priority: r.priority, stage_label: boardStage('employer', r).stage_label, owner: (r.owner || '').split(' ')[0] || TEAM_LABEL[r.owner_team] || null }]),
+    pick('sales_opportunities', 'employer', 'id, organization, priority, stage, owner_user_id, owner_team',
+      r => [r.id, { name: r.organization, priority: r.priority, stage_label: boardStage('employer', r).stage_label, owner: ownerOf(r.owner_user_id, r.owner_team) }]),
     pick('sales_targets', 'target', 'id, name, status, owner_team', r => [r.id, { name: r.name, priority: null, stage_label: boardStage('target', r)?.stage_label, owner: TEAM_LABEL[r.owner_team] || null }]),
     pick('sales_sequenced_accounts', 'company', 'account_id, name, first_sequenced_at', r => [r.account_id, { name: r.name || r.account_id, priority: null, stage_label: boardStage('apollo', r).stage_label, last_touch_at: r.first_sequenced_at }]),
   ]);
   // Employer last touch = the Pipeline's: the latest stage event or done linked to-do (FIX actions-row-detail-v1).
-  const oppIds = [...ids.opportunity];
+  const oppIds = [...ids.employer];
   const [oppEvents, oppDone, noteRows] = await Promise.all([
     oppIds.length ? all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', q => q.in('opportunity_id', oppIds).eq('event_type', 'stage_change')) : [],
-    oppIds.length ? all('sales_week_goals', 'link_type, link_id, status, completed_at', q => q.eq('link_type', 'opportunity').in('link_id', oppIds).eq('status', 'done')) : [],
+    oppIds.length ? all('sales_week_goals', 'link_type, link_id, status, completed_at', q => q.eq('link_type', 'employer').in('link_id', oppIds).eq('status', 'done')) : [],
     noteIds.length ? all('sales_call_notes', 'id, call_date', q => q.in('id', noteIds)) : [],
   ]);
   const oppTouch = employerTouches(oppEvents, oppDone);

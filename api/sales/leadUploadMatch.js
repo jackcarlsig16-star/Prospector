@@ -1,5 +1,5 @@
 import { cleanText } from './scrubText.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { findDupes } from './partnerDupeCheck.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { ownershipChip } from '../../src/constants/ownership.js';

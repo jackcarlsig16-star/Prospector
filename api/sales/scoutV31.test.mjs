@@ -98,7 +98,7 @@ test('C1 on asks: the rows ride with the ask, the resolved record becomes the fi
   assert.deepEqual(r.body.sections[0].brief, { entity: 'people', id: 'prospect:p2', grid: [{ label: 'Record', value: 'Person · VP People' }, { label: 'Owner', value: 'Unassigned' }, { label: 'Company', value: 'Cloudflare · contacted' }, { label: 'Visits', value: 'last visit 2026-11-09' }, { label: 'Last email', value: '2026-11-08 · opened' }, { label: 'Notes', value: 'Met at the expo' }] });
   assert.ok(r.body.sections[0].read.includes('goals/people/activity/person') && !r.body.sections[0].read.includes('prospect:'), r.body.sections[0].read);
   // "their tasks": the people's COMPANY is the to-do filter
-  const linked = { id: u('6'), text: 'Send Cloudflare the agreement', due_date: '2026-11-12', owner_user_id: u('a'), created_at: '2026-11-01T00:00:00Z', link_type: 'opportunity', link_id: u('3'), steps: [] };
+  const linked = { id: u('6'), text: 'Send Cloudflare the agreement', due_date: '2026-11-12', owner_user_id: u('a'), created_at: '2026-11-01T00:00:00Z', link_type: 'employer', link_id: u('3'), steps: [] };
   const seen = [];
   salesReads.openTodosFor = async (_sb, _b, who) => { seen.push(who); return { rows: [linked, { ...linked, id: u('7'), text: 'Call another account', link_id: u('4') }], total: 2 }; };
   salesReads.companyBrief = async () => ({ status: 200, body: { company: { type: 'employer', id: u('3'), name: 'Cloudflare' }, score: null, next_step: null, lines: [] } });
@@ -368,7 +368,7 @@ test('C4 through the REAL writers (no fakes): done -> the row and its event (ori
   const made = await act(sb, registry, { auth: ana, body: { plan_id: add.body.plan_id } });
   assert.equal(made.body.done, 1, JSON.stringify(made.body));
   const todo = sb.db.sales_week_goals.find(t => t.text === 'Call Cloudflare');
-  assert.deepEqual([todo.status, todo.due_date, todo.link_type, todo.link_id, todo.owner_user_id, todo.origin], ['open', '2026-11-12', 'opportunity', u('3'), u('a'), 'scout']);
+  assert.deepEqual([todo.status, todo.due_date, todo.link_type, todo.link_id, todo.owner_user_id, todo.origin], ['open', '2026-11-12', 'employer', u('3'), u('a'), 'scout']);
   assert.deepEqual(sb.db.sales_todo_events.at(-1).kind, 'create'); assert.equal(sb.db.sales_todo_events.at(-1).batch_id, add.body.plan_id);
   await undo(sb, registry, { auth: ana, body: { plan_id: add.body.plan_id } });
   assert.equal(sb.db.sales_week_goals.find(t => t.text === 'Call Cloudflare').status, 'dropped');

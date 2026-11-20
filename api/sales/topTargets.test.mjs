@@ -164,7 +164,7 @@ test('GET goals/top-targets: the P1 pins first (newest pin first), then score; a
     score('partner', P.harbor, 'Zz Harbor Lane', 45, 'P2'),
     score('employer', X.closed, 'Zz Closed', 9, 'P4', { closed: true }), score('employer', X.won, 'Zz Won', 70, 'P1', { flagged_out: true }), score('employer', X.dupe, 'Zz Dupe', 66, 'P1', { duplicate_of: `employer:${X.top}` }),
   ];
-  const todo = (id, link_id, text, due_date, extra = {}) => ({ id, business_id: B, kind: 'todo', status: 'open', link_type: 'opportunity', link_id, text, due_date, carried_from_id: null, ...extra });
+  const todo = (id, link_id, text, due_date, extra = {}) => ({ id, business_id: B, kind: 'todo', status: 'open', link_type: 'employer', link_id, text, due_date, carried_from_id: null, ...extra });
   data.sales_week_goals = [todo('t1', X.top, 'Later one', '2026-11-25'), todo('t2', X.top, 'Call the CHRO at jo@example.com', '2026-11-17'), todo('t3', X.top, 'No date', null), todo('t4', E.acme, 'Done one', '2026-11-14', { status: 'done' }), todo('t5', E.acme, 'A waiting line', '2026-11-14', { kind: 'waiting' })];
   const sb = fakeSupabase(data);
   const all = await topTargets(sb, B, {}, { now: NOW });

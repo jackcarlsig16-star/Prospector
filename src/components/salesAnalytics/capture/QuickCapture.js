@@ -51,13 +51,12 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   const links = useLinkOptions(businessId, week);
 
   const close = useCallback(() => { setOpen(false); setStatus(''); setError(''); setPrefill(null); noteDirty.current = false; }, []);
-  // scout-v3 R4: Scout's "+ Task" / "add a task …" opens this panel on Task, filled in (K1: an employer link is
-  // 'opportunity' in the to-do's link_type until data-keys-v1).
+  // scout-v3 R4: Scout's "+ Task" / "add a task …" opens this panel on Task, filled in.
   useEffect(() => {
     const onCapture = e => {
       const d = e.detail || {};
       if (d.businessId !== businessId) return;
-      setPrefill({ at: Date.now(), text: d.text || '', due_date: d.due_date || '', link: d.link?.id ? { type: d.link.type === 'employer' ? 'opportunity' : d.link.type, id: d.link.id } : null, person_key: d.person_key || null });
+      setPrefill({ at: Date.now(), text: d.text || '', due_date: d.due_date || '', link: d.link?.id ? { type: d.link.type, id: d.link.id } : null, person_key: d.person_key || null });
       setMode('task'); setStatus(''); setError(''); setOpen(true);
     };
     window.addEventListener(SCOUT_CAPTURE, onCapture);

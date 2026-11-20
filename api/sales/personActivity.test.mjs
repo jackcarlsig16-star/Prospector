@@ -55,7 +55,7 @@ test('buildPersonActivity: a row per prospect with messages or events (silent B 
 test('buildPersonActivity: a visit row joins a prospect by matched record and a partner contact by name, an identified visitor gets a person: row, the heat is the Huddle-era number when no visit exists', () => {
   const O = '00000000-0000-4000-8000-00000000e001', G = '00000000-0000-4000-8000-00000000e003', T = '00000000-0000-4000-8000-00000000e002';
   const visits = [
-    { id: 'v1', company_key: 'acme health', matched_type: 'opportunity', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: '2026-11-05', seen_to: '2026-11-06', pulled_on: '2026-11-06' },
+    { id: 'v1', company_key: 'acme health', matched_type: 'employer', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: '2026-11-05', seen_to: '2026-11-06', pulled_on: '2026-11-06' },
     { id: 'v2', company_key: 'harbor lane', matched_type: null, matched_id: null, visits_7d: 1, unique_visitors_7d: 1, last_visit: '2026-11-04', seen_to: '2026-11-06', pulled_on: '2026-11-06' },
     { id: 'v3', company_key: 'quarry labs', matched_type: 'target', matched_id: T, visits_7d: 4, unique_visitors_7d: 9, last_visit: '2026-10-20', seen_to: '2026-10-21', pulled_on: '2026-10-21' },
   ];

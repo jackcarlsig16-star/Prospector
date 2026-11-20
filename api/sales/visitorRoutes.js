@@ -6,7 +6,7 @@ import { apolloRequest } from './apolloClient.js';
 import { loadDupeContext, findDupes } from './partnerDupeCheck.js';
 import { insertCompanyRecord } from './companyPanel.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
-import { normName } from './intakeMatch.js';
+import { normName } from './normName.js';
 import { cleanText, hasPii } from './scrubText.js';
 import { autoCreatePlan, autoSignalPatch, recordDecision, visitLookup } from './visitorRecords.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';

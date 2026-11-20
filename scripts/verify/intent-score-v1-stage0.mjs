@@ -11,7 +11,7 @@ const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
 const { createClient } = require('@supabase/supabase-js');
 const { selectAllPages } = await import('../../api/lib/selectAllPages.js');
-const { normName } = await import('../../api/sales/intakeMatch.js');
+const { normName } = await import('../../api/sales/normName.js');
 const { scoreProspect } = await import('../../api/sales/heatScore.js');
 const { laDateString } = await import('../../api/sales/laDate.js');
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });

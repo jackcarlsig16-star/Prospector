@@ -9,7 +9,7 @@ import { validateSource, sourceOf, logSource, SOURCE_FIELDS } from './leadSource
 import { editSource } from './sourceRoutes.js';
 import { contactAction } from './outreachRoutes.js';
 import { todoOn } from './companyPanel.js';
-import { ownerOrCaller, employerOwner } from './companyFields.js';
+import { ownerOrCaller, employerOwner, memberNames, ownerFirst } from './companyFields.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { CLIENT_STATUSES, CLIENT_STAGE, CLIENT_STATUS_LABEL, APOLLO_STAGE_HINT } from '../../src/constants/clients.js';
@@ -38,7 +38,7 @@ import { CLIENT_COLS } from './clientCols.js';
 export { CLIENT_COLS };
 // Every column a client change may write - the Undo snapshot.
 const TOUCHED = [...CLIENT_COLS, 'stage', 'covered_lives', 'expected_launch', 'apollo_account_id', 'champion', 'notes', 'domain', 'domain_source', 'domain_at', ...SOURCE_FIELDS, 'source_set_by', 'source_set_at', 'updated_at'];
-const ROW_COLS = `id, business_id, organization, owner, owner_team, co_owner_name, archived_at, created_at, ${TOUCHED.join(', ')}`;
+const ROW_COLS = `id, business_id, organization, owner_user_id, owner_team, co_owner_name, archived_at, created_at, ${TOUCHED.join(', ')}`;
 const pick = (row, keys) => Object.fromEntries(keys.map(k => [k, row?.[k] ?? null]));
 export const SEND_AGREEMENT = 'Send agreement';
 
@@ -219,7 +219,7 @@ export async function makeClient(supabase, { businessId, userId, body = {}, via 
     if (row.owner_team === 'upside') warnings.push('Upside-owned account');
     let todoId = null;
     if (v.status === 'verbal_yes') {
-      const open = must(await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', row.id).eq('text', SEND_AGREEMENT).in('status', ['open', 'done']).limit(1));
+      const open = must(await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'employer').eq('link_id', row.id).eq('text', SEND_AGREEMENT).in('status', ['open', 'done']).limit(1));
       if (!open.length) todoId = (await todoOn(supabase, { businessId, userId, type: 'employer', id: row.id, text: SEND_AGREEMENT, today, now })).id;
     }
     const after = await rowOr404(supabase, businessId, row.id);
@@ -272,10 +272,10 @@ async function linkedSince(supabase, { businessId, id, ownTodoId }) {
     count(supabase.from('sales_prospect_state').select('contact_id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
     count(supabase.from('sales_outreach_contacts').select('id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
     count(supabase.from('sales_client_files').select('id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
-    count(supabase.from('web_visits').select('id').eq('business_id', businessId).eq('matched_type', 'opportunity').eq('matched_id', id).limit(1)),
+    count(supabase.from('web_visits').select('id').eq('business_id', businessId).eq('matched_type', 'employer').eq('matched_id', id).limit(1)),
     count(supabase.from('research_runs').select('id').eq('business_id', businessId).eq('entity_type', 'employer').eq('entity_id', id).limit(1)),
     count(supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('linked_opportunity_id', id).limit(1)),
-    supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('link_type', 'opportunity').eq('link_id', id).limit(5).then(r => must(r).filter(t => t.id !== ownTodoId).length),
+    supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('link_type', 'employer').eq('link_id', id).limit(5).then(r => must(r).filter(t => t.id !== ownTodoId).length),
   ]);
   return hits.some(n => n > 0);
 }
@@ -334,14 +334,15 @@ export async function listClients(supabase, { businessId }) {
   try {
     const rows = await selectAllPages(() => supabase.from('sales_opportunities').select(`${ROW_COLS}`).eq('business_id', businessId).is('archived_at', null).not('client_status', 'is', null).order('id'));
     const ids = [...new Set(rows.map(r => r.source_partner_id).filter(Boolean))];
-    const [partners, files] = await Promise.all([
+    const [partners, files, names] = await Promise.all([
       ids.length ? must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).in('id', ids)) : [],
       rows.length ? selectAllPages(() => supabase.from('sales_client_files').select('id, opportunity_id').eq('business_id', businessId).is('archived_at', null).order('id')) : [],
+      memberNames(supabase, businessId),
     ]);
     const pname = new Map(partners.map(p => [p.id, p.name]));
     const fileCount = files.reduce((m, f) => m.set(f.opportunity_id, (m.get(f.opportunity_id) || 0) + 1), new Map());
     const clients = rows.map(r => ({
-      ...publicClient(r), owner: (r.owner || '').split(' ')[0] || null, files: fileCount.get(r.id) || 0,
+      ...publicClient(r), owner: ownerFirst(names, r.owner_user_id), files: fileCount.get(r.id) || 0,
       referred_by: r.source_kind === 'partner_referral' ? (r.source_partner_id ? { id: r.source_partner_id, name: pname.get(r.source_partner_id) || 'A removed partner' } : { id: null, name: null }) : null,
       source_kind: r.source_kind || null,
     })).sort((a, b) => STATUS_ORDER[a.client_status] - STATUS_ORDER[b.client_status] || String(a.launch_date || '9999').localeCompare(String(b.launch_date || '9999')) || a.name.localeCompare(b.name));
