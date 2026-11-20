@@ -53,11 +53,30 @@ const route = (label, fn, { needs = true } = {}) => async (req, res) => {
 };
 
 // GET fathom -> the connection's state, how many recordings it has stored, today's extraction allowance.
-export const statusRoute = route('status', async ({ res, supabase, conn, businessId, userId }) => {
-  const { count, error } = await supabase.from('sales_call_notes').select('id', { count: 'exact', head: true })
-    .eq('business_id', businessId).eq('created_by', userId).not('fathom_recording_id', 'is', null);
-  if (error) throw new Error(error.message);
-  res.json({ ...shown(conn), stored: count, extracts: await extractsLeft(supabase, businessId) });
+// members: one row per member who has ever connected here (names only). An Owner also gets `others` - the members
+// with no row yet, whom only an Owner connects.
+async function storedFor(supabase, businessId, userId) {
+  const [n, last] = await Promise.all([
+    supabase.from('sales_call_notes').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('created_by', userId).not('fathom_recording_id', 'is', null),
+    supabase.from('sales_call_notes').select('call_date').eq('business_id', businessId).eq('created_by', userId).not('fathom_recording_id', 'is', null).order('call_date', { ascending: false }).limit(1),
+  ]);
+  if (n.error) throw new Error(n.error.message);
+  return { stored: n.count, last_recording: must(last)[0]?.call_date || null };
+}
+export const statusRoute = route('status', async ({ req, res, supabase, conn, businessId, userId }) => {
+  const [conns, people] = await Promise.all([
+    supabase.from('sales_fathom_connections').select(COLS).eq('business_id', businessId).order('connected_at').then(must),
+    supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(must),
+  ]);
+  const nameOf = id => { const m = people.find(p => p.user_id === id); return ((m?.profile?.display_name || m?.name || '').trim().split(/\s+/)[0] || 'Member').replace(/@.*/, ''); };
+  const members = await Promise.all(conns.map(async c => ({ ...shown(c), name: nameOf(c.user_id), ...await storedFor(supabase, businessId, c.user_id) })));
+  const owner = hasRole(req, businessId, 'owner');
+  const has = new Set(conns.map(c => c.user_id));
+  res.json({
+    ...shown(conn), stored: members.find(m => m.user_id === userId)?.stored ?? 0,
+    me: req.auth.user.id, owner, members, others: owner ? people.filter(p => !has.has(p.user_id)).map(p => ({ user_id: p.user_id, name: nameOf(p.user_id) })) : [],
+    extracts: await extractsLeft(supabase, businessId),
+  });
 }, { needs: false });
 
 // POST fathom/connect { key, user_id? } - seals the key. No Fathom call: Test is its own click.

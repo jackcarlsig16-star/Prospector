@@ -42,7 +42,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 409 && data.code === 'changed') { window.dispatchEvent(new Event(TODOS_CHANGED)); throw Object.assign(new Error(data.error), { status: 409, changed: true, goal: data.goal || null }); }
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$|^\/clients(\/undo)?$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes(\/.+\/accept)?$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$|^\/clients(\/undo)?$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -65,6 +65,10 @@ export const goalsApi = {
   // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.
   extractCallNotes: (id, body) => call(id, '/call-notes/extract', { method: 'POST', body }),
   createFromCallNotes: (id, body) => call(id, '/call-notes', { method: 'POST', body }),
+  // fathom-notes-v1 F7 - a note that is already stored (a Fathom recording): its review rebuilt from the stored
+  // extract ({ note, needs_extract } when it has none yet), and Accept on it (never inserts, never deletes the note).
+  reviewCallNote: (id, noteId) => call(id, `/call-notes/${noteId}/review`),
+  acceptCallNote: (id, noteId, body) => call(id, `/call-notes/${noteId}/accept`, { method: 'POST', body }),
   // lead-upload-v1 - a pasted lead list: one read, then File (all or nothing).
   extractLeads: (id, body) => call(id, '/leads/extract', { method: 'POST', body }),
   fileLeads: (id, body) => call(id, '/leads', { method: 'POST', body }),

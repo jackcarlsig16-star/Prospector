@@ -6,11 +6,12 @@
 // scorecard (Seif's weekly view, its own sub-view again), sources; Sequenced is gone (an old link to it lands on Email,
 // a stored 'sequenced' falls back to Home). Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
 // homelover-team-emails-v1: Settings = workspace settings (owner edits, everyone else reads); Team emails first.
+// fathom-notes-v1: Connections = the workspace's own feeds (Fathom); the app-wide mailbox page stays under the user menu.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions'], ['settings', 'Settings']];
 export const SUB_VIEWS = {
   pipeline: [['top-targets', 'Top targets'], ['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
   dashboard: [['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources']],
-  settings: [['team-emails', 'Team emails']],
+  settings: [['team-emails', 'Team emails'], ['connections', 'Connections']],
 };
 export const DEFAULT_TAB = 'actions';
 export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview', settings: 'team-emails' };

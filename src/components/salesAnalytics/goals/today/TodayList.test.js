@@ -10,6 +10,7 @@ import { dueWords, doneWords, nextMonday, snoozeChoices, bulkDates, scoutRow, to
 // Scout's plan -> act -> undo, the bulk-date card, the empty states, the Viewer, the phone list, and Fix the list.
 // Made-up rows; names, titles and companies only - no address or phone anywhere.
 jest.mock('../goalsApi', () => ({ ...jest.requireActual('../goalsApi'), goalsApi: { today: jest.fn(), todayFixes: jest.fn(), todayWork: jest.fn() } }));
+jest.mock('./NoteReview', () => ({ noteId, extractNow, onAccepted, onClose }) => <div data-review-stub>{noteId} · {extractNow ? 'extract now' : 'review'}<button type="button" onClick={() => onAccepted(1, { title: 'Northwind weekly' }, {})}>stub accept</button><button type="button" onClick={onClose}>stub close</button></div>);
 jest.mock('../priorities/ComposePanel', () => ({ row }) => <div data-compose-stub>{row.name} · {row.to} · {row.prefill.subject} · {row.prefill.body}</div>);
 jest.mock('../../../scout/scoutApi', () => ({ scoutApi: { plan: jest.fn(), act: jest.fn(), undo: jest.fn() } }));
 
@@ -563,4 +564,62 @@ test('P3 numbering: the rows shown read 1…n; the folded overdue rows take the 
   scoutApi.plan.mockResolvedValue(CARD('five_remove', ['Draft the partner recap']));
   fireEvent.click(screen.getByRole('button', { name: 'Remove from this week’s five: Draft the partner recap' }));
   await waitFor(() => expect(scoutApi.plan).toHaveBeenLastCalledWith(expect.objectContaining({ verb: 'five_remove', keys: ['todos:t9'] })));
+});
+
+// ---- fathom-notes-v1 Stage 2: the "Review call notes" row and the Needs-attention line ----
+const reviewRow = (over = {}) => ({ key: 'review:n9', kind: 'review', id: 'n9', note_id: 'n9', text: 'Review call notes · Northwind weekly · 3 tasks · 2 companies · 4 facts · Nov 20', company: null, person: null, owner_user_id: 'u1', owner: 'Jack', due: null, overdue: false, late_days: 0, source: 'call_notes', verb: 'review', virtual: true, rank: 1, rank_open: 1, group: 'due', call_date: '2026-11-20', ...over });
+const withReview = (r = reviewRow()) => { const v = view(); v.groups[0] = { ...v.groups[0], n: v.groups[0].n + 1, rows: [r, ...v.groups[0].rows] }; return v; };
+
+test('a call to review: ONE row in group 1 - verb Review, no check circle, no ⋯ menu; Review opens the Intake review; accepted, the list reloads and says what was made', async () => {
+  goalsApi.today.mockResolvedValue(withReview());
+  await show();
+  const r = rowOf('Review call notes · Northwind weekly · 3 tasks · 2 companies · 4 facts · Nov 20');
+  expect(r.getAttribute('data-kind')).toBe('review');
+  expect(r.closest('tbody').querySelector('tr[data-today-row]')).toBe(r);
+  expect(r.querySelector('[data-today-done]')).toBeNull();
+  expect(r.querySelector('[data-today-more]')).toBeNull();
+  expect(within(r).getByRole('img', { name: 'From: Call notes' })).toBeInTheDocument();
+  const verb = within(r).getByRole('button', { name: /^Review: Review call notes · Northwind weekly/ });
+  expect(verb).toHaveAttribute('data-today-verb', 'review');
+  fireEvent.click(verb);
+  expect(document.querySelector('[data-review-stub]')).toHaveTextContent('n9 · review');
+  expect(goalsApi.todayWork).not.toHaveBeenCalled();
+  goalsApi.today.mockResolvedValue(view());
+  fireEvent.click(screen.getByRole('button', { name: 'stub accept' }));
+  await waitFor(() => expect(screen.queryByText(/^Review call notes · Northwind weekly/)).toBeNull());
+  expect(document.querySelector('[data-review-stub]')).toBeNull();
+  expect(document.querySelector('[data-today-toast="copied"]')).toHaveTextContent(/^From “Northwind weekly”: /);
+});
+
+test('a stored call with no proposal yet: the verb is Extract and the review opens told to extract; a Viewer gets no review', async () => {
+  goalsApi.today.mockResolvedValue(withReview(reviewRow({ verb: 'extract', text: 'Call notes not read yet · Pulled call · Nov 18' })));
+  const { unmount } = await show();
+  fireEvent.click(within(rowOf('Call notes not read yet · Pulled call · Nov 18')).getByRole('button', { name: /^Extract: / }));
+  expect(document.querySelector('[data-review-stub]')).toHaveTextContent('n9 · extract now');
+  fireEvent.click(screen.getByRole('button', { name: 'stub close' }));
+  expect(document.querySelector('[data-review-stub]')).toBeNull();
+  unmount();
+  await show({ canEdit: false });
+  expect(document.querySelector('[data-today-verb]')).toBeNull();
+});
+
+test('phone: the review row is a card with its Review button and no Done', async () => {
+  goalsApi.today.mockResolvedValue(withReview());
+  await show({ compact: true });
+  const card = rowOf('Review call notes · Northwind weekly · 3 tasks · 2 companies · 4 facts · Nov 20');
+  expect(card.tagName).toBe('ARTICLE');
+  expect(card.querySelector('[data-today-done]')).toBeNull();
+  fireEvent.click(within(card).getByRole('button', { name: /^Review: / }));
+  expect(document.querySelector('[data-review-stub]')).toBeInTheDocument();
+});
+
+test('Fix the list: "n calls to review → Review" asks the list to open the newest one - no Scout card', async () => {
+  goalsApi.todayFixes.mockResolvedValue({ n: 1, today: TODAY, feeds: [], items: [{ id: 'reviews', n: 2, title: '2 calls to review', note: 'Recorded calls whose notes are stored and waiting.', action: { label: 'Review', review: 'n9' } }] });
+  goalsApi.today.mockResolvedValue(withReview());
+  await show();
+  render(<TodayFixes businessId="b1" canEdit />);
+  const fix = await screen.findByText('2 calls to review');
+  fireEvent.click(within(fix.closest('[data-today-fix]')).getByRole('button', { name: 'Review' }));
+  await waitFor(() => expect(document.querySelector('[data-review-stub]')).toHaveTextContent('n9 · review'));
+  expect(scoutApi.plan).not.toHaveBeenCalled();
 });

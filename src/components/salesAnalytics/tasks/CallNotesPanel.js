@@ -1,7 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { SA, SA_SHAPE, saSans } from '../theme';
 import { laDateString, laWeekStart } from '../periods';
 import { goalsApi } from '../goals/goalsApi';
+import { fathomApi } from '../goals/fathomApi';
 import { labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 import { docxText } from '../../../utils/docxText';
 import LinkPicker, { chipStyle } from './LinkPicker';
@@ -17,6 +18,9 @@ import Segmented from '../../../ui/Segmented';
 // source, and the review also lists the companies, people, past touches,
 // ownership and lasting facts in the notes. Nothing is written until Accept.
 // lead-upload-v1: the same panel reads a lead list (LeadListPanel) behind the "Call notes | Lead list" switch.
+// fathom-notes-v1 F7: noteId = a note that is already stored (a Fathom recording). The panel opens on its review,
+// rebuilt from the stored extract with no model call; Accept goes to the accept-existing route. A stored note with
+// no extract yet shows one button, Extract (one model call under the workspace's daily cap).
 const MAX_CHARS = 120000; // same cap as the extract route
 const SOURCE_TYPES = [['call', 'Call'], ['partner_update', 'Partner update'], ['email_thread', 'Email thread'], ['doc', 'Doc'], ['other', 'Other']];
 const NO_INTAKE = { companies: [], ownership: [], people: [], touches: [], facts: [], decisions: [], waiting_on: [], terms: [], next_meeting: [] };
@@ -80,7 +84,7 @@ function Proposal({ p, i, members, lookup, links, set }) {
   );
 }
 
-export default function CallNotesPanel({ businessId, members, lookup, links, onClose, onCreated, onShowCalls, onFiled }) {
+export default function CallNotesPanel({ businessId, members, lookup, links, onClose, onCreated, onShowCalls, onFiled, noteId = null, extractNow = false }) {
   const [mode, setMode] = useState('notes');
   const [title, setTitle] = useState('');
   const [sourceType, setSourceType] = useState('call');
@@ -94,7 +98,32 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const [busy, setBusy] = useState('');
   const [reportState, setReportState] = useState(''); // '' | 'busy' | 'added'
   const [error, setError] = useState('');
+  const [stored, setStored] = useState(null); // the stored note under review: { id, title, call_date, source_label, fathom_url, accepted_at }
+  const [storedId, setStoredId] = useState(noteId);
   const fileRef = useRef(null);
+  const loadLinks = links.load;
+  const show = useCallback(r => {
+    setResult(r);
+    setReportState('');
+    setPicks((r.tasks || []).map(toPick));
+    setIntake(Object.fromEntries(Object.keys(NO_INTAKE).map(k => [k, r[k] || []])));
+    setInsights({ ...NO_INSIGHTS, ...(r.insights || {}) });
+    if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) loadLinks();
+  }, [loadLinks]);
+  useEffect(() => {
+    if (!storedId) return undefined;
+    let live = true;
+    setBusy('load'); setError(''); setResult(null);
+    goalsApi.reviewCallNote(businessId, storedId).then(r => {
+      if (!live) return;
+      setStored(r.note); setTitle(r.note.title || '');
+      if (!r.needs_extract) return r.note.accepted_at ? null : show(r);
+      if (!extractNow || storedId !== noteId) return null;
+      setBusy('extract');
+      return fathomApi.extractNote(businessId, storedId).then(x => live && show(x));
+    }).catch(e => live && setError(e.message)).finally(() => live && setBusy(''));
+    return () => { live = false; };
+  }, [businessId, storedId, show, extractNow, noteId]);
   const chosen = picks.filter(p => p.on && p.text.trim());
   const body = acceptBody(intake);
   const kept = insightsBody(insights);
@@ -112,26 +141,21 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       if (!title) setTitle(file.name.replace(/\.[^.]+$/, ''));
     } catch (err) { setError(err.message); }
   };
-  const extract = async () => {
+  const extract = async ({ insist = false } = {}) => {
     setBusy('extract'); setError('');
     try {
-      const r = await goalsApi.extractCallNotes(businessId, { text, call_date: callDate, title: title.trim() || null, source_type: sourceType, source_label: sourceLabel.trim() || null });
-      setResult(r);
-      setReportState('');
-      setPicks((r.tasks || []).map(toPick));
-      setIntake(Object.fromEntries(Object.keys(NO_INTAKE).map(k => [k, r[k] || []])));
-      setInsights({ ...NO_INSIGHTS, ...(r.insights || {}) });
-      if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) links.load();
+      show(stored ? await fathomApi.extractNote(businessId, stored.id)
+        : await goalsApi.extractCallNotes(businessId, { text, call_date: callDate, title: title.trim() || null, source_type: sourceType, source_label: sourceLabel.trim() || null, ...(insist ? { insist: true } : {}) }));
     } catch (err) { setError(err.message); }
     setBusy('');
   };
   const create = async () => {
     setBusy('create'); setError('');
     try {
-      const out = await goalsApi.createFromCallNotes(businessId, {
+      const ticked = { tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })), ...body, insights: kept };
+      const out = stored ? await goalsApi.acceptCallNote(businessId, stored.id, ticked) : await goalsApi.createFromCallNotes(businessId, {
         text, title: title.trim() || null, call_date: result.call_date, source_type: sourceType, source_label: sourceLabel.trim() || null,
-        tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })),
-        ...body, insights: kept, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
+        ...ticked, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
       });
       onCreated(out.goals.length, out.note, out);
     } catch (err) { setError(err.message); setBusy(''); }
@@ -149,20 +173,31 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const setRow = list => i => patch => setIntake(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
   const setInsight = list => i => patch => setInsights(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
 
-  const reviewing = result && !result.duplicate;
+  const reviewing = result && !result.duplicate && !result.fathom_match;
+  const twin = result?.fathom_match || null;
+  const ideas = (reviewing && result.ideas) || [];
   const switcher = <Segmented label="What to read" items={MODES} value={mode} onChange={m => { setMode(m); setResult(null); }} />;
-  if (mode === 'leads') {
+  if (mode === 'leads' && !storedId) {
     return <LeadListPanel businessId={businessId} members={members} text={text} setText={setText} onClose={onClose} onFiled={onFiled} switcher={switcher} readFile={readLeadFile} />;
   }
   return (
     <section aria-label="Intake" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {!reviewing && switcher}
-          <span style={{ ...labelStyle, color: SA.soft, flex: 1 }}>{reviewing ? 'Review · nothing is saved until Accept' : 'Intake · paste any notes'}</span>
+          {!reviewing && !storedId && switcher}
+          <span style={{ ...labelStyle, color: SA.soft, flex: 1 }}>{reviewing ? 'Review · nothing is saved until Accept' : storedId ? 'Call notes' : 'Intake · paste any notes'}</span>
+          {stored?.fathom_url && <a href={stored.fathom_url} target="_blank" rel="noreferrer" style={{ ...linkBtn, fontSize: 12 }}>Open in Fathom ↗</a>}
           <button type="button" style={linkBtn} onClick={onClose}>Cancel</button>
         </div>
-        {!reviewing && (
+        {!reviewing && storedId && stored && (
+          <div data-stored-note style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid ${SA.border}`, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <b style={{ fontWeight: 600, color: SA.text }}>{stored.title || 'Call notes'} · {md(stored.call_date)}</b>
+            {stored.accepted_at
+              ? <span style={{ color: SA.soft }}>These notes were already reviewed and accepted.</span>
+              : <span style={{ color: SA.soft }}>These notes are stored and have not been read yet. Extract makes the proposal - one AI call, under today’s cap. Nothing is saved until Accept.</span>}
+          </div>
+        )}
+        {!reviewing && !storedId && (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <select value={sourceType} onChange={e => setSourceType(e.target.value)} aria-label="What these notes are" disabled={!!busy}
@@ -188,6 +223,15 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
                 {text.length.toLocaleString('en-US')} / {MAX_CHARS.toLocaleString('en-US')}
               </span>
             </div>
+            {twin && (
+              <div role="status" data-fathom-twin style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid ${SA.warn}`, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <span>Same text as the Fathom note ‘{twin.title}’ ({md(twin.call_date)}) — open it instead{twin.accepted ? '; it was already reviewed' : ''}.</span>
+                <span style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                  <button type="button" style={linkBtn} onClick={() => setStoredId(twin.id)}>Open the Fathom note</button>
+                  <button type="button" style={linkBtn} disabled={!!busy} onClick={() => extract({ insist: true })}>Read these notes anyway</button>
+                </span>
+              </div>
+            )}
             {result?.duplicate && (
               <div role="status" style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid ${SA.warn}`, fontSize: 13, display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <span>These notes were already pasted{result.duplicate.title ? ` as “${result.duplicate.title}”` : ''} for the call on {md(result.duplicate.call_date)} - {result.duplicate.task_count} task{result.duplicate.task_count === 1 ? '' : 's'} came from them. Nothing new to create.</span>
@@ -248,6 +292,14 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
               <IntelRows ownership={intake.ownership} facts={intake.facts} companies={intake.companies} setOwnership={setRow('ownership')} setFact={setRow('facts')} />
             </Section>
             <IntakeInsights insights={insights} set={setInsight} />
+            <Section title="Ideas · kept with the note, not written to a record" count={ideas.length}>
+              {ideas.map((i, k) => (
+                <li key={k} style={{ borderTop: `1px solid ${SA.track}`, padding: '8px 0', fontSize: 13, color: SA.soft, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span><span style={{ color: SA.muted }}>{i.kind}{i.company ? ` · ${i.company}` : ''}</span> · {i.text}</span>
+                  {i.evidence && <span style={{ fontSize: 12, color: SA.muted, fontStyle: 'italic', overflowWrap: 'anywhere' }}>“{i.evidence}”</span>}
+                </li>
+              ))}
+            </Section>
             {result.rejected?.length > 0 && <span style={{ fontSize: 12, color: SA.muted }}>Not proposed again (you said never): {result.rejected.join(', ')}</span>}
           </>
         )}
@@ -256,17 +308,17 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       <footer style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '12px 16px', borderTop: `1px solid ${SA.border}` }}>
         {reviewing ? (
           <>
-            <button type="button" style={linkBtn} disabled={!!busy} onClick={() => setResult(null)}>← Back to notes</button>
+            {!stored && <button type="button" style={linkBtn} disabled={!!busy} onClick={() => setResult(null)}>← Back to notes</button>}
             <Btn primary style={{ marginLeft: 'auto' }} disabled={!total || !!busy} onClick={create}>
               {busy ? 'Saving…' : `Accept ${total}`}
             </Btn>
           </>
         ) : (
           <>
-            {busy && <span role="status" style={{ fontSize: 13, color: SA.muted }}>Reading the notes - about 20 seconds…</span>}
-            <Btn primary style={{ marginLeft: 'auto' }} disabled={!text.trim() || text.length > MAX_CHARS || !!busy || !!result?.duplicate} onClick={extract}>
-              Read notes
-            </Btn>
+            {busy && <span role="status" style={{ fontSize: 13, color: SA.muted }}>{busy === 'load' ? 'Opening the notes…' : 'Reading the notes - about 20 seconds…'}</span>}
+            {storedId
+              ? stored && !stored.accepted_at && <Btn primary style={{ marginLeft: 'auto' }} disabled={!!busy} onClick={() => extract()}>Extract</Btn>
+              : <Btn primary style={{ marginLeft: 'auto' }} disabled={!text.trim() || text.length > MAX_CHARS || !!busy || !!result?.duplicate || !!twin} onClick={() => extract()}>Read notes</Btn>}
           </>
         )}
       </footer>

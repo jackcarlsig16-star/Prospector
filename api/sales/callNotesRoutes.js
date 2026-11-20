@@ -204,9 +204,21 @@ export async function reviewOf(supabase, businessId, raw, ctx, callDate) {
   };
 }
 
-// POST /goals/call-notes/extract { text, call_date?, title?, source_type?, source_label? } -> proposals.
+// fathom-notes-v1 F-2: a Fathom note's hash carries its recording id, so pasting the same summary by hand is not
+// caught by the hash. The pasted text is compared with the Fathom notes of the last FATHOM_TWIN_DAYS days - the whole
+// note, or its summary without the "Action items (Fathom)" list toNote() appends.
+export const FATHOM_TWIN_DAYS = 90;
+async function fathomTwin(supabase, businessId, hash) {
+  const rows = await selectAllPages(() => supabase.from('sales_call_notes').select('id, title, call_date, text, accepted_at, fathom_url')
+    .eq('business_id', businessId).not('fathom_recording_id', 'is', null).gte('call_date', addDays(laDateString(), -FATHOM_TWIN_DAYS)).order('id'));
+  const hit = rows.find(r => noteHash(r.text) === hash || noteHash(r.text.split('\n\nAction items (Fathom)')[0]) === hash);
+  return hit ? { id: hit.id, title: clean(hit.title, 200) || 'Fathom recording', call_date: hit.call_date, accepted: !!hit.accepted_at, fathom_url: hit.fathom_url || null } : null;
+}
+
+// POST /goals/call-notes/extract { text, call_date?, title?, source_type?, source_label?, insist? } -> proposals.
+// fathom_match: the same text is already here as a Fathom note - no model call until the member insists.
 export async function extractCallNotesRoute(req, res) {
-  const { text, call_date, title, source_type = 'call', source_label } = req.body || {};
+  const { text, call_date, title, source_type = 'call', source_label, insist } = req.body || {};
   if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'text is required' });
   if (text.length > MAX_CHARS) return res.status(413).json({ error: `notes are too long (${text.length} characters, max ${MAX_CHARS})` });
   if (call_date != null && !isDate(call_date)) return res.status(400).json({ error: 'call_date must be YYYY-MM-DD' });
@@ -218,6 +230,8 @@ export async function extractCallNotesRoute(req, res) {
     const hash = noteHash(text);
     const earlier = await findNote(supabase, businessId, hash);
     if (earlier) return res.json({ duplicate: earlier });
+    const twin = insist === true ? null : await fathomTwin(supabase, businessId, hash);
+    if (twin) return res.json({ fathom_match: twin });
     const { raw, ctx, usage } = await extractNotes(supabase, { businessId, userId: req.auth.user.id, text, noteDate: callDate, title, sourceType: source_type, sourceLabel: source_label });
     // The extract runs before the note row exists, so it rides through the browser signed (intakeDeal.js).
     const extract = scrubExtract(raw);

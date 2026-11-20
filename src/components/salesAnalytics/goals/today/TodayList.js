@@ -4,9 +4,11 @@ import { ErrorNote } from '../goalsUi';
 import { ConfirmCard } from '../../../scout/ScoutActionCard';
 import ComposePanel from '../priorities/ComposePanel';
 import WorkPanel from './WorkPanel';
+import NoteReview from './NoteReview';
+import { acceptSummary } from '../../tasks/intakeBody';
 import { useTodayActions } from './useTodayActions';
 import { TODAY_CSS } from './todayStyles';
-import { SOURCE, SOURCE_IDS, scoutRow, todayQuery, bulkDates, dayWords, companyRow, TODAY_WORK, takeWork } from './todayRows';
+import { SOURCE, SOURCE_IDS, scoutRow, todayQuery, bulkDates, dayWords, companyRow, TODAY_WORK, takeWork, REVIEW_NOTE } from './todayRows';
 import { Strip, CompanyCell, PersonCell, OwnerCell, DueCell, FromCell, Verb, Check, MoreButton, RowMenu, Toast, Icon, CHECK } from './TodayParts';
 
 // actions-v2 Stage 2 - Actions is "Today": ONE ranked list (GET goals/today - the server groups and ranks; this
@@ -36,6 +38,7 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
   const [copied, setCopied] = useState(null); // { text, onDone? } - the line after Copy
   const [compose, setCompose] = useState(null);
   const [wanted, setWanted] = useState(takeWork); // Scout asked for the panel on a row: { key, verb }
+  const [review, setReview] = useState(null); // { noteId, extractNow } - the Intake review on a stored call note
   const seq = useRef(0), wseq = useRef(0);
 
   useEffect(() => { const t = setTimeout(() => setQ(search.trim()), 250); return () => clearTimeout(t); }, [search]);
@@ -64,6 +67,7 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
     setWork(w => { if (w) setTimeout(() => document.querySelector(`[data-today-row="${w.key}"] [data-today-verb]`)?.focus(), 0); return null; });
   }, []);
   useEffect(() => { const h = e => { takeWork(); setWanted(e.detail); }; window.addEventListener(TODAY_WORK, h); return () => window.removeEventListener(TODAY_WORK, h); }, []);
+  useEffect(() => { const h = e => setReview({ noteId: e.detail.noteId, extractNow: false }); window.addEventListener(REVIEW_NOTE, h); return () => window.removeEventListener(REVIEW_NOTE, h); }, []);
   // a row that left the list (done, dropped, re-ranked away) takes its panel with it
   useEffect(() => { if (work && data && !data.groups.some(g => g.rows.some(r => r.key === work.key))) { wseq.current++; setWork(null); } }, [work, data]);
   useEffect(() => {
@@ -84,7 +88,7 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
   const done = row => pick(row, { verb: 'task_done', args: {}, say: {} });
   const canFive = canEdit && !!data.five.can_add;
   const workRow = work ? rows.find(r => r.key === work.key) || null : null;
-  const toggleWork = row => (work?.key === row.key ? closeWork() : startWork(row));
+  const toggleWork = row => (row.kind === 'review' ? setReview({ noteId: row.note_id, extractNow: row.verb === 'extract' }) : work?.key === row.key ? closeWork() : startWork(row));
   const copyOut = async (text, what) => {
     try { await navigator.clipboard.writeText(text); } catch { setCopied({ text: 'Not copied: the browser blocked the clipboard.' }); return false; }
     actions.dismiss();
@@ -106,7 +110,7 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
   const menuRow = menu ? rows.find(r => r.key === menu.key) : null;
   const visible = g => g.rows.filter(r => !(g.id === 'due' && r.folded && !allOverdue && g.fold));
   const groupOpen = g => g.id !== 'rest' || restOpen || filtered;
-  const editable = row => canEdit && row.kind !== 'waiting';
+  const editable = row => canEdit && (row.kind === 'todo' || row.kind === 'reply');
 
   const chipBtn = (id, label, n, on, onClick, bad = false) => (
     <button key={id} type="button" className="td-chip" aria-pressed={on} onClick={onClick} data-today-chip={id}>{label} <b className={`td-num${bad && n ? ' td-bad' : ''}`}>{n}</b></button>
@@ -178,9 +182,10 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
                 <tr data-today-row={row.key} data-kind={row.kind} className={work?.key === row.key ? 'td-on' : undefined}>
                   <td className="td-rk td-num" style={{ padding: '0 6px' }}>{num(row)}</td>
                   {canEdit && <td style={{ padding: '0 4px' }}>{row.kind === 'todo' && <Check row={row} onDone={() => done(row)} />}</td>}
-                  <td title={row.text}><span className="td-task">{row.text}</span></td>
-                  <td><CompanyCell company={row.company} /></td>
-                  <td><PersonCell person={row.person} /></td>
+                  {/* a call to review has no company or person of its own: its line takes their room */}
+                  <td title={row.text} colSpan={row.kind === 'review' ? 3 : 1}><span className="td-task">{row.text}</span></td>
+                  {row.kind !== 'review' && <td><CompanyCell company={row.company} /></td>}
+                  {row.kind !== 'review' && <td><PersonCell person={row.person} /></td>}
                   <td><OwnerCell row={row} lookup={lookup} /></td>
                   <td><DueCell row={row} today={today} canEdit={canEdit} onSetDate={e => setDate(row, e)} /></td>
                   <td><FromCell source={row.source} /></td>
@@ -232,6 +237,8 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
       <section className="td-card td-rule" aria-label="How this is ranked"><span className="td-lbl">How this is ranked</span><span className="td-note">{data.rule}</span></section>
       {menuRow && <RowMenu key={`${menu.key}:${menu.sub || ''}`} row={menuRow} anchor={menu.anchor} today={today} members={members} initial={menu.sub} canFive={canFive} onPick={p => pick(menuRow, p)} onClose={closeMenu} />}
       {compact && panel}
+      {review && canEdit && <NoteReview businessId={businessId} noteId={review.noteId} extractNow={review.extractNow} onClose={() => setReview(null)}
+        onAccepted={(n, note, out) => { setReview(null); setCopied({ text: `From ${note.title ? `“${note.title}”` : 'the notes'}: ${acceptSummary(n, out)}` }); load(); }} />}
       {compose && <ComposePanel businessId={businessId} row={compose} onClose={() => setCompose(null)} onToast={t => setCopied({ text: t.text })} />}
       <Toast state={actions.state} copied={copied} onUndo={actions.undo} onClose={actions.dismiss} onCopiedClose={() => setCopied(null)} />
     </div>

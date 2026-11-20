@@ -151,7 +151,7 @@ test('scout-v2 Stage 3 re-run: a call note rides at 600 chars while 10 or fewer 
   const { noteChars, salesIntents } = await import('./scoutIntents.js');
   assert.equal(noteChars(1), 600); assert.equal(noteChars(10), 600); assert.equal(noteChars(11), 300);
   const long = 'Pilot scope and the next steps. '.repeat(40);
-  const rows = n => Array.from({ length: n }, (_, i) => ({ id: `n${i}`, business_id: A, title: `Note ${i}`, call_date: '2026-11-03', text: long }));
+  const rows = n => Array.from({ length: n }, (_, i) => ({ id: `n${i}`, business_id: A, title: `Note ${i}`, call_date: '2026-11-03', text: long, accepted_at: '2026-11-03T20:00:00Z' }));
   const notes = salesIntents.find(i => i.id === 'notes');
   for (const [n, max] of [[3, 600], [12, 300]]) {
     const sb = fakeSupabase({ sales_call_notes: rows(n) });

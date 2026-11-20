@@ -23,6 +23,17 @@ export const GROUPS = [
 export const RULE_TEXT = '1 due today or overdue · 2 at a pinned or P1 company · 3 the company visited in the last 7 days · 4 a reply is owed · 5 everything else. Inside a group: earliest due, then company score, then newest. A to-do appears once, in the first group it fits. This week’s five sit above the list.';
 export const VERBS = { draft_reply: 'Draft reply', prep_call: 'Prep call', draft_email: 'Draft email', find_people: 'Find people', next_steps: 'Next steps' };
 export const VERB_IDS = Object.keys(VERBS);
+// fathom-notes-v1 F7: a stored call note nobody has accepted is a virtual row of group 1 - verb Review opens the
+// Intake review on it, Extract (a note with no proposal yet: past the daily cap, or pulled) makes the proposal first.
+// Neither is one of Scout's work verbs.
+const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+export function reviewText(note) {
+  const x = note.extract, n = k => (Array.isArray(x?.[k]) ? x[k].length : 0);
+  const title = cleanText(note.title || 'Call', 120);
+  return x ? ['Review call notes', title, count(n('tasks'), 'task', 'tasks'), count(n('companies'), 'company', 'companies'), count(n('facts'), 'fact', 'facts'), md(note.call_date)].join(' · ')
+    : ['Call notes not read yet', title, md(note.call_date)].join(' · ');
+}
 // The nine sources a row can come from (Q4): a to-do's stored origin, plus the two kinds that are not to-dos.
 export const SOURCES = ['manual', 'scout', 'call_notes', 'signal', 'tidy', 'panel', 'plan', 'reply', 'waiting'];
 const SOURCE_OF = { nudge: 'signal', carry_over: 'manual', import: 'manual', system: 'manual' };
@@ -57,7 +68,7 @@ const order = (a, b) => ((a.due == null) - (b.due == null)) || (a.due && b.due ?
 // todos: open to-dos (openTodosFor) · waiting: open kind 'waiting' rows · five: this week's commitment rows ·
 // scores: listScores rows · people: peopleActivity rows · visits: web_visits rows · members: [{ id, name }].
 // filter: { owner: <user id> | 'unassigned' | null (team), chip: 'overdue' | 'undated' | null, source, q }.
-export function buildToday({ todos = [], waiting = [], five = [], scores = [], people = [], visits = [], members = [], today, filter = {}, snoozed = 0, flags = {} }) {
+export function buildToday({ todos = [], waiting = [], five = [], scores = [], people = [], visits = [], members = [], reviews = [], today, filter = {}, snoozed = 0, flags = {} }) {
   const scoreOf = new Map(scores.map(s => [`${s.type}:${s.id}`, s]));
   const personOf = new Map(people.map(p => [p.key, p]));
   const peopleAt = new Map();
@@ -104,6 +115,11 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
     rows.push(finish({ key: `waiting:${w.id}`, kind: 'waiting', id: w.id, text: cleanText(`Waiting on ${w.waiting_on || 'them'}: ${w.text}`, 200), company: companyOf(w.link_type, w.link_id, null), person: null, owner_user_id: w.owner_user_id || null,
       due: w.due_date || null, source: 'waiting', created_at: w.created_at || null, updated_at: w.updated_at || null, snooze_until: null, virtual: false }, { waitingOn: true }));
   }
+  for (const n of reviews) {
+    rows.push({ key: `review:${n.id}`, kind: 'review', id: n.id, text: reviewText(n), company: null, person: null, owner_user_id: n.created_by || null, owner: first(n.created_by),
+      due: null, source: 'call_notes', created_at: n.created_at || null, updated_at: null, snooze_until: null, virtual: true, overdue: false, late_days: 0, group: 'due',
+      verb: n.extract ? 'review' : 'extract', note_id: n.id, call_date: n.call_date });
+  }
 
   // This week's five sit above the list and out of the ranking (Q2): each slot is a commitment row of the week; a
   // slot made from a to-do links it (R2: link_type 'todo' + link_id) and takes the to-do out of the groups.
@@ -126,6 +142,8 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
   let rank = 0, rankOpen = 0;
   const groups = GROUPS.map(([id, label, note]) => {
     let list = shown.filter(r => r.group === id).sort(id === 'rest' ? (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) : order);
+    // a call to review leads group 1, newest call first: it has no due date of its own
+    if (id === 'due') list = [...list.filter(r => r.kind === 'review').sort((a, b) => String(b.call_date).localeCompare(String(a.call_date))), ...list.filter(r => r.kind !== 'review')];
     let fold = null;
     if (id === 'due') {
       // Q1: every row due today + the OVERDUE_FOLD most recent overdue; older overdue stay in the count, behind the fold.

@@ -318,3 +318,106 @@ test('both sign-in gates let the tokened webhook path through by prefix - POST o
     for (const [k, v] of [['BASIC_AUTH_ENABLED', was.e], ['BASIC_AUTH_USER', was.u], ['BASIC_AUTH_PASS', was.p]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
   }
 });
+
+// ---- Stage 2: the card's rows, the Today row, the paste warning, Scout's "unreviewed" ----
+const today = await import('../sales/todayRank.js');
+const { buildFixes } = await import('../sales/todayRoutes.js');
+const scout = await import('../sales/scoutIntents.js');
+const { ENTITIES } = await import('../sales/scoutEntities.js');
+const CY = '33333333-3333-4333-8333-333333333333';
+const intent = id => scout.salesIntents.find(i => i.id === id);
+const ask = (q, over = {}) => ({ q, company: [], terms: [], flags: {}, since: null, until: null, entity: null, ...over });
+
+test('status: one row per member who connected, names only; an Owner also gets the members without one', async () => {
+  const w = world();
+  goalsDeps.supabase = w.supabase;
+  w.supabase.db.business_members.push({ business_id: B, user_id: CY, name: address('cyrus'), role: 'member' });
+  await receive(hook(meeting()), res(), { supabase: w.supabase, now: NOW });
+  const r = res();
+  await routes.statusRoute(asJack(), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(r.body.members.map(m => [m.name, m.connected, m.stored, m.last_recording, m.webhook]), [['Jack', true, 1, '2026-11-20', true]]);
+  assert.deepEqual([r.body.me, r.body.owner, r.body.stored], [JACK, true, 1]);
+  assert.deepEqual(r.body.others.map(o => o.user_id), [CY]);
+  noAt(r.body, 'status');
+  assert.ok(!/key_enc|secret|webhook_token/.test(JSON.stringify(r.body)));
+  const member = res();
+  await routes.statusRoute(asJack({ auth: { user: { id: CY }, isPlatformOwner: false, roles: new Map([[B, 'member']]) } }), member);
+  assert.deepEqual([member.body.connected, member.body.owner, member.body.others, member.body.members.length], [false, false, [], 1]);
+});
+
+test('Today: an unaccepted note is ONE virtual row leading group 1 - Review with its counts, Extract when it holds no proposal; accepted, it is gone', async () => {
+  const w = world();
+  goalsDeps.supabase = w.supabase;
+  await receive(hook(meeting()), res(), { supabase: w.supabase, now: NOW });
+  await receive(hook(meeting(9002, { meeting_title: 'Pulled call' }), { id: 'msg_2' }), res(), { supabase: w.supabase, now: NOW });
+  Object.assign(w.supabase.db.sales_call_notes[1], { extract: null, call_date: '2026-11-18' });
+  const due = { id: 't1', text: 'Due thing', due_date: '2026-11-19', owner_user_id: JACK, created_at: '2026-11-01T00:00:00Z' };
+  const view = reviews => today.buildToday({ todos: [due], reviews, members: [{ id: JACK, name: 'Jack Carlson' }], today: '2026-11-20', filter: {} });
+  const v = view(w.supabase.db.sales_call_notes);
+  assert.deepEqual(v.groups.map(g => g.id), ['due', 'top', 'visited', 'reply', 'rest']);
+  const rows = v.groups[0].rows;
+  assert.deepEqual(rows.map(r => [r.kind, r.verb, r.virtual]), [['review', 'review', true], ['review', 'extract', true], ['todo', 'next_steps', false]]);
+  assert.equal(rows[0].text, 'Review call notes · Northwind weekly · 1 task · 1 company · 0 facts · Nov 20');
+  assert.equal(rows[1].text, 'Call notes not read yet · Pulled call · Nov 18');
+  assert.deepEqual([rows[0].key, rows[0].owner, rows[0].source, rows[0].rank], [`review:${w.supabase.db.sales_call_notes[0].id}`, 'Jack', 'call_notes', 1]);
+  assert.equal(today.buildToday({ todos: [due], reviews: w.supabase.db.sales_call_notes, members: [], today: '2026-11-20', filter: { owner: CY } }).groups[0].n, 0);
+  const fix = buildFixes({ team: v, mine: v, todos: [], records: [] }).items.find(i => i.id === 'reviews');
+  assert.deepEqual([fix.title, fix.action.label, fix.action.review], ['2 calls to review', 'Review', rows[0].note_id]);
+  assert.equal(view(w.supabase.db.sales_call_notes.filter(n => !n.accepted_at).slice(0, 0)).groups[0].rows.length, 1);
+  assert.equal(buildFixes({ team: view([]), mine: view([]), todos: [], records: [] }).items.some(i => i.id === 'reviews'), false);
+});
+
+test('paste: the same text as a Fathom note (whole, or the summary alone) is answered with that note and NO model call; insisting reads it', async () => {
+  const w = world();
+  goalsDeps.supabase = w.supabase;
+  await receive(hook(meeting()), res(), { supabase: w.supabase, now: NOW });
+  const [note] = w.supabase.db.sales_call_notes;
+  note.call_date = new Date().toISOString().slice(0, 10);
+  const paste = async body => { const r = res(); await notes.extractCallNotesRoute(asJack({ body }), r); return r; };
+  const whole = await paste({ text: `  ${note.text.toUpperCase()}  ` });
+  assert.deepEqual(whole.body, { fathom_match: { id: note.id, title: 'Northwind weekly', call_date: note.call_date, accepted: false, fathom_url: 'https://fathom.video/share/abc9001' } });
+  const summary = await paste({ text: note.text.split('\n\nAction items (Fathom)')[0] });
+  assert.equal(summary.body.fathom_match.id, note.id);
+  assert.equal(w.calls(), 1);
+  const other = await paste({ text: 'Different notes: Dana will send the list.' });
+  assert.ok(other.body.tasks && !other.body.fathom_match);
+  const insisted = await paste({ text: note.text, insist: true });
+  assert.ok(insisted.body.tasks && insisted.body.extract_sig);
+  assert.equal(w.calls(), 3);
+});
+
+test('Scout: "review the <x> call" / "what did we agree with <x>" / "ideas from calls" read the note and its extract - "unreviewed" until accepted', async () => {
+  assert.deepEqual(['review the Northwind call', 'Review my last call', 'what did we agree with Northwind yesterday', 'ideas from calls this month', 'notes about Northwind', 'review my tasks'].map(q => [scout.callAsk(ask(q)), scout.callTerm(ask(q))]),
+    [['review', 'northwind'], ['review', null], ['agreed', 'northwind'], ['ideas', null], [null, null], [null, null]]);
+  const picked = q => scout.salesIntents.filter(i => i.match(ask(q, q.includes('notes') ? { entity: 'call_notes' } : {}))).map(i => i.id);
+  assert.deepEqual([picked('review the Northwind call'), picked('ideas from call notes'), picked('notes about Northwind')], [['call_review'], ['call_ideas'], ['notes']]);
+
+  const w = world();
+  goalsDeps.supabase = w.supabase;
+  await receive(hook(meeting()), res(), { supabase: w.supabase, now: NOW });
+  const [note] = w.supabase.db.sales_call_notes;
+  note.extract = { ...note.extract, decisions: [{ company: 'Northwind', text: 'Pilot starts in January', evidence: 'will pilot' }], waiting_on: [{ company: 'Northwind', who: 'Dana Reyes', text: 'the employer list', due_date: '2026-11-27', evidence: 'share the list' }] };
+  const ctx = q => ({ businessId: B, ask: ask(q), today: '2026-11-20' });
+  const before = await intent('call_review').run(w.supabase, ctx('review the Northwind call'));
+  assert.equal(before.read, 'call notes matching "northwind" · 1 · 1 unreviewed · 1 decisions · 1 waiting on them');
+  assert.deepEqual(before.items.map(i => i.text.replace(/^Northwind weekly · 2026-11-20 · /, '').slice(0, 72)), ['unreviewed · ## Decisions - Northwind will pilot in January (watch) [lin', 'decision (unreviewed): Northwind: Pilot starts in January', 'waiting on Dana Reyes (unreviewed): the employer list · due 2026-11-27']);
+  assert.ok(before.items.every(i => i.entity === 'call_notes' && i.id === note.id && i.subtitle === '2026-11-20 · unreviewed'));
+  const ideasBefore = await intent('call_ideas').run(w.supabase, ctx('ideas from calls this month'));
+  assert.equal(ideasBefore.read, 'ideas in call notes since 2026-10-21 · 3 in 1 of 1 notes · 1 unreviewed');
+  assert.equal(ideasBefore.items[0].text, 'idea (product) (unreviewed): A pilot dashboard the employer can open · about Northwind · from Northwind weekly 2026-11-20');
+  const [found] = await ENTITIES.find(e => e.entity === 'call_notes').search(w.supabase, { businessId: B, q: 'northwind', limit: 5 });
+  assert.equal(found.subtitle, '2026-11-20 · unreviewed');
+  const listed = await intent('notes').run(w.supabase, { businessId: B, ask: ask('notes about Northwind', { entity: 'call_notes', company: ['Northwind'] }) });
+  assert.match(listed.read, / · 1 · 1 unreviewed$/);
+  scout.salesReads.openTodosFor = async () => ({ rows: [], total: 0 });
+  scout.salesReads.listScores = async () => ({ body: { rows: [] } });
+  const standing = await scout.salesStanding(w.supabase, { businessId: B, auth: { user: { id: JACK } }, today: '2026-11-20', now: NOW.getTime() });
+  assert.equal(standing.reads[1], 'notes since 2026-11-06 (1 · 1 unreviewed)');
+
+  note.accepted_at = NOW.toISOString();
+  const after = [await intent('call_review').run(w.supabase, ctx('what did we agree with Northwind')), await intent('call_ideas').run(w.supabase, ctx('ideas from calls')), await intent('notes').run(w.supabase, { businessId: B, ask: ask('notes', { entity: 'call_notes' }) }), await scout.salesStanding(w.supabase, { businessId: B, auth: { user: { id: JACK } }, today: '2026-11-20', now: NOW.getTime() })];
+  assert.ok(!JSON.stringify(after).includes('unreviewed'));
+  assert.equal(after[0].items[1].text, 'Northwind weekly · 2026-11-20 · decision: Northwind: Pilot starts in January');
+  for (const x of [before, ideasBefore, ...after]) noAt(x, 'scout');
+});

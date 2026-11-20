@@ -15,7 +15,10 @@ export const SOURCE = {
   waiting: ['Waiting on', 'M8 4.500V8l2.500 1.500M2 8a6 6 0 1 0 12 0A6 6 0 0 0 2 8z'],
 };
 export const SOURCE_IDS = Object.keys(SOURCE);
-export const VERB_LABEL = { draft_reply: 'Draft reply', prep_call: 'Prep call', draft_email: 'Draft email', find_people: 'Find people', next_steps: 'Next steps' };
+// review / extract belong to a stored call note's row (fathom-notes-v1 F7): they open the Intake review, not the work panel.
+export const VERB_LABEL = { draft_reply: 'Draft reply', prep_call: 'Prep call', draft_email: 'Draft email', find_people: 'Find people', next_steps: 'Next steps', review: 'Review', extract: 'Extract' };
+// Needs attention's "n calls to review → Review" asks the list to open the review: detail { noteId }.
+export const REVIEW_NOTE = 'prospector:review-note';
 
 const say = (d, opts) => new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
 export const dayWords = d => say(d, { weekday: 'short', month: 'short', day: 'numeric' }).replace(',', '');

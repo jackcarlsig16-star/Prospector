@@ -3,7 +3,7 @@ import { goalsApi, TODOS_CHANGED } from '../goalsApi';
 import { ConfirmCard } from '../../../scout/ScoutActionCard';
 import { useTodayActions } from './useTodayActions';
 import { TODAY_CSS } from './todayStyles';
-import { bulkDates, dayWords } from './todayRows';
+import { bulkDates, dayWords, REVIEW_NOTE } from './todayRows';
 
 // actions-v2 A4 - "Fix the list": the top of the Needs attention drawer. At most five fixes, worst first (GET
 // goals/today/fixes, computed when the drawer opens). Every button is one of Scout's verbs: it shows Scout's confirm
@@ -20,7 +20,12 @@ export default function TodayFixes({ businessId, canEdit, onCount }) {
   const s = actions.state;
   if (error) return <p className="td-note" role="alert">Fix the list: {error}</p>;
   if (!data) return <p className="td-note" role="status">Checking the list…</p>;
-  const run = (fix, args = {}, say = {}) => { setDating(null); actions.run({ verb: fix.action.verb, rows: fix.action.rows, args, say }); };
+  const run = (fix, args = {}, say = {}) => {
+    setDating(null);
+    // a call to review is not one of Scout's verbs: the list opens the Intake review on the newest one
+    if (fix.action.review) { window.dispatchEvent(new CustomEvent(REVIEW_NOTE, { detail: { noteId: fix.action.review } })); return; }
+    actions.run({ verb: fix.action.verb, rows: fix.action.rows, args, say });
+  };
   return (
     <section aria-label="Fix the list" className="td" data-today-fixes style={{ gap: 0, maxWidth: 'none' }}>
       <style>{TODAY_CSS}</style>

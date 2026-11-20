@@ -3,7 +3,10 @@ import CallNotesPanel from './CallNotesPanel';
 import { goalsApi } from '../goals/goalsApi';
 import { laWeekStart } from '../periods';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn(), appendToSection: jest.fn() } }));
+import { fathomApi } from '../goals/fathomApi';
+
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn(), appendToSection: jest.fn(), reviewCallNote: jest.fn(), acceptCallNote: jest.fn() } }));
+jest.mock('../goals/fathomApi', () => ({ fathomApi: { extractNote: jest.fn() } }));
 
 const JACK = 'u-jack', CY = 'u-cy';
 const members = [{ user_id: JACK }, { user_id: CY }];
@@ -239,4 +242,87 @@ test('Intake: referred_by shows as editable fields on a new target, edits ride w
   expect(body.companies.map(c => [c.name, c.referred_by])).toEqual([
     ['Lockton', { partner: 'Upside', partner_id: 'g-up', person: 'Brad', office: 'Chicago' }], ['Fundrise', null], ['Gallagher', null],
   ]);
+});
+
+// ---- fathom-notes-v1 Stage 2: a stored note (noteId), the paste warning, ideas ----
+const NOTE = { id: 'n9', title: 'Northwind weekly', call_date: '2026-11-20', source_type: 'call', source_label: 'Fathom · Northwind weekly', accepted_at: null, fathom_url: 'https://fathom.video/share/abc', attendees: [] };
+const REVIEW = { note: NOTE, call_date: '2026-11-20', summary: ['Pilot agreed'], tasks: [proposal('Send Northwind the one-pager', { owner_user_id: JACK }), proposal('Book the kickoff')],
+  ideas: [{ text: 'A pilot dashboard the employer can open', kind: 'product', company: 'Northwind', evidence: 'could we see it live' }] };
+
+test('noteId: the panel opens AT the review of the stored note - no paste box, no model call - and Accept goes to the accept-existing route', async () => {
+  goalsApi.reviewCallNote.mockResolvedValue(REVIEW);
+  goalsApi.acceptCallNote.mockResolvedValue({ goals: [{}], note: { ...NOTE, accepted_at: '2026-11-20T19:00:00Z' } });
+  const onCreated = jest.fn();
+  setup({ noteId: 'n9', onCreated });
+  await screen.findByText('Pilot agreed');
+  expect(goalsApi.reviewCallNote).toHaveBeenCalledWith('b1', 'n9');
+  expect(screen.queryByLabelText('Call notes')).toBeNull();
+  expect(screen.queryByRole('radiogroup', { name: 'What to read' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '← Back to notes' })).toBeNull();
+  expect(screen.getByText(/Call summary · Northwind weekly · Oct|Call summary · Northwind weekly · Nov 20/)).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Open in Fathom ↗' })).toHaveAttribute('href', NOTE.fathom_url);
+  // ideas are shown, never sent
+  expect(screen.getByRole('region', { name: /^Ideas/ })).toHaveTextContent('product · Northwind · A pilot dashboard the employer can open');
+  fireEvent.click(screen.getByRole('button', { name: 'Create: Book the kickoff' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Accept 1' }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(1, expect.objectContaining({ id: 'n9' }), expect.anything()));
+  const [, id, body] = goalsApi.acceptCallNote.mock.calls[0];
+  expect(id).toBe('n9');
+  expect(body.tasks).toEqual([{ text: 'Send Northwind the one-pager', owner_user_id: JACK, due_date: null, link_type: null, link_id: null, steps: [] }]);
+  expect(body).not.toHaveProperty('text'); expect(body).not.toHaveProperty('ideas'); expect(body).not.toHaveProperty('extract');
+  expect(goalsApi.createFromCallNotes).not.toHaveBeenCalled();
+  expect(goalsApi.extractCallNotes).not.toHaveBeenCalled();
+  expect(fathomApi.extractNote).not.toHaveBeenCalled();
+});
+
+test('noteId with no extract yet: one button, Extract; past the cap the reason shows and the button stays; an accepted note says so', async () => {
+  goalsApi.reviewCallNote.mockResolvedValue({ note: NOTE, needs_extract: true });
+  const { unmount } = setup({ noteId: 'n9' });
+  await screen.findByText(/have not been read yet\. Extract makes the proposal - one AI call/);
+  expect(fathomApi.extractNote).not.toHaveBeenCalled();
+  fathomApi.extractNote.mockRejectedValueOnce(new Error('Today’s extractions for this workspace are used - an Owner can raise the daily cap'));
+  fireEvent.click(screen.getByRole('button', { name: 'Extract' }));
+  await screen.findByText(/an Owner can raise the daily cap/);
+  fathomApi.extractNote.mockResolvedValue(REVIEW);
+  fireEvent.click(screen.getByRole('button', { name: 'Extract' }));
+  await screen.findByText('Pilot agreed');
+  expect(fathomApi.extractNote).toHaveBeenLastCalledWith('b1', 'n9');
+  unmount();
+  // the Today row said Extract: the click is the go-ahead
+  fathomApi.extractNote.mockClear();
+  const now = setup({ noteId: 'n9', extractNow: true });
+  await screen.findByText('Pilot agreed');
+  expect(fathomApi.extractNote).toHaveBeenCalledTimes(1);
+  now.unmount();
+  goalsApi.reviewCallNote.mockResolvedValue({ ...REVIEW, note: { ...NOTE, accepted_at: '2026-11-20T19:00:00Z' } });
+  setup({ noteId: 'n9' });
+  await screen.findByText('These notes were already reviewed and accepted.');
+  expect(screen.queryByRole('button', { name: /Accept|Extract/ })).toBeNull();
+});
+
+test('paste: the same text as a Fathom note warns with the note to open instead; insisting reads the paste', async () => {
+  goalsApi.extractCallNotes.mockResolvedValueOnce({ fathom_match: { id: 'n9', title: 'Northwind weekly', call_date: '2026-11-20', accepted: false, fathom_url: null } });
+  setup();
+  paste('## Decisions - Northwind will pilot in January');
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  const warn = await screen.findByText('Same text as the Fathom note ‘Northwind weekly’ (Nov 20) — open it instead.');
+  expect(warn.closest('[data-fathom-twin]')).toHaveAttribute('role', 'status');
+  expect(screen.getByRole('button', { name: 'Read notes' })).toBeDisabled();
+  goalsApi.extractCallNotes.mockResolvedValueOnce({ call_date: '2026-11-20', summary: ['From the paste'], tasks: [proposal('Typed task')] });
+  fireEvent.click(screen.getByRole('button', { name: 'Read these notes anyway' }));
+  await screen.findByText('From the paste');
+  expect(goalsApi.extractCallNotes).toHaveBeenLastCalledWith('b1', expect.objectContaining({ insist: true }));
+  expect(goalsApi.extractCallNotes.mock.calls[0][1]).not.toHaveProperty('insist');
+});
+
+test('paste warning → Open the Fathom note: the panel turns into that note’s review', async () => {
+  goalsApi.extractCallNotes.mockResolvedValueOnce({ fathom_match: { id: 'n9', title: 'Northwind weekly', call_date: '2026-11-20', accepted: false, fathom_url: null } });
+  goalsApi.reviewCallNote.mockResolvedValue(REVIEW);
+  setup();
+  paste('same words');
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Open the Fathom note' }));
+  await screen.findByText('Pilot agreed');
+  expect(goalsApi.reviewCallNote).toHaveBeenCalledWith('b1', 'n9');
+  expect(screen.queryByLabelText('Call notes')).toBeNull();
 });

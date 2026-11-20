@@ -6,7 +6,7 @@ import { HEAT, HEAT_BANDS } from './heatScore.js';
 import { SOURCE_WORD as PERSON_SOURCE } from '../../src/constants/peopleSource.js';
 import { sourceDirectory } from './leadSource.js';
 import { memberColors } from './memberColors.js';
-import { salesIntents, salesStanding } from './scoutIntents.js';
+import { salesIntents, salesStanding, UNREVIEWED } from './scoutIntents.js';
 import { isSnoozed } from '../../src/constants/todoSnooze.js';
 import { nameIndex } from './scoutNames.js';
 
@@ -61,8 +61,8 @@ export const ENTITIES = [
     } },
   { entity: 'call_notes', label: 'Call notes', open: id => window_({ tab: 'actions', open: `note:${id}` }, true),
     async search(sb, { businessId, q, limit }) {
-      const rows = must(await sb.from('sales_call_notes').select('id, title, call_date, text').eq('business_id', businessId).or(`title.ilike.${pat(q)},text.ilike.${pat(q)}`).order('call_date', { ascending: false }).limit(limit));
-      return rows.map(r => ({ id: r.id, title: cleanText(r.title || 'Call note', 120), subtitle: day(r.call_date), date: day(r.call_date), text: [cleanText(r.title || 'Call note', 120), day(r.call_date), cleanText(r.text, 240)].filter(Boolean).join(' · ') }));
+      const rows = must(await sb.from('sales_call_notes').select('id, title, call_date, text, accepted_at').eq('business_id', businessId).or(`title.ilike.${pat(q)},text.ilike.${pat(q)}`).order('call_date', { ascending: false }).limit(limit));
+      return rows.map(r => ({ id: r.id, title: cleanText(r.title || 'Call note', 120), subtitle: [day(r.call_date), r.accepted_at ? null : UNREVIEWED].filter(Boolean).join(' · '), date: day(r.call_date), text: [cleanText(r.title || 'Call note', 120), day(r.call_date), r.accepted_at ? null : UNREVIEWED, cleanText(r.text, 240)].filter(Boolean).join(' · ') }));
     } },
   { entity: 'insights', label: 'Insights', open: id => window_({ tab: 'actions', open: `insight:${id}` }, true),
     async search(sb, { businessId, q, limit }) {

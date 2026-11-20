@@ -32,6 +32,8 @@ export const SYSTEM = [
   'Name each record once. Never write "---". Do not add a "Records" list: the cited records are shown as rows.',
   // scout-v3.1 C6: the label IS the name on screen.
   'A label like [r3] is shown to the user as that record\'s name. So never write a record\'s name next to its label: write the label alone, where the name would go.',
+  // fathom-notes-v1 F-10: call notes no member has accepted yet are marked in the context.
+  'A context line marked "unreviewed" comes from call notes nobody has accepted yet: write "(unreviewed)" next to anything you take from it.',
 ].join('\n');
 // scout-v3 D2: a multi-part ask - one summary sentence, then one "@@ n" block per part, in order, holding only that
 // part's labels (the server renders them as the section's rows with its count and rule) or one line when it has none.

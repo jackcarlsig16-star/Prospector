@@ -1,4 +1,5 @@
 import { getSupabase } from './goalsShared.js';
+import { hasRole } from '../lib/requireAuth.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { cleanText } from './scrubText.js';
@@ -33,11 +34,17 @@ export function parseTodayQuery(q = {}, meId = null) {
   };
 }
 
+// fathom-notes-v1 F7: the stored call notes nobody has accepted (a Fathom recording waits here until a member's
+// Accept; a pasted note is born accepted). Members only - a Viewer never sees a call's title.
+export const waitingNotes = (supabase, businessId) => supabase.from('sales_call_notes').select('id, title, call_date, created_by, created_at, extract')
+  .eq('business_id', businessId).is('accepted_at', null).order('call_date', { ascending: false }).limit(50).then(must);
+
 // -> { view (buildToday), todos (the raw open rows), people, scores, visitOf, members }
-export async function loadToday(supabase, businessId, { now = Date.now(), filter = {} } = {}) {
+// reviews: true adds the "Review call notes" rows (the Today screen and its fixes; Scout's reads leave them out).
+export async function loadToday(supabase, businessId, { now = Date.now(), filter = {}, reviews = false } = {}) {
   const today = laDateString(new Date(now)), week = laMonday(today);
   const goals = build => selectAllPages(() => build(supabase.from('sales_week_goals').select('*').eq('business_id', businessId)).order('id'));
-  const [open, scored, peopled, visits, waiting, five, memberRows, dataKeys] = await Promise.all([
+  const [open, scored, peopled, visits, waiting, five, memberRows, dataKeys, toReview] = await Promise.all([
     todayReads.openTodosFor(supabase, businessId, null, { today, snoozed: filter.snoozed ? 'only' : 'hide' }),
     todayReads.listScores(supabase, businessId, {}, { now }),
     todayReads.peopleActivity(supabase, businessId, { window: 'all', now, snoozed: 'all' }),
@@ -46,12 +53,13 @@ export async function loadToday(supabase, businessId, { now = Date.now(), filter
     goals(x => x.eq('kind', 'commitment').eq('week_start', week)),
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(must),
     todayReads.dataKeysRan(supabase, now),
+    reviews && !filter.snoozed ? waitingNotes(supabase, businessId) : [],
   ]);
   const scores = scored.status === 200 ? [...scored.body.rows, ...(scored.body.live || [])] : [];
   const people = peopled.status === 200 ? peopled.body.rows : [];
   const members = memberRows.map(m => ({ id: m.user_id, name: cleanText((m.profile?.display_name || m.name || 'Member').trim(), 80) }));
   // the reply-owed rows of the Snoozed view would be every reply again: that view is the hidden to-dos only
-  const view = buildToday({ todos: open.rows, waiting, five, scores, people: filter.snoozed ? people.map(p => ({ ...p, emails: { ...p.emails, replied: 0 } })) : people, visits, members, today, filter, snoozed: open.snoozed, flags: { data_keys: dataKeys } });
+  const view = buildToday({ todos: open.rows, waiting, five, scores, people: filter.snoozed ? people.map(p => ({ ...p, emails: { ...p.emails, replied: 0 } })) : people, visits, members, reviews: toReview, today, filter, snoozed: open.snoozed, flags: { data_keys: dataKeys } });
   return { view, todos: open.rows, people, scores, visitOf: visitIndex(visits), members };
 }
 
@@ -73,9 +81,12 @@ export function buildFixes({ team, mine, todos, records, feeds = [] }) {
   const named = unlinked.map(t => ({ t, m: linkFor(t.text, records) })).filter(x => x.m);
   const one = named.filter(x => x.m.link);
   const undated = myRows.filter(r => r.kind === 'todo' && !r.due);
+  const calls = teamRows.filter(r => r.kind === 'review');
   const more = list => (list.length > BATCH ? ` The card takes ${BATCH} at a time.` : '');
   const items = [
     ...feeds.filter(f => f.failed).map(f => ({ id: `feed:${f.id}`, n: 1, title: `${f.label} failed`, note: f.line, action: null })),
+    calls.length && { id: 'reviews', n: calls.length, title: `${calls.length} call${calls.length === 1 ? '' : 's'} to review`, note: 'Recorded calls whose notes are stored and waiting: nothing reaches a record until a member accepts.',
+      action: { label: 'Review', review: calls[0].note_id } },
     replies.length && { id: 'replies', n: replies.length, title: `${replies.length} repl${replies.length === 1 ? 'y has' : 'ies have'} no to-do`, note: 'People wrote back and nothing on the list answers them.',
       action: { label: `Add ${Math.min(replies.length, BATCH)} to-do${replies.length === 1 ? '' : 's'}`, verb: 'reply_todos', rows: replies.slice(0, BATCH).map(r => ({ entity: 'people', id: r.person.key, title: r.person.name, company: r.company?.id ? { type: r.company.type, id: r.company.id, name: r.company.name } : null })) } },
     unowned.length && { id: 'unowned', n: unowned.length, title: `${unowned.length} to-do${unowned.length === 1 ? ' has' : 's have'} no owner`, note: `They show under Team only, so nobody’s Today has them.${more(unowned)}`,
@@ -88,10 +99,10 @@ export function buildFixes({ team, mine, todos, records, feeds = [] }) {
   return { n: items.length, items, feeds };
 }
 
-export async function fixes(supabase, { businessId, userId, now = Date.now() }) {
+export async function fixes(supabase, { businessId, userId, now = Date.now(), reviews = false }) {
   const { attention } = await import('./attentionRoutes.js');
   const [t, records, att, note] = await Promise.all([
-    loadToday(supabase, businessId, { now }),
+    loadToday(supabase, businessId, { now, reviews }),
     linkableRecords(supabase, businessId),
     attention(supabase, { businessId, userId, now }).catch(e => ({ sources: [], error: e.message })),
     supabase.from('sales_call_notes').select('id, call_date').eq('business_id', businessId).order('call_date', { ascending: false }).limit(1).then(must),
@@ -113,12 +124,12 @@ function buildFiltered(t, filter) {
 const fail = (res, label, e) => { console.error(`[${label}]`, e.message); res.status(e.status || 500).json({ error: e.message }); };
 export async function todayRoute(req, res) {
   try {
-    const { view, members } = await loadToday(getSupabase(), req.params.businessId, { filter: parseTodayQuery(req.query, req.auth?.user?.id || null) });
+    const { view, members } = await loadToday(getSupabase(), req.params.businessId, { filter: parseTodayQuery(req.query, req.auth?.user?.id || null), reviews: hasRole(req, req.params.businessId, 'member') });
     res.json({ ...view, badge: badgeCount(view), members });
   } catch (e) { fail(res, 'goals/today', e); }
 }
 export async function todayFixesRoute(req, res) {
-  try { res.json(await fixes(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id })); }
+  try { res.json(await fixes(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, reviews: hasRole(req, req.params.businessId, 'member') })); }
   catch (e) { fail(res, 'goals/today/fixes', e); }
 }
 export async function todayWorkRoute(req, res) {

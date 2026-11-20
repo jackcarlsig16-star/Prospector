@@ -22,6 +22,7 @@ import SourcesView from './SourcesView';
 import ClientsView from './ClientsView';
 import TopTargetsView from './topTargets/TopTargetsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
+import FathomCard from './FathomCard';
 import HomeView, { PERIODS, DEFAULT_PERIOD } from './HomeView';
 import { dayTitle } from './todayModel';
 import { linkedTo } from '../tasks/LinkedTasks';
@@ -291,6 +292,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
         {section === 'settings' && view === 'team-emails' && me && (
           <TeamEmailsSettings businessId={businessId} meId={meId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
         )}
+        {section === 'settings' && view === 'connections' && me && <FathomCard businessId={businessId} canEdit={canEdit} />}
         {section === 'pipeline' && view === 'campaigns' && me && (
           <CampaignsView businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} meId={meId} />
         )}
