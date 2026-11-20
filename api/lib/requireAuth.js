@@ -7,9 +7,10 @@ import { isAllowlistedBusiness } from '../sales/allowlist.js';
 // add per-workspace role checks. Memberships are re-read on every request,
 // so a role change applies on the next call.
 
-// Exact method + path only - third parties and pre-sign-in pages.
+// Exact method + path only (the Fathom token is the one varying segment) - third parties and pre-sign-in pages.
 const EXEMPT = [
   { method: 'POST', path: /^\/api\/zoom\/webhook$/ },  // Zoom signs its own requests
+  { method: 'POST', path: /^\/api\/fathom\/webhook\/[A-Za-z0-9_-]{32,64}$/ },  // Fathom: the token names the connection, its signature is the gate
   { method: 'GET', path: /^\/api\/invites\/[^/]+$/ },  // invite page shows the invite before sign-in
 ];
 

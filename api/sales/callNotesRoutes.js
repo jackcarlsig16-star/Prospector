@@ -60,19 +60,20 @@ waiting_on - anything someone outside MEMBERS owes us: their action items, pendi
 terms - pricing, revenue share, economic structure, bundles, who pays: company, text (max 40 words), evidence.
 next_meeting - the next meeting the notes set with a company: {company, date (YYYY-MM-DD resolved from NOTE DATE; "the week of X" = that week's Monday), text, evidence}, or null.
 - One decisions / waiting_on / terms item per point the notes make (a bullet, a sentence): never join two decisions or two terms into one item.
-- Product or integration ideas stay facts (angle).
+- ideas - an idea someone voiced about OUR product, process or marketing (a feature, an integration, a way of working, a campaign): text (max 40 words), kind ("product" | "process" | "marketing" | "other"), company (the company it came up about, as written, or null), evidence. An idea about why a company would care stays a fact (angle), never an idea.
+- ATTENDEES, when given, are the people on the call's invite (external = not on our side): use them to spell names and to tell who is outside MEMBERS. An attendee the notes never mention is not a person to list.
 - Every company / people / touches / facts / decisions / waiting_on / terms / next_meeting item carries evidence: the shortest phrase from the notes that shows it (max 20 words).
 - Never include an email address or phone number in any field.
 ${INSIGHT_RULES}
 
 Reply with JSON only, no prose:
-{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"referred_by":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}],"decisions":[{"company":"","text":"","evidence":""}],"waiting_on":[{"company":"","who":"","text":"","due_date":null,"evidence":""}],"terms":[{"company":"","text":"","evidence":""}],"next_meeting":null,${INSIGHT_JSON}}`;
+{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"referred_by":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}],"decisions":[{"company":"","text":"","evidence":""}],"waiting_on":[{"company":"","who":"","text":"","due_date":null,"evidence":""}],"terms":[{"company":"","text":"","evidence":""}],"next_meeting":null,"ideas":[{"text":"","kind":"","company":null,"evidence":""}],${INSIGHT_JSON}}`;
 
 const weekOf = day => addDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
 const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 export const callCategory = (callDate, title) => ['From calls', md(callDate), title].filter(Boolean).join(' · ');
 
-async function context(supabase, businessId, today) {
+export async function noteContext(supabase, businessId, today = laDateString()) {
   const week = weekOf(today);
   const page = (table, cols, order) => selectAllPages(() => supabase.from(table).select(cols).eq('business_id', businessId).order(order));
   const [business, members, partners, commitments, recent, companies, opportunities, targets] = await Promise.all([
@@ -148,6 +149,61 @@ export function toProposals(raw, ctx) {
   return { summary, tasks };
 }
 
+// fathom-notes-v1 F6: ideas ride on the extract and the review; nothing writes them to a record.
+const IDEA_KINDS = ['product', 'process', 'marketing', 'other'];
+export function toIdeas(raw) {
+  return (Array.isArray(raw?.ideas) ? raw.ideas : []).slice(0, MAX_ITEMS).map(i => ({
+    text: clean(i?.text, 400).split(' ').slice(0, 40).join(' '),
+    kind: IDEA_KINDS.includes(i?.kind) ? i.kind : 'other',
+    company: clean(i?.company, 160) || null,
+    evidence: clean(i?.evidence, 200),
+  })).filter(i => i.text && i.evidence);
+}
+
+const fault = (status, message) => Object.assign(new Error(message), { status });
+// A suite swaps the model call for a canned reply.
+export const extractDeps = { call: callAnthropic };
+
+// The ONE extraction: the paste route and the Fathom path (api/fathom/extract.js) both call it - one prompt, one
+// parser, one usage row. Returns the model's parsed reply untouched; nothing is written but the usage row.
+export async function extractNotes(supabase, { businessId, userId, text, noteDate, title = null, sourceType = 'call', sourceLabel = null, attendees = null, callType = 'call_tasks', ctx = null }) {
+  ctx ||= await noteContext(supabase, businessId);
+  const invited = (attendees || []).filter(a => a?.name).map(a => ({ name: a.name, external: !!a.is_external, domain: a.domain || null }));
+  const lists = [
+    `NOTE DATE: ${noteDate}`, `SOURCE: ${sourceType}${sourceLabel ? ` - ${clean(sourceLabel, 120)}` : ''}`, title ? `TITLE: ${clean(title, 200)}` : '',
+    `MEMBERS: ${JSON.stringify(ctx.members.map(m => m.name))}`,
+    invited.length ? `ATTENDEES: ${JSON.stringify(invited)}` : '',
+    `PARTNERS: ${JSON.stringify(ctx.partners.map(p => ({ id: p.id, name: p.name })))}`,
+    `COMMITMENTS: ${JSON.stringify(ctx.commitments)}`,
+    `METRICS: ${JSON.stringify(LINKABLE_METRICS)}`,
+    `CATEGORIES: ${JSON.stringify(ctx.categories)}`,
+  ].filter(Boolean).join('\n');
+  const model = MODELS.STANDARD;
+  const data = await extractDeps.call({
+    system: SYSTEM, model, max_tokens: 8192, thinking: false, timeoutMs: 90000,
+    messages: [{ role: 'user', content: `${lists}\n\n<notes>\n${text.slice(0, MAX_CHARS)}\n</notes>` }],
+    supabase, businessId, userId, callType,
+  });
+  if (data.stop_reason === 'max_tokens') throw fault(502, `The notes hold more than fits in one pass (up to ${MAX_TASKS} tasks and ${MAX_ITEMS} each of companies, people, touches and facts) - split them and try again`);
+  const out = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  let raw;
+  try { raw = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)); } catch { throw fault(502, 'Could not read the AI reply - try again'); }
+  return { raw, ctx, usage: { model, input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: estimateCostUsd(model, data.usage) } };
+}
+
+// What the review screen shows, rebuilt from a model reply (fresh, or the scrubbed copy stored on a note) against
+// the workspace as it is now. No model call.
+export async function reviewOf(supabase, businessId, raw, ctx, callDate) {
+  const intake = await enrichIntake(supabase, businessId, toIntake(raw, ctx, callDate));
+  const partnerIds = new Set(Object.values(intake).flat().map(x => x?.match?.type === 'partner' && x.match.id).filter(Boolean));
+  // intake-insights-v1 I1 / I2: the same reply's track / optimize / channel links, checked without a model.
+  const insights = enrichInsights(toInsights(raw, { noteDate: callDate }), ctx, await linkPeople(supabase, businessId));
+  return {
+    ...toProposals(raw, ctx), ...intake, insights, ideas: toIdeas(raw), categories: ctx.categories,
+    recent_accepts: await recentAccepts(supabase, businessId, ctx.partners.filter(p => partnerIds.has(p.id))),
+  };
+}
+
 // POST /goals/call-notes/extract { text, call_date?, title?, source_type?, source_label? } -> proposals.
 export async function extractCallNotesRoute(req, res) {
   const { text, call_date, title, source_type = 'call', source_label } = req.body || {};
@@ -162,38 +218,12 @@ export async function extractCallNotesRoute(req, res) {
     const hash = noteHash(text);
     const earlier = await findNote(supabase, businessId, hash);
     if (earlier) return res.json({ duplicate: earlier });
-    const ctx = await context(supabase, businessId, laDateString());
-    const lists = [
-      `NOTE DATE: ${callDate}`, `SOURCE: ${source_type}${source_label ? ` - ${clean(source_label, 120)}` : ''}`, title ? `TITLE: ${clean(title, 200)}` : '',
-      `MEMBERS: ${JSON.stringify(ctx.members.map(m => m.name))}`,
-      `PARTNERS: ${JSON.stringify(ctx.partners.map(p => ({ id: p.id, name: p.name })))}`,
-      `COMMITMENTS: ${JSON.stringify(ctx.commitments)}`,
-      `METRICS: ${JSON.stringify(LINKABLE_METRICS)}`,
-      `CATEGORIES: ${JSON.stringify(ctx.categories)}`,
-    ].filter(Boolean).join('\n');
-    const model = MODELS.STANDARD;
-    const data = await callAnthropic({
-      system: SYSTEM, model, max_tokens: 8192, thinking: false, timeoutMs: 90000,
-      messages: [{ role: 'user', content: `${lists}\n\n<notes>\n${text}\n</notes>` }],
-      supabase, businessId, userId: req.auth.user.id, callType: 'call_tasks',
-    });
-    if (data.stop_reason === 'max_tokens') return res.status(502).json({ error: `The notes hold more than fits in one pass (up to ${MAX_TASKS} tasks and ${MAX_ITEMS} each of companies, people, touches and facts) - split them and try again` });
-    const out = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
-    const json = out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1);
-    let raw;
-    try { raw = JSON.parse(json); } catch { return res.status(502).json({ error: 'Could not read the AI reply - try again' }); }
-    const intake = await enrichIntake(supabase, businessId, toIntake(raw, ctx, callDate));
-    const partnerIds = new Set(Object.values(intake).flat().map(x => x?.match?.type === 'partner' && x.match.id).filter(Boolean));
+    const { raw, ctx, usage } = await extractNotes(supabase, { businessId, userId: req.auth.user.id, text, noteDate: callDate, title, sourceType: source_type, sourceLabel: source_label });
+    // The extract runs before the note row exists, so it rides through the browser signed (intakeDeal.js).
     const extract = scrubExtract(raw);
-    // intake-insights-v1 I1 / I2: the same reply's track / optimize / channel links, checked without a model.
-    const insights = enrichInsights(toInsights(raw, { noteDate: callDate }), ctx, await linkPeople(supabase, businessId));
-    res.json({
-      call_date: callDate, hash, ...toProposals(raw, ctx), ...intake, insights, categories: ctx.categories,
-      recent_accepts: await recentAccepts(supabase, businessId, ctx.partners.filter(p => partnerIds.has(p.id))),
-      extract, extract_sig: signExtract(extract, hash),
-      usage: { model, input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: estimateCostUsd(model, data.usage) },
-    });
+    res.json({ call_date: callDate, hash, ...await reviewOf(supabase, businessId, raw, ctx, callDate), extract, extract_sig: signExtract(extract, hash), usage });
   } catch (e) {
+    if (e.status && e.status < 500 || e.status === 502) return res.status(e.status).json({ error: e.message });
     console.error('[call-notes/extract]', e.message);
     res.status(500).json({ error: e.message });
   }
@@ -212,6 +242,53 @@ async function findNote(supabase, businessId, hash) {
   return { ...data, task_count: count };
 }
 
+// The ticked rows of a review, checked against the workspace - shared by both accepts. Answers the request itself and
+// returns null when something is wrong.
+async function readAccept(req, res, supabase, businessId) {
+  const { tasks = [] } = req.body || {};
+  const no = (status, body) => { res.status(status).json(body); return null; };
+  if (!Array.isArray(tasks) || tasks.length > MAX_TASKS) return no(400, { error: `tasks must be a list of up to ${MAX_TASKS}` });
+  const rows = [];
+  for (const [i, t] of tasks.entries()) {
+    const { steps = [], ...fields } = aliasLink(t) || {};
+    if (!Array.isArray(steps) || steps.length > MAX_STEPS || !steps.every(s => typeof s === 'string' && s.trim())) {
+      return no(400, { error: `task ${i + 1}: steps must be up to ${MAX_STEPS} non-empty lines` });
+    }
+    const v = await validate(supabase, businessId, TASK_FIELDS, fields);
+    if (v.error) { fail(res, { ...v, error: `task ${i + 1}: ${v.error}` }); return null; }
+    if (!v.payload.text) return no(400, { error: `task ${i + 1}: text is required` });
+    const linkErr = await checkLink(supabase, businessId, { kind: 'todo', ...v.payload }, null);
+    if (linkErr) { fail(res, { ...linkErr, error: `task ${i + 1}: ${linkErr.error}` }); return null; }
+    rows.push({ payload: v.payload, steps: steps.map(s => s.trim()) });
+  }
+  const ctx = await noteContext(supabase, businessId);
+  let intake, insights;
+  try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); } catch (e) { return no(e.status || 400, { error: e.message }); }
+  // todo-events-v1 T7 (K9): a to-do left without a link in the review is linked to the ONE record its text names;
+  // when it names several, nothing is guessed - the reply lists the choices (needs_link) and the screen asks.
+  // A to-do that names a person kept in the review carries that person's People key (K4).
+  const records = linkRecords(ctx), asks = [];
+  const keyOf = new Map();
+  for (const [i, r] of rows.entries()) {
+    if (!r.payload.link_type) {
+      const hit = linkFor(r.payload.text, records);
+      if (hit?.link) Object.assign(r.payload, { link_type: hit.link.link_type, link_id: hit.link.link_id });
+      else if (hit?.choices) asks.push({ i, text: clean(r.payload.text, 160), choices: hit.choices });
+    }
+    const who = intake.people.find(p => p.name.includes(' ') && r.payload.text.toLowerCase().includes(p.name.toLowerCase()));
+    if (who) {
+      if (!keyOf.has(who.name)) keyOf.set(who.name, (await findPerson(supabase, businessId, who.name, laDateString()))?.key || null);
+      if (keyOf.get(who.name)) r.payload.person_key = keyOf.get(who.name);
+    }
+  }
+  const picked = rows.length + Object.values(intake).reduce((n, l) => n + l.length, 0) + Object.values(insights).reduce((n, l) => n + l.length, 0);
+  if (!picked) return no(400, { error: 'nothing is ticked - tick at least one row' });
+  const week = weekOf(laDateString());
+  if (await weekIsFinal(supabase, businessId, week)) return no(409, { error: FINAL_ERROR });
+  return { rows, ctx, intake, insights, asks, week };
+}
+const needsLink = (asks, result) => asks.filter(a => result.goals?.[a.i]).map(a => ({ todo_id: result.goals[a.i].id, text: a.text, choices: a.choices }));
+
 // POST /goals/call-notes { text, title?, call_date, source_type?, source_label?,
 // tasks: [{ text, owner_user_id, due_date, link_type, link_id, steps: [text] }],
 // companies, ownership, people, touches, facts, decisions, waiting_on, terms,
@@ -219,65 +296,29 @@ async function findNote(supabase, businessId, hash) {
 // writes everything ticked in the review (intakeAccept.js). To-dos land in
 // this week, category "From calls · <date> · <title>".
 export async function createFromCallNotesRoute(req, res) {
-  const { text, title, call_date, tasks = [], source_type = 'call', source_label, extract, extract_sig } = req.body || {};
+  const { text, title, call_date, source_type = 'call', source_label, extract, extract_sig } = req.body || {};
   if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'text is required' });
   if (text.length > MAX_CHARS) return res.status(413).json({ error: `notes are too long (${text.length} characters, max ${MAX_CHARS})` });
   if (!isDate(call_date)) return res.status(400).json({ error: 'call_date must be YYYY-MM-DD' });
   if (title != null && typeof title !== 'string') return res.status(400).json({ error: 'title must be text' });
   if (!SOURCE_TYPES.includes(source_type)) return res.status(400).json({ error: `source_type must be one of ${SOURCE_TYPES.join('|')}` });
   if (source_label != null && typeof source_label !== 'string') return res.status(400).json({ error: 'source_label must be text' });
-  if (!Array.isArray(tasks) || tasks.length > MAX_TASKS) return res.status(400).json({ error: `tasks must be a list of up to ${MAX_TASKS}` });
   const businessId = req.params.businessId;
   const userId = req.auth.user.id;
   const supabase = getSupabase();
   try {
-    const rows = [];
-    for (const [i, t] of tasks.entries()) {
-      const { steps = [], ...fields } = aliasLink(t) || {};
-      if (!Array.isArray(steps) || steps.length > MAX_STEPS || !steps.every(s => typeof s === 'string' && s.trim())) {
-        return res.status(400).json({ error: `task ${i + 1}: steps must be up to ${MAX_STEPS} non-empty lines` });
-      }
-      const v = await validate(supabase, businessId, TASK_FIELDS, fields);
-      if (v.error) return fail(res, { ...v, error: `task ${i + 1}: ${v.error}` });
-      if (!v.payload.text) return res.status(400).json({ error: `task ${i + 1}: text is required` });
-      const linkErr = await checkLink(supabase, businessId, { kind: 'todo', ...v.payload }, null);
-      if (linkErr) return fail(res, { ...linkErr, error: `task ${i + 1}: ${linkErr.error}` });
-      rows.push({ payload: v.payload, steps: steps.map(s => s.trim()) });
-    }
-    const ctx = await context(supabase, businessId, laDateString());
-    let intake, insights;
-    try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
-    // todo-events-v1 T7 (K9): a to-do left without a link in the review is linked to the ONE record its text names;
-    // when it names several, nothing is guessed - the reply lists the choices (needs_link) and the screen asks.
-    // A to-do that names a person kept in the review carries that person's People key (K4).
-    const records = linkRecords(ctx), asks = [];
-    const keyOf = new Map();
-    for (const [i, r] of rows.entries()) {
-      if (!r.payload.link_type) {
-        const hit = linkFor(r.payload.text, records);
-        if (hit?.link) Object.assign(r.payload, { link_type: hit.link.link_type, link_id: hit.link.link_id });
-        else if (hit?.choices) asks.push({ i, text: clean(r.payload.text, 160), choices: hit.choices });
-      }
-      const who = intake.people.find(p => p.name.includes(' ') && r.payload.text.toLowerCase().includes(p.name.toLowerCase()));
-      if (who) {
-        if (!keyOf.has(who.name)) keyOf.set(who.name, (await findPerson(supabase, businessId, who.name, laDateString()))?.key || null);
-        if (keyOf.get(who.name)) r.payload.person_key = keyOf.get(who.name);
-      }
-    }
-    const picked = rows.length + Object.values(intake).reduce((n, l) => n + l.length, 0) + Object.values(insights).reduce((n, l) => n + l.length, 0);
-    if (!picked) return res.status(400).json({ error: 'nothing is ticked - tick at least one row' });
-    const week = weekOf(laDateString());
-    if (await weekIsFinal(supabase, businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
-
+    const a = await readAccept(req, res, supabase, businessId);
+    if (!a) return;
     const hash = noteHash(text);
+    // A pasted note only exists once it is accepted, so it is born accepted (fathom-notes-v1 F7).
     const { data: note, error: noteErr } = await supabase.from('sales_call_notes')
-      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, extract: extractIfSigned(extract, extract_sig, hash), created_by: userId })
+      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, extract: extractIfSigned(extract, extract_sig, hash), created_by: userId, accepted_at: new Date().toISOString() })
       .select('id, title, call_date, source_type, source_label, created_at').single();
     if (noteErr?.code === '23505') return res.status(409).json({ error: 'These notes were already accepted', duplicate: await findNote(supabase, businessId, hash) });
     if (noteErr) throw new Error(noteErr.message);
     let result;
     try {
-      result = await acceptIntake(supabase, { businessId, userId, note, ctx, intake, insights, taskRows: rows, week, category: callCategory(call_date, note.title) });
+      result = await acceptIntake(supabase, { businessId, userId, note, ctx: a.ctx, intake: a.intake, insights: a.insights, taskRows: a.rows, week: a.week, category: callCategory(call_date, note.title) });
     } catch (e) {
       // Everything acceptIntake wrote is already undone; the note goes too,
       // so pasting the same notes again works.
@@ -285,10 +326,69 @@ export async function createFromCallNotesRoute(req, res) {
       if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
       throw e;
     }
-    const needs_link = asks.filter(a => result.goals?.[a.i]).map(a => ({ todo_id: result.goals[a.i].id, text: a.text, choices: a.choices }));
-    res.status(201).json({ note, ...result, needs_link });
+    res.status(201).json({ note, ...result, needs_link: needsLink(a.asks, result) });
   } catch (e) {
     console.error('[call-notes/create]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+}
+
+const NOTE_COLS = 'id, title, call_date, source_type, source_label, created_at, accepted_at, fathom_url, attendees';
+async function storedNote(supabase, businessId, id, cols = NOTE_COLS) {
+  if (!UUID.test(id)) return null;
+  const { data, error } = await supabase.from('sales_call_notes').select(cols).eq('business_id', businessId).eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+// GET /goals/call-notes/:id/review - the review of a note that is already stored (a Fathom recording), rebuilt from
+// its stored extract. No model call. needs_extract: the note has no extract yet (past the daily cap, or a backfill).
+export async function reviewCallNoteRoute(req, res) {
+  const businessId = req.params.businessId;
+  if (!hasRole(req, businessId, 'member')) return res.status(403).json({ error: 'Call notes are visible to members only' });
+  const supabase = getSupabase();
+  try {
+    const row = await storedNote(supabase, businessId, req.params.id, `${NOTE_COLS}, extract`);
+    if (!row) return res.status(404).json({ error: 'note not found' });
+    const { extract, ...note } = row;
+    if (!extract) return res.json({ note, needs_extract: true });
+    const ctx = await noteContext(supabase, businessId);
+    res.json({ note, call_date: note.call_date, ...await reviewOf(supabase, businessId, extract, ctx, note.call_date) });
+  } catch (e) {
+    console.error('[call-notes/review]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// POST /goals/call-notes/:id/accept { tasks, companies, ... as the paste Accept, without the text } - Accept on a
+// note that is already stored. It never inserts a note and never deletes one: a failed accept leaves the note
+// waiting (accepted_at null) and says why.
+export async function acceptCallNoteRoute(req, res) {
+  const businessId = req.params.businessId;
+  const userId = req.auth.user.id;
+  const supabase = getSupabase();
+  try {
+    const note = await storedNote(supabase, businessId, req.params.id);
+    if (!note) return res.status(404).json({ error: 'note not found' });
+    if (note.accepted_at) return res.status(409).json({ error: 'These notes were already accepted' });
+    const a = await readAccept(req, res, supabase, businessId);
+    if (!a) return;
+    // Claimed before any write, so two members pressing Accept on the same note cannot both write it.
+    const accepted_at = new Date().toISOString();
+    const { data: claimed, error: claimErr } = await supabase.from('sales_call_notes').update({ accepted_at }).eq('id', note.id).is('accepted_at', null).select('id');
+    if (claimErr) throw new Error(claimErr.message);
+    if (!claimed.length) return res.status(409).json({ error: 'These notes were already accepted' });
+    let result;
+    try {
+      result = await acceptIntake(supabase, { businessId, userId, note, ctx: a.ctx, intake: a.intake, insights: a.insights, taskRows: a.rows, week: a.week, category: callCategory(note.call_date, note.title) });
+    } catch (e) {
+      await supabase.from('sales_call_notes').update({ accepted_at: null }).eq('id', note.id);
+      if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
+      throw e;
+    }
+    res.json({ note: { ...note, accepted_at }, ...result, needs_link: needsLink(a.asks, result) });
+  } catch (e) {
+    console.error('[call-notes/accept]', e.message);
     res.status(500).json({ error: e.message });
   }
 }

@@ -598,6 +598,7 @@ app.post('/api/campaigns/:id/extract-fields', aiLimit, esHandler('./api/campaign
 app.post('/api/businesses/:id/call-log', aiLimit, esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
+app.post('/api/fathom/webhook/:token', esHandler('./api/fathom/webhook.js'));
 app.get('/api/zoom/events', authMw('platformOwnerOnly'), esHandler('./api/zoom/events.js'));
 app.post('/api/zoom/events/:eventId/reassign', authMw('platformOwnerOnly'), esHandler('./api/zoom/events-reassign.js'));
 
@@ -823,6 +824,17 @@ app.post('/api/sales/:businessId/goals/call-notes', salesModuleRoute('./api/sale
 app.post('/api/sales/:businessId/goals/leads/extract', aiLimit, salesModuleRoute('./api/sales/leadUploadRoutes.js', 'extractLeadsRoute', 'goals/leads/extract'));
 app.post('/api/sales/:businessId/goals/leads', salesModuleRoute('./api/sales/leadUploadRoutes.js', 'fileLeadsRoute', 'goals/leads POST'));
 app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/sales/callNotesRoutes.js', 'getCallNoteRoute', 'goals/call-notes/:id'));
+// fathom-notes-v1: the review of a stored note (no model call) and Accept on it; a member's Fathom connection.
+app.get('/api/sales/:businessId/goals/call-notes/:id/review', salesModuleRoute('./api/sales/callNotesRoutes.js', 'reviewCallNoteRoute', 'goals/call-notes/:id/review'));
+app.post('/api/sales/:businessId/goals/call-notes/:id/accept', salesModuleRoute('./api/sales/callNotesRoutes.js', 'acceptCallNoteRoute', 'goals/call-notes/:id/accept POST'));
+app.get('/api/sales/:businessId/fathom', salesModuleRoute('./api/fathom/routes.js', 'statusRoute', 'fathom'));
+app.post('/api/sales/:businessId/fathom/connect', salesModuleRoute('./api/fathom/routes.js', 'connectRoute', 'fathom/connect POST'));
+app.post('/api/sales/:businessId/fathom/test', salesModuleRoute('./api/fathom/routes.js', 'testRoute', 'fathom/test POST'));
+app.post('/api/sales/:businessId/fathom/webhook', salesModuleRoute('./api/fathom/routes.js', 'registerRoute', 'fathom/webhook POST'));
+app.post('/api/sales/:businessId/fathom/pull', salesModuleRoute('./api/fathom/routes.js', 'pullRoute', 'fathom/pull POST'));
+app.post('/api/sales/:businessId/fathom/disconnect', salesModuleRoute('./api/fathom/routes.js', 'disconnectRoute', 'fathom/disconnect POST'));
+app.put('/api/sales/:businessId/fathom/cap', salesModuleRoute('./api/fathom/routes.js', 'capRoute', 'fathom/cap PUT'));
+app.post('/api/sales/:businessId/fathom/notes/:id/extract', aiLimit, salesModuleRoute('./api/fathom/routes.js', 'extractNoteRoute', 'fathom/notes/:id/extract POST'));
 app.get('/api/sales/:businessId/goals/prospect-targets', salesModuleRoute('./api/sales/targetsRoutes.js', 'listProspectTargetsRoute', 'goals/prospect-targets'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/promote', salesModuleRoute('./api/sales/targetsRoutes.js', 'promoteTargetRoute', 'goals/prospect-targets/:id/promote POST'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/reject', salesModuleRoute('./api/sales/targetsRoutes.js', 'rejectTargetRoute', 'goals/prospect-targets/:id/reject POST'));

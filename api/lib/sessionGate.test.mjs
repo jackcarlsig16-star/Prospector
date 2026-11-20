@@ -17,7 +17,8 @@ const lines = server.split('\n');
 const lineOf = needle => lines.findIndex(l => l.includes(needle)) + 1;
 
 // The Stage 0 set, verbatim. Adding an exemption fails this test until it is listed here on purpose.
-const EXEMPT = ["{ method: 'POST', path: /^\\/api\\/zoom\\/webhook$/ }", "{ method: 'GET', path: /^\\/api\\/invites\\/[^/]+$/ }"];
+// fathom-notes-v1 R6 (planner OK'd Nov 19): the Fathom webhook, by its token-shaped path; its signature is the gate.
+const EXEMPT = ["{ method: 'POST', path: /^\\/api\\/zoom\\/webhook$/ }", "{ method: 'POST', path: /^\\/api\\/fathom\\/webhook\\/[A-Za-z0-9_-]{32,64}$/ }", "{ method: 'GET', path: /^\\/api\\/invites\\/[^/]+$/ }"];
 const NO_WORKSPACE_OK = ["{ method: 'GET', path: /^\\/api\\/me$/ }", "{ method: 'POST', path: /^\\/api\\/me\\/welcome$/ }", "{ method: 'POST', path: /^\\/api\\/invites\\/[^/]+\\/accept$/ }"];
 const CONNECTOR_PATHS = ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server', '/oauth/register', '/oauth/authorize', '/oauth/token', '/mcp',
   // homelover-clients-v1 C11: the HomeLover connector's own OAuth server (issuer <origin>/hl) + /hl/mcp, same reason.

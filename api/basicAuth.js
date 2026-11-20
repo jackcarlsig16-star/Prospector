@@ -4,6 +4,9 @@ const crypto = require('crypto');
 // Third parties call these server-to-server and can't send Basic credentials.
 // Exact path matches only - additions need Jack's OK (prospector-basic-auth-v1).
 const EXEMPT_PATHS = new Set(['/api/zoom/webhook']);
+// Fathom's webhook URL ends in a per-connection token, so it cannot be an exact path: POST under this prefix passes,
+// and the Standard-Webhooks signature is the gate (api/fathom/webhook.js). Planner OK'd Nov 19 (fathom-notes-v1 R6).
+const FATHOM_WEBHOOK = /^\/api\/fathom\/webhook\/[A-Za-z0-9_-]{32,64}$/;
 
 // Hashing both sides gives equal-length buffers, so timingSafeEqual never
 // throws and a length mismatch can't leak through timing.
@@ -19,6 +22,7 @@ function safeEqual(a, b) {
 function basicAuth(req, res, next) {
   if (process.env.BASIC_AUTH_ENABLED === 'false') return next();
   if (EXEMPT_PATHS.has(req.path)) return next();
+  if (req.method === 'POST' && FATHOM_WEBHOOK.test(req.path)) return next();
 
   const user = process.env.BASIC_AUTH_USER;
   const pass = process.env.BASIC_AUTH_PASS;
