@@ -83,7 +83,7 @@ export async function companyBrief(supabase, { businessId, type, id, now = Date.
   const name = detail.record?.name || meta.name || type;
   const lines = briefLines({ type, name, score, meta, sourceRow, sourcePartner, journey, detail, now });
   return reply(200, {
-    company: { type, id, name }, score: score ? { score: score.score, band: score.band, closed: score.closed, flagged_out: score.flagged_out, source_label: score.source_label, computed_at: score.computed_at } : null,
+    company: { type, id, name, owner_user_id: meta.owner_user_id || null, owner: meta.owner || null }, score: score ? { score: score.score, band: score.band, closed: score.closed, flagged_out: score.flagged_out, source_label: score.source_label, computed_at: score.computed_at } : null,
     upside_owned: meta.owner_team === 'upside' || meta.owner_team === 'both', no_double_touch: !!sourceRow.no_double_touch,
     next_step: detail.steps?.next ? STEP_LABEL[detail.steps.next] || detail.steps.next : null,
     lines, markdown: briefMarkdown(name, lines),

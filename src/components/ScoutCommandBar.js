@@ -121,7 +121,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       if (r.withheld) { setEdge({ kind: 'withheld', q: question }); setView('edge'); return; }
       // nothing to point at, or several candidates ("Which one?"): said under the answer on screen - no turn, no ask spent
       if (r.cant) { actions.askCant(r.cant, question); setView(current ? 'answer' : 'act'); return; }
-      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, ...(r.resolved ? { resolved: r.resolved } : {}), context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
+      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, ...(r.resolved ? { resolved: r.resolved } : {}), ...(r.offer ? { offer: r.offer } : {}), context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
       const next = [...turns, turn].slice(-THREAD_MAX);
       setFocus(r.resolved ? { rows: r.resolved.rows, label: focusLabel(r.resolved.rows) } : null);
       setTurns(next); saveThread(meId, next); setCurrent(turn); setView('answer');
@@ -153,7 +153,8 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   const clearThread = () => { setTurns([]); saveThread(meId, []); setCurrent(null); setFocus(null); actions.clear(); setView('search'); };
   const reopen = t => { setCurrent(t); setFocus(t.resolved ? { rows: t.resolved.rows, label: focusLabel(t.resolved.rows) } : null); setInlineKey(null); setMenu(null); actions.clear(); setView('answer'); };
   // "Which one?": a command runs again on the row picked; a question is asked again about that one row
-  const choose = c => (actions.act?.ask ? ask(actions.act.text, { rows: planRows(current).filter(r => keyOf(r) === c.key) }) : actions.choose(c));
+  // ("Did you mean": the candidate carries the question to ask instead)
+  const choose = c => (c.ask ? ask(c.ask) : actions.act?.ask ? ask(actions.act.text, { rows: planRows(current).filter(r => keyOf(r) === c.key) }) : actions.choose(c));
 
   // Typing a command over an answer keeps the answer (its rows are what "those" means); anything else searches.
   const onChange = e => { const v = e.target.value; setQ(v); setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };
@@ -181,7 +182,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     : a.kind === 'draft' ? <DraftBlock draft={a.draft} copied={a.copied} onCopy={actions.copyDraft} onOpen={actions.openDraft} onRegenerate={actions.regenerate} />
     : a.kind === 'working' ? <ActWorking card={a.card} ticked={a.ticked} />
     : a.kind === 'done' ? <DoneLine result={a.result} secondsLeft={a.left} undone={a.undone} onUndo={actions.undo} onRetry={actions.retry} />
-    : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} onChoose={a.cant.candidates?.length ? choose : null} />
+    : a.kind === 'cant' ? <CantDo cant={a.cant} onNearest={a.cant.nearest?.id ? actions.nearest : null} onChoose={a.cant.candidates?.length ? choose : null} onAdd={canAct && a.cant.add ? actions.addTarget : null} />
     : a.kind === 'planning' ? <ActNote kind="planning">{a.label}</ActNote>
     : <ActNote kind={a.kind}>{a.text}</ActNote>;
   const actBlock = actBody && <div ref={actRef} data-scout-actblock>{actBody}</div>;

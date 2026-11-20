@@ -112,17 +112,23 @@ export function DoneLine({ result, secondsLeft, undone, onUndo, onRetry, busy })
 }
 
 // onChoose: "Which one?" - several rows fit a pronoun, so Scout asks instead of guessing; each candidate is a button.
-export function CantDo({ cant, onNearest, onChoose }) {
+// FIX scout-company-lookup S4: a name with no record keeps its reason on screen - the near records are offered under
+// "Did you mean", and a company the site has seen offers its Add as target (onAdd; Members only).
+export function CantDo({ cant, onNearest, onChoose, onAdd }) {
   const picks = onChoose ? cant.candidates || [] : [];
+  const mean = !!cant.did_you_mean;
+  const which = picks.length > 0 && !mean;
   return (
-    <div className="scout-cant" data-scout-cant={picks.length ? 'which' : ''} role="status">
-      <div className="scout-edge-line">{picks.length ? <StarGlyph size={14} /> : <LockGlyph />}<span>{picks.length ? 'Which one?' : cant.reason}</span></div>
+    <div className="scout-cant" data-scout-cant={which ? 'which' : ''} role="status">
+      <div className="scout-edge-line">{which ? <StarGlyph size={14} /> : <LockGlyph />}<span>{which ? 'Which one?' : cant.reason}</span></div>
       {picks.length > 0 && (
-        <div className="scout-pills" role="group" aria-label="Which one?" data-scout-which>
+        <div className="scout-pills" role="group" aria-label={mean ? 'Did you mean?' : 'Which one?'} data-scout-which={mean ? 'mean' : ''}>
+          {mean && <span className="scout-lbl">Did you mean</span>}
           {picks.map(c => <button key={c.key} type="button" className="scout-btn scout-btn--plain" data-scout-candidate={c.key} onClick={() => onChoose(c)}>{c.title}{c.sub && <small className="scout-dim"> · {c.sub}</small>}</button>)}
-          <span className="scout-note">or say it like “the second one”, or use a name.</span>
+          {!mean && <span className="scout-note">or say it like “the second one”, or use a name.</span>}
         </div>
       )}
+      {cant.add && onAdd && <div><button type="button" className="scout-btn scout-btn--accent" onClick={onAdd} data-scout-add-target>{cant.add.label}</button></div>}
       {cant.pills?.length > 0 && (
         <div className="scout-pills">
           <span className="scout-lbl">What I can do</span>

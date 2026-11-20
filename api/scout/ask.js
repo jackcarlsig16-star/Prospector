@@ -136,6 +136,18 @@ export function followUpOf(q, rows, focus = []) {
   return { rows: r.rows, line: resolvedLine(r), phrase: r.phrase, ...(r.company ? { company: true } : {}) };
 }
 
+// FIX scout-company-lookup S3 - a "who owns <x>" ask on one record: the server's own first sentence (never the
+// model's) and, when nobody owns it, the offer of the assign verb's card on that row. `restated` matches a model
+// answer that opens by saying the same thing again (seen live), so the owner is said once.
+// -> null | { line, item, restated, offer }
+export function ownerLead(ctx) {
+  const p = ctx.parts.length === 1 ? ctx.parts[0] : null, o = p?.owner || null;
+  const item = o ? [...ctx.items.values()].find(i => i.entity === p.brief.entity && String(i.id) === String(p.brief.id)) : null;
+  if (!item) return null;
+  const line = o.name ? `${o.title} is owned by ${o.name}${o.assigned ? ` · assigned ${o.assigned}` : ''}.` : `${o.title} has no owner — assign it?`;
+  return hasPii(line) ? null : { line, item, restated: new RegExp(`^\\s*(?:\\*\\*)?${o.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\*\\*)? (?:is (?:currently )?(?:owned by|unassigned)|has no (?:assigned )?owner)[^.\\n]*\\.\\s*`, 'i'), offer: o.name ? null : { verb: 'assign', key: `${item.entity}:${item.id}`, label: 'Assign' } };
+}
+
 export async function ask(supabase, registry, { auth, body, now = askDeps.now() }) {
   const v = validateAsk(body);
   if (v.error) return { status: 400, body: { error: v.error } };
@@ -150,9 +162,12 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   let ctx;
   try { ctx = await buildContext(supabase, registry, { auth, scope, q: v.q, now, follow }); }
   catch (e) { if (e.status) return { status: e.status, body: { error: e.message } }; throw e; }
+  // FIX scout-company-lookup S4: a name nothing carries - said plainly, no model call, no ask counted
+  if (ctx.cant) return { status: 200, body: { answer_md: ctx.cant.reason, summary: ctx.cant.reason, sections: [], items: [], usage: null, withheld: false, cant: ctx.cant, scope, cap: { used: n, max: DAILY_CAP } } };
+  const lead = ownerLead(ctx);
   const system = `${SYSTEM}\n\nToday is ${laDateString(new Date(now))} (Pacific).${ctx.glossary.length ? `\n\nHouse vocabulary:\n${ctx.glossary.map(l => `- ${l}`).join('\n')}` : ''}`;
   const multi = ctx.parts.length > 1;
-  const user = `${v.q}${multi ? `\n\n${PARTS_RULE(ctx.parts.length)}${ctx.parts_cut ? ` The question had ${ctx.parts.length + ctx.parts_cut} parts; say that only the first ${ctx.parts.length} are answered.` : ''}` : ''}${follow ? `\n\nThis is a follow-up on the last answer: ${follow.line}. Answer about ${follow.rows.length === 1 ? 'that record' : 'those records'} only.` : ''}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
+  const user = `${v.q}${multi ? `\n\n${PARTS_RULE(ctx.parts.length)}${ctx.parts_cut ? ` The question had ${ctx.parts.length + ctx.parts_cut} parts; say that only the first ${ctx.parts.length} are answered.` : ''}` : ''}${follow ? `\n\nThis is a follow-up on the last answer: ${follow.line}. Answer about ${follow.rows.length === 1 ? 'that record' : 'those records'} only.` : ''}${lead ? `\n\nThe answer already opens with the owner ("${lead.line}"); do not restate who owns it.` : ''}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
   const messages = [...v.thread.filter((t, i, a) => !(i === 0 && t.role === 'assistant')), { role: 'user', content: user }];
   if (!askDeps.callAnthropic) askDeps.callAnthropic = (await import('../businesses/shared.js')).callAnthropic;
   const data = await askDeps.callAnthropic({ system, messages, max_tokens: MAX_TOKENS, thinking: false, model: MODELS.STANDARD, supabase, businessId: scope === 'all' ? null : scope, userId: auth.user.id, callType: CALL_TYPE, timeoutMs: 60000 });
@@ -163,10 +178,16 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   if (withheld) { answer_md = 'Answer withheld: it contained an address or phone number.'; summary = answer_md; items = []; sections = []; }
   // C1: the summary says what the follow-up was read as ("the second one → Meagan Earl, Cloudflare").
   else if (follow) { summary = `${follow.line}. ${summary}`; answer_md = `${follow.line}. ${answer_md}`; }
+  // S3: the owner is the first sentence; the record rides as a row even when the model cited nothing, so the assign
+  // card has a row to act on.
+  if (lead && !withheld) {
+    summary = `${lead.line} ${summary.replace(lead.restated, '')}`.trim(); answer_md = `${lead.line} ${answer_md.replace(lead.restated, '')}`.trim();
+    if (!items.some(i => i.entity === lead.item.entity && String(i.id) === String(lead.item.id))) { items = [lead.item, ...items]; sections[0].rows = [lead.item, ...sections[0].rows]; sections[0].count = sections[0].rows.length; sections[0].total = Math.max(sections[0].total, sections[0].count); }
+  }
   const usage = { input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: data.usage ? estimateCostUsd(MODELS.STANDARD, data.usage) : null };
   // A6: the usage row has no json column, so the matched intent is logged beside it (the next real-ask report counts misses).
   console.log(`[scout/ask] intent=${ctx.stats.intent} reads=${ctx.stats.reads.length} lines=${ctx.lines.length} tokens=${usage.input_tokens}/${usage.output_tokens} user=${String(auth.user.id).slice(0, 8)}`);
-  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ...(follow && !withheld ? { resolved: { phrase: follow.phrase, line: follow.line, rows: follow.rows.map(r => ({ entity: r.entity, id: r.id, title: r.title })) } } : {}), ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
+  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ...(lead?.offer && !withheld ? { offer: lead.offer } : {}), ...(follow && !withheld ? { resolved: { phrase: follow.phrase, line: follow.line, rows: follow.rows.map(r => ({ entity: r.entity, id: r.id, title: r.title })) } } : {}), ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
 }
 
 export async function askRoute(req, res) {

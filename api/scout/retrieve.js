@@ -11,7 +11,9 @@ export const PACK_MAX = 12000; // REVISABLE (spec D1)
 export const SEARCH_LIMIT = 25;
 const STOP = new Set(['show', 'me', 'my', 'mine', 'i', 'the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'at', 'and', 'or', 'with', 'about', 'from', 'what', 'which', 'who', 'where', 'when', 'how', 'is', 'are', 'do', 'does', 'did', 'list', 'give', 'find', 'tell', 'all', 'any', 'please', 'scout', 'sorted', 'sort', 'by', 'top', 'this', 'last', 'past', 'week', 'month', 'day', 'days', 'today', 'yesterday', 'they', 'them', 'their', 'our', 'we', 'have', 'has', 'had', 'be', 'been', 'it', 'its', 'that', 'these', 'those', 'say', 'says', 'said', 'touch', 'touched', 'ranked', 'rank', 'score', 'scores', 'hottest', 'newest', 'latest', 'recent', 'date', 'heat', 'open', 'closed', 'done', 'pending', 'new', 'old', 'current', 'active', 'whos', 'whats', 'wheres', 'hows', 'im', 'ive', 'thats', 'theres', 'anyone', 'anybody', 'someone', 'everyone', 'us',
   // the flag words (opened / replied / visited ...) never become search terms - a name is not "replied"
-  'opened', 'replied', 'replies', 'reply', 'clicked', 'clicks', 'click', 'visited', 'visiting', 'visitor', 'visitors', 'companies', 'company', 'emails', 'email', 'site', 'website', 'web']);
+  'opened', 'replied', 'replies', 'reply', 'clicked', 'clicks', 'click', 'visited', 'visiting', 'visitor', 'visitors', 'companies', 'company', 'emails', 'email', 'site', 'website', 'web',
+  // FIX scout-company-lookup S3: the owner words are the flag, never part of a name
+  'owns', 'owned', 'owner', 'whose']);
 const CAP_STOP = new Set(['Show', 'What', 'Which', 'Who', 'Where', 'When', 'How', 'My', 'I', 'Me', 'The', 'List', 'Give', 'Find', 'Tell', 'Do', 'Does', 'Did', 'Are', 'Is', 'Scout', 'Hot', 'Warm', 'Cool', 'Cold', 'Yesterday', 'Today', 'This', 'Last', 'Prospector', 'Brad']);
 const phraseIn = (text, phrase) => new RegExp(`(^|[^a-z])${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(text);
 
@@ -62,7 +64,12 @@ export function sinceOf(text, today) {
 
 // The light filters (D1 (1)): "my" -> the caller; an entity word; a time phrase; a band word; a source word (a rep's
 // name wins over the plain "referred"); a sort; capitalised or quoted names as company candidates; the intent flags.
-export function parseAsk(q, vocab, { today }) {
+// FIX scout-company-lookup S1: with `names` (the modules' name index: find(text) -> { name, type } | null) a company is
+// a candidate whatever its case - the question's 1-3 word runs are looked up, the longest match wins, and a run made
+// only of stop / vocabulary words or holding a member's first name is never looked up.
+const NAME_LEAD = /\b(?:tell me about|what do we know about|notes on|intel on|brief (?:on|for)|whats up with|who owns|whose (?:is|are)|owners? of)\s+(.+)$/;
+const OWNER_ASK = /\bwho owns\b|\bwhose (?:is|are)\b|\bowners? of\b|(?<!\bno )\bowner\s*\??\s*$/;
+export function parseAsk(q, vocab, { today, names = null }) {
   const raw = String(q || '').trim();
   // A1: apostrophes go ("who's" -> "whos", a stop word) before any word is read.
   const text = raw.toLowerCase().replace(/['’]/g, '');
@@ -106,7 +113,21 @@ export function parseAsk(q, vocab, { today }) {
     if (/^\p{Lu}[\p{L}\p{N}&'’.-]*$/u.test(tok) && !CAP_STOP.has(tok) && !vocabWords.has(tok.toLowerCase())) { if (last) last.push(tok); else caps.push([tok]); }
     else if (last) caps.push(null);
   }
-  const company = [...new Set([...quoted, ...caps.filter(Boolean).map(c => c.join(' '))].filter(Boolean))].slice(0, 3);
+  const lower = t => t.toLowerCase().replace(/['’]/g, '').replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/).filter(Boolean);
+  const memberFirsts = new Set((vocab.members || []).flatMap(m => [firstOf(m), `${firstOf(m)}s`]));
+  const plain = w => STOP.has(w) || vocabWords.has(w) || /^\d+$/.test(w);
+  const looked = [], consumed = new Set(), known = {};
+  if (names) for (let i = 0; i < words.length; i++) for (let n = Math.min(3, words.length - i); n >= 1; n--) {
+    const gram = words.slice(i, i + n);
+    if (gram.some(w => memberFirsts.has(w)) || gram.every(plain)) continue;
+    const e = names.find(gram.join(' '));
+    if (e) { looked.push({ e, gram }); gram.forEach(w => consumed.add(w)); i += n - 1; break; }
+  }
+  // a capitalised or quoted name is the stronger signal: a looked-up run inside one is dropped, and a typed name that a
+  // longer looked-up name contains gives way to it; a typed name the index knows takes the record's own spelling.
+  const typed = [...quoted, ...caps.filter(Boolean).map(c => c.join(' '))].filter(Boolean).map(c => ({ c, e: names?.find(c) || null, w: lower(c) }));
+  const lookedKept = looked.filter(h => !typed.some(t => h.gram.every(w => t.w.includes(w))));
+  const kept = typed.filter(t => t.e || !lookedKept.some(h => t.w.every(w => h.gram.includes(w))));
   const flags = {
     visitors: /\bvisit(ed|or|ors|s|ing)?\b/.test(text) || stemFlags.has('visitors'), site: stemFlags.has('site'),
     ranked: /\brank(ed|ing)?\b|\btop\b|\bscores?\b|\bhottest\b/.test(text) || superlative, attention: /\battention\b|\bstale\b|\bfailed\b|\bbroken\b/.test(text),
@@ -115,9 +136,17 @@ export function parseAsk(q, vocab, { today }) {
     // email-funnel-v1 F7: "email to site rate", "emails -> website visits", "visit rate", "email funnel" -> the funnel route.
     // weekly-funnel-v1 W8: pacing, a metric's trend, last week's goals -> the weekly registry route.
     weekly: /\bpac(e|ing)\b|\bon (track|pace)\b|\btrend(s|ing)?\b|\b(hit|hitting|miss|missed|meet|met|make|made)\b[^.?!]{0,24}\bgoals?\b|\bweekly funnel\b|\bweek over week\b/.test(text),
-    brief: /\bbrief\b|\bintel\b|\bpull\b|\bwhat do we know\b|\btell me about\b|\brecent call\b|\bnotes on\b/.test(text),
+    brief: /\bbrief\b|\bintel\b|\bpull\b|\bwhat do we know\b|\btell me about\b|\brecent call\b|\bnotes on\b|\bwhats up with\b/.test(text),
+    // S3: "who owns <x>" / "whose is <x>" / "owner of <x>" / "<x> owner" - the answer leads with the owner
+    owner: OWNER_ASK.test(text),
     email_site: /\bemails?\b[^.?!]{0,16}\b(to|into|vs|versus|→|->)\s+(the\s+)?(site|website|web|visits?|visitors)\b|\b(site|website|visit|visitor|conversion) rate\b|\bemail funnel\b|\bfunnel\b[^.?!]{0,12}\bemails?\b/.test(text),
   };
+  // a company the site has seen but that has no record is only a candidate when the question asks about it (a brief
+  // or owner phrase, or the bare name) - a visitor called like an everyday word never hijacks another question.
+  const bare = looked.length > 0 && words.every(w => plain(w) || consumed.has(w));
+  const named = lookedKept.filter(h => h.e.type !== 'visitor' || flags.brief || flags.owner || bare);
+  for (const x of [...kept, ...named]) if (x.e) known[x.e.name] = x.e;
+  const company = [...new Set([...kept.map(t => t.e?.name || t.c), ...named.map(h => h.e.name)])].slice(0, 3);
   // scout-v3 D1: "who" with a heat word and no entity word asks for people ("who's hot"); "who visited" stays companies.
   if (!entity && vocab.entities?.people && /\bwhos?\b/.test(text) && (band || superlative) && !flags.visitors) entity = 'people';
   // scout-v3 D2 / R11: a count is a limit ("5 most important", "top 3") - never the n of "last n days" or a date's day.
@@ -127,7 +156,14 @@ export function parseAsk(q, vocab, { today }) {
   const bandKind = !band ? null : entity === 'people' || flags.opened || flags.replied || flags.clicked ? 'heat' : 'intent';
   const memberWords = member ? new Set([firstOf(member), `${firstOf(member)}s`]) : new Set();
   const terms = words.filter(w => !STOP.has(w) && !vocabWords.has(w) && !memberWords.has(w) && w.length > 1 && !/^\d+$/.test(w));
-  return { q: raw, limit, pronoun, member: member ? { id: member.id, name: firstOf(member)[0].toUpperCase() + firstOf(member).slice(1) } : null, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
+  // the bare name ("greyorange") is a brief of it
+  if (named.length && bare && !entity && !band) flags.brief = true;
+  // S4: a name asked for by a brief / owner phrase that nothing above recognised ("tell me about nothingco") - kept
+  // apart from `company`, so the reads stay as they were; buildContext says "no record" when nothing carries it.
+  const tail = (NAME_LEAD.exec(text)?.[1] || /^(.+?)\s+owner\s*\??\s*$/.exec(text)?.[1] || '').replace(/\band (?:who owns|whose|(?:its |the )?owner)\b.*$/, '');
+  const guessWords = lower(tail).filter(w => !STOP.has(w));
+  const guess = !company.length && !member && !entity && guessWords.length >= 1 && guessWords.length <= 4 && !guessWords.every(w => vocabWords.has(w) || /^\d+$/.test(w)) ? guessWords.join(' ') : null;
+  return { q: raw, known, guess, limit, pronoun, member: member ? { id: member.id, name: firstOf(member)[0].toUpperCase() + firstOf(member).slice(1) } : null, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
 }
 
 const refOf = (entity, id) => `${entity}:${id}`;
@@ -139,7 +175,7 @@ const refOf = (entity, id) => `${entity}:${id}`;
 export const PARTS_MAX = 5;
 export const FOLLOW_MAX = 10;
 const SEPARATOR = /\s*;\s*|\s+(?:and\s+then|and\s+also|and\s+show(?:\s+me)?|then(?:\s+show(?:\s+me)?)?|also\s+show(?:\s+me)?)\s+/i;
-export function splitAsk(q, vocab, { today, signature }) {
+export function splitAsk(q, vocab, { today, signature, names = null }) {
   const raw = String(q || '').trim();
   const numbered = /(?:^|\s)1[.)]\s/.test(raw) ? raw.split(/(?:^|\s)\d{1,2}[.)]\s+/).map(x => x.trim()).filter(Boolean) : [];
   const pieces = numbered.length > 1 ? numbered : raw.split(SEPARATOR).map(x => x.trim()).filter(Boolean);
@@ -148,7 +184,9 @@ export function splitAsk(q, vocab, { today, signature }) {
     for (const m of piece.matchAll(/,?\s+and\s+/gi)) {
       const a = piece.slice(0, m.index).trim(), b = piece.slice(m.index + m[0].length).trim();
       if (words(a) < 3 || words(b) < 3) continue;
-      const sa = signature(parseAsk(a, vocab, { today })), sb = signature(parseAsk(b, vocab, { today }));
+      // S5: "... and who owns it" is the owner flag on the same company, never a part of its own
+      if (/^(?:who owns|whose (?:is|are)|(?:the |its )?owner)\b/i.test(b) && !parseAsk(b, vocab, { today, names }).company.length) continue;
+      const sa = signature(parseAsk(a, vocab, { today, names })), sb = signature(parseAsk(b, vocab, { today, names }));
       if (sa && sb && sa !== sb) return [a, ...clause(b)];
     }
     return [piece];
@@ -169,23 +207,26 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
   const businesses = await scopedBusinesses(supabase, auth, scope);
   const today = laDateString(new Date(now));
   const many = businesses.length > 1;
-  const glossary = [], vocabParts = [], per = [];
+  const glossary = [], vocabParts = [], per = [], indexes = [];
   for (const b of businesses) for (const m of registry.modulesFor(b)) {
     vocabParts.push(m.vocabulary);
+    if (m.nameIndex) indexes.push(await m.nameIndex(supabase, { businessId: b.id, today, now }));
     const g = m.glossary ? await m.glossary(supabase, { businessId: b.id, business: b, auth, today, now }) : null;
     if (g) { vocabParts.push(g.vocabulary); glossary.push(...(g.lines || []).map(l => (many ? `${b.name}: ${l}` : l))); }
     per.push({ b, m });
   }
   const vocab = mergeVocab(vocabParts);
+  const first = (list, f) => { for (const i of list) { const e = f(i); if (e) return e; } return null; };
+  const names = indexes.length ? { find: t => first(indexes, i => { const e = i.find(t); return e && e.type !== 'visitor' ? e : null; }) || first(indexes, i => i.find(t)), near: t => indexes.flatMap(i => i.near(t)).slice(0, 3) } : null;
   const signature = a => { const ids = per.flatMap(({ m }) => m.intents.filter(x => x.match(a)).map(x => x.id)); return ids.length ? `${[...new Set(ids)].join('+')}|${a.entity || ''}` : ''; };
-  const split = splitAsk(q, vocab, { today, signature });
+  const split = splitAsk(q, vocab, { today, signature, names });
   const multi = split.parts.length > 1;
   const budget = Math.floor(PACK_MAX / split.parts.length);
   const items = new Map(), labels = new Map(), lines = [], seen = new Set(), rowsByEntity = {}, reads = [], matchedAll = [], parts = [];
   let chars = 0, droppedPii = 0, truncated = 0, carry = [];
   const push = line => { lines.push(line); chars += line.length + 1; };
   for (const [pi, text] of split.parts.entries()) {
-    const ask = parseAsk(text, vocab, { today });
+    const ask = parseAsk(text, vocab, { today, names });
     // D2 / R11: a pronoun carries the previous part's companies ("... and show my tasks for them").
     if (ask.pronoun && !ask.company.length && carry.length) { ask.company = carry.slice(0, 3); ask.carried = true; }
     // C1: a follow-up's rows become this ask's filter - the people themselves on a people ask, their companies on a
@@ -194,12 +235,12 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
       const people = follow.rows.filter(r => r.entity === 'people'), companies = follow.rows.filter(r => r.entity !== 'people' && r.entity !== 'todos');
       const uniq = list => [...new Set(list.filter(Boolean))].slice(0, FOLLOW_MAX);
       const aboutPeople = ask.entity === 'people' || ask.flags.opened || ask.flags.replied || ask.flags.clicked;
-      ask.pronoun = false; ask.resolved = true;
+      ask.pronoun = false; ask.resolved = true; ask.guess = null;
       if (people.length && aboutPeople && !follow.company) ask.follow = { people: people.map(r => String(r.id)) };
       else ask.company = uniq([...companies.map(r => r.title), ...people.map(r => (follow.company || ask.entity === 'todos' ? r.company?.name : r.title))]);
     }
     let found = []; // { item, b, priority }
-    const partReads = [], matched = [], rules = [], titles = [];
+    const partReads = [], matched = [], rules = [], titles = [], missing = [], idle = [];
     let total = null, brief = null, fill = null;
     const add = (list, b, entity, priority) => { for (const it of list || []) found.push({ item: { entity, ...it }, b, priority }); };
     for (const { b, m } of per) {
@@ -214,6 +255,7 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
         if (typeof r.total === 'number' && !(i.context && hit.length > 1)) total = (total || 0) + r.total;
         if (r.brief) brief = r.brief;
         if (r.fill) fill = r.fill;
+        if (r.missing) missing.push(...r.missing);
       }
       if (!hit.length) {
         if (ask.search) for (const e of m.entities) {
@@ -222,9 +264,27 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
           const rows = await e.search(supabase, { ...ctx, q: ask.search, words: ask.terms, limit: SEARCH_LIMIT });
           if (rows.length) { partReads.push(many ? `${b.name}: search ${e.entity}` : `search ${e.entity}`); add(rows, b, e.entity, 2); }
         }
-        if (m.standing) { const r = await m.standing(supabase, ctx); partReads.push(...(r.reads || []).map(x => (many ? `${b.name}: ${x}` : x))); add(r.items, b, null, 3); }
+        idle.push({ b, m, ctx });
       }
     }
+    // S4: one name was asked for and no record, person or search hit carries it -> no standing reads and no model
+    // call: the can't-do state, with the visits when the site has seen that company and a near name when there is one.
+    // A guessed name with a near record is offered that record even when the loose search found rows.
+    const guessed = !matched.length && ask.guess && (!found.length || names?.near(ask.guess).length) ? ask.guess : null;
+    const unknown = split.parts.length === 1 ? (!found.length && missing[0]) || guessed || null : null;
+    if (unknown) {
+      const typedName = cleanText(String(unknown), 60);
+      const seen = names?.find(typedName), visitor = seen?.type === 'visitor' ? seen : null;
+      const near = visitor ? [] : names?.near(typedName) || [];
+      const said = `No record named ${visitor ? visitor.name : typedName} in Prospector${visitor ? ` · ${visitor.seen}` : ''}`;
+      const lead = ask.flags.owner ? 'who owns' : 'tell me about';
+      return { businesses, ask, cant: {
+        reason: hasPii(said) ? 'No record by that name in Prospector' : said,
+        ...(visitor?.add ? { add: { ...visitor.add, name: visitor.name } } : {}),
+        ...(near.length ? { did_you_mean: true, candidates: near.map(e => ({ key: refOf(e.entity, e.id), entity: e.entity, id: e.id, title: e.name, ask: `${lead} "${e.name}"` })) } : {}),
+      } };
+    }
+    for (const { b, m, ctx } of idle) if (m.standing) { const r = await m.standing(supabase, ctx); partReads.push(...(r.reads || []).map(x => (many ? `${b.name}: ${x}` : x))); add(r.items, b, null, 3); }
     found.sort((a, b) => a.priority - b.priority);
     if (ask.limit && matched.length) { const keep = new Set(); found = found.filter(f => { const k = refOf(f.item.entity, f.item.id); if (keep.has(k)) return true; if (keep.size >= ask.limit) return false; keep.add(k); return true; }); }
     const named = ask.carried ? [] : ask.company.length ? ask.company : [...new Set(found.map(f => f.item.company).filter(Boolean))].slice(0, 5);
@@ -263,7 +323,9 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
       }
     }
     if (multi && !partLabels.length && matched.length) push('(no rows for this part)');
-    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.map(publicRead).join(' · '), labels: partLabels, count: total ?? partLabels.length, fill, brief: ask.flags.brief && brief ? brief : null });
+    // S3: the owner stays on the server (the answer's first sentence is built from it); the client gets the grid
+    const { owner = null, ...shown } = brief || {};
+    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.map(publicRead).join(' · '), labels: partLabels, count: total ?? partLabels.length, fill, brief: (ask.flags.brief || ask.flags.owner) && brief ? shown : null, owner: ask.flags.owner && owner ? owner : null });
   }
   const intent = matchedAll.length ? [...new Set(matchedAll)].join('+') : 'none';
   return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads: reads.map(publicRead), dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };

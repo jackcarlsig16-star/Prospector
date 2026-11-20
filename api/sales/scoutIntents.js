@@ -3,6 +3,7 @@ import { normName } from './intakeMatch.js';
 import { addDays } from './goalsShared.js';
 import { readType } from './readType.js';
 import { splitSnoozed } from './snoozed.js';
+import { laDateString } from './laDate.js';
 
 // scout-v2 REV2 Stage 1 (D1 (2)) - the sales module's intents: a parsed ask -> the EXISTING server read that answers it
 // (never a second query layer) -> items for the context pack. Reads are reached through salesReads so tests swap them
@@ -145,6 +146,15 @@ export function weeklyLine(x, b) {
 
 // scout-v3.1 C7 - the brief's label / value grid: the same facts the Brief holds, one line each; a field with nothing
 // on file is "—"; a value holding an address or phone shape is left out.
+// FIX scout-company-lookup S3: the day the current owner was set - the latest assign event that names them (employers
+// and targets: flow events; partners: partner events). null when no event says so (an import, a first owner).
+async function assignedOn(sb, businessId, type, id, ownerId) {
+  const rows = type === 'partner'
+    ? must(await sb.from('sales_partner_events').select('event, meta, at').eq('business_id', businessId).eq('goal_id', id).eq('event', 'assign').order('at', { ascending: false }).limit(5))
+    : must(await sb.from('sales_flow_events').select('kind, meta, at, undone_at').eq('business_id', businessId).eq('record_type', type).eq('record_id', String(id)).eq('kind', 'assign').order('at', { ascending: false }).limit(5));
+  const at = rows.find(r => !r.undone_at && r.meta?.to_owner === ownerId)?.at;
+  return at ? laDateString(new Date(at)) : null;
+}
 export const briefGrid = pairs => pairs.map(([label, value]) => { const v = value ? cleanText(String(value), 240) : ''; return { label, value: v && !hasPii(v) ? v : '—' }; });
 
 export const salesIntents = [
@@ -170,18 +180,22 @@ export const salesIntents = [
   // carried companies ("... my tasks for them") never re-open the brief. brief = the one record, for the brief header.
   { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', context: true, rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,
     async run(sb, { businessId, ask, today }) {
-      const items = [], reads = [], records = [];
-      let grid = null;
+      const items = [], reads = [], records = [], missing = [];
+      let grid = null, owner = null;
+      const first = async id => (id ? (await membersOf(sb, businessId)).find(m => m.userId === id)?.firstName || 'a former member' : null);
       for (const name of ask.company.slice(0, 2)) {
-        const c = await findCompany(sb, businessId, name);
+        // S1: a name the index knows only from the site's visits has no record to read
+        const visitorOnly = ask.known?.[name]?.type === 'visitor';
+        const c = visitorOnly ? null : await findCompany(sb, businessId, name);
         if (!c) {
-          const person = await findPerson(sb, businessId, name, today);
-          if (!person) { reads.push(`no company or person named "${cleanText(name, 60)}"`); continue; }
+          const person = visitorOnly ? null : await findPerson(sb, businessId, name, today);
+          if (!person) { reads.push(`no company or person named "${cleanText(name, 60)}"`); missing.push(name); continue; }
+          owner = { title: person.name, user_id: person.owner_user_id || null, name: await first(person.owner_user_id), assigned: null };
           reads.push(`goals/people/activity/${person.key}`);
           records.push({ entity: 'people', id: person.key });
           items.push(personItem(person));
           const d = await salesReads.personDetail(sb, businessId, { key: person.key });
-          grid = briefGrid([['Record', ['Person', person.title].filter(Boolean).join(' · ')], ['Company', person.company?.name ? `${person.company.name}${person.company.stage ? ` · ${String(person.company.stage).replace(/_/g, ' ')}` : ''}` : null], ['Visits', person.visits?.last_visit ? `last visit ${day(person.visits.last_visit)}${person.visits.top_page ? ` · ${person.visits.top_page}` : ''}` : null], ['Last email', person.last_email ? `${day(person.last_email.at)} · ${person.last_email.what}` : null], ['Notes', d.status === 200 ? d.body.notes : null]]);
+          grid = briefGrid([['Record', ['Person', person.title].filter(Boolean).join(' · ')], ['Owner', owner.name || 'Unassigned'], ['Company', person.company?.name ? `${person.company.name}${person.company.stage ? ` · ${String(person.company.stage).replace(/_/g, ' ')}` : ''}` : null], ['Visits', person.visits?.last_visit ? `last visit ${day(person.visits.last_visit)}${person.visits.top_page ? ` · ${person.visits.top_page}` : ''}` : null], ['Last email', person.last_email ? `${day(person.last_email.at)} · ${person.last_email.what}` : null], ['Notes', d.status === 200 ? d.body.notes : null]]);
           if (d.status === 200) {
             for (const t of d.body.timeline.filter(x => !x.automated).slice(0, 8)) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · ${t.kind}${t.step != null ? ` step ${t.step}` : ''}${t.reply_class ? ` (${t.reply_class})` : ''} · ${day(t.at)}${t.subject ? ` · ${t.subject}` : ''}` });
             if (d.body.notes) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · note: ${d.body.notes}` });
@@ -196,7 +210,10 @@ export const salesIntents = [
         const row = { kind: 'company', type: c.type, id: c.id, name: r.body.company.name, score: r.body.score?.score ?? null, band: r.body.score?.band || null };
         const of = kind => r.body.lines.filter(l => l.kind === kind).map(l => l.text);
         const touches = of('touch'), people = of('person');
-        grid = briefGrid([['Record', (of('company')[0] || c.type).replace(new RegExp(`^${r.body.company.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · `), '')], ['Visits', of('visit')[0]], ['Last touch', touches[0]?.replace(/^Last touch: /, '')], ['Notes', touches.length > 1 ? `${touches[1]}${touches.length > 2 ? ` · ${touches.length - 2} more` : ''}` : null], ['People', people.length ? people.join(' · ') : null]]);
+        // S2: the owner the stored score row carries (the reader Top targets ranks from), by first name
+        const ownerId = r.body.company.owner_user_id || null;
+        owner = { title: r.body.company.name, user_id: ownerId, name: ownerId ? String(r.body.company.owner || '').trim().split(/\s+/)[0] || await first(ownerId) : null, assigned: ownerId && ask.flags.owner ? await assignedOn(sb, businessId, c.type, c.id, ownerId) : null };
+        grid = briefGrid([['Record', (of('company')[0] || c.type).replace(new RegExp(`^${r.body.company.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} · `), '')], ['Owner', owner.name || 'Unassigned'], ['Visits', of('visit')[0]], ['Last touch', touches[0]?.replace(/^Last touch: /, '')], ['Notes', touches.length > 1 ? `${touches[1]}${touches.length > 2 ? ` · ${touches.length - 2} more` : ''}` : null], ['People', people.length ? people.join(' · ') : null]]);
         items.push({ company: r.body.company.name, row, entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${c.type}${r.body.score ? ` · intent ${r.body.score.score} ${r.body.score.band}` : ''}${r.body.next_step ? ` · next: ${r.body.next_step}` : ''}` });
         for (const l of r.body.lines) items.push({ entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${l.kind}: ${l.text}` });
         if (c.domain) {
@@ -204,7 +221,7 @@ export const salesIntents = [
           for (const m of msgs) items.push({ entity: 'outlook', id: m.graph_id, title: cleanText(m.subject || '(no subject)', 120), date: day(m.occurred_at), text: `${cleanText(m.subject || '(no subject)', 120)} · ${m.direction === 'sent' ? 'email sent' : 'email received'} · ${day(m.occurred_at)} · ${c.domain}` });
         }
       }
-      return { read: reads.join(' + '), items, total: records.length, brief: records.length === 1 ? { ...records[0], ...(grid ? { grid } : {}) } : null };
+      return { read: reads.join(' + '), items, total: records.length, missing, brief: records.length === 1 ? { ...records[0], ...(grid ? { grid } : {}), ...(owner ? { owner } : {}) } : null };
     } },
   // scout-v3 R11: the open list by the rule, never filtered by the question's leftover words; a company named (or
   // carried by a pronoun from the part before) narrows it to that company's to-dos - by link, else by its name in the text.

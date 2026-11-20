@@ -95,7 +95,7 @@ test('C1 on asks: the rows ride with the ask, the resolved record becomes the fi
   assert.match(calls[0].messages.at(-1).content, /This is a follow-up on the last answer: the second one → Meagan Earl, Cloudflare\. Answer about that record only\./);
   assert.equal(r.body.context_stats.intent, 'brief');
   // C7: the person brief's grid - Company is a field; a field with nothing on file is "—"
-  assert.deepEqual(r.body.sections[0].brief, { entity: 'people', id: 'prospect:p2', grid: [{ label: 'Record', value: 'Person · VP People' }, { label: 'Company', value: 'Cloudflare · contacted' }, { label: 'Visits', value: 'last visit 2026-11-09' }, { label: 'Last email', value: '2026-11-08 · opened' }, { label: 'Notes', value: 'Met at the expo' }] });
+  assert.deepEqual(r.body.sections[0].brief, { entity: 'people', id: 'prospect:p2', grid: [{ label: 'Record', value: 'Person · VP People' }, { label: 'Owner', value: 'Unassigned' }, { label: 'Company', value: 'Cloudflare · contacted' }, { label: 'Visits', value: 'last visit 2026-11-09' }, { label: 'Last email', value: '2026-11-08 · opened' }, { label: 'Notes', value: 'Met at the expo' }] });
   assert.ok(r.body.sections[0].read.includes('goals/people/activity/person') && !r.body.sections[0].read.includes('prospect:'), r.body.sections[0].read);
   // "their tasks": the people's COMPANY is the to-do filter
   const linked = { id: u('6'), text: 'Send Cloudflare the agreement', due_date: '2026-11-12', owner_user_id: u('a'), created_at: '2026-11-01T00:00:00Z', link_type: 'opportunity', link_id: u('3'), steps: [] };
@@ -332,7 +332,7 @@ test('C6: a cited name appears once (the prompt says so and a post-pass enforces
   model('It is a hot employer. [r1]');
   const r = await ask(sb, registry, { auth: ana, body: { q: 'what do we know about Cloudflare', scope: A } });
   assert.equal(r.body.sections[0].read, 'goals/brief/employer');
-  assert.deepEqual(r.body.sections[0].brief.grid.map(g => [g.label, g.value]), [['Record', 'employer'], ['Visits', 'Visited pricing twice'], ['Last touch', '—'], ['Notes', '—'], ['People', '—']]);
+  assert.deepEqual(r.body.sections[0].brief.grid.map(g => [g.label, g.value]), [['Record', 'employer'], ['Owner', 'Unassigned'], ['Visits', 'Visited pricing twice'], ['Last touch', '—'], ['Notes', '—'], ['People', '—']]);
   assert.ok(r.body.context_stats.reads.every(x => !UUID.test(x) && !/prospect:|person:/.test(x)), JSON.stringify(r.body.context_stats.reads));
   assert.ok(!/Records \(/.test(r.body.answer_md)); assert.ok(!JSON.stringify(r.body).includes('@'));
 });

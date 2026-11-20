@@ -15,12 +15,13 @@ import { pathToFileURL } from 'url';
 //             plan(supabase, ctx, targets, args) -> { rows: [{ key, kind, title, from, to, skipped?, blocked?, note?, exec }] } | { cant } | { open, line },
 //             act(supabase, ctx, exec) -> { undo?, to?, skipped? }, undo(supabase, ctx, exec, handle) }]   (scout-v3 S1: /plan, /act, /undo)
 //   members(supabase, businessId) -> [{ id, name }]   pack(supabase, ctx, { q, records }) -> { text, records, chars } | { blocked }
+//   nameIndex(supabase, { businessId, today, now }) -> { find(text) -> { type, entity, id, name, seen?, add? } | null, near(text) -> [entry] }   (FIX scout-company-lookup S1)
 //   vocabulary: { entities: { <entity>: [words] }, bands: { word: band }, sources: { word: label } } - static words; glossary adds the dynamic ones
 export function createRegistry() {
   const modules = [];
   const reg = {
     register(name, def) {
-      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], openers: def.openers || {}, intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {}, verbs: def.verbs || [], members: def.members || null, pack: def.pack || null });
+      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], openers: def.openers || {}, intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {}, verbs: def.verbs || [], members: def.members || null, pack: def.pack || null, nameIndex: def.nameIndex || null });
     },
     modulesFor(business) { return modules.filter(m => m.appliesTo(business)); },
     entitiesFor(business) { return reg.modulesFor(business).flatMap(m => m.entities.map(e => ({ ...e, module: m.name }))); },

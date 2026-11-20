@@ -43,6 +43,8 @@ export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer,
   const briefOf = s => (s.brief ? s.rows.find(r => r.entity === s.brief.entity && String(r.id) === String(s.brief.id)) || null : null);
   const inline = inlineKey ? sections.flatMap(s => s.rows).find(r => keyOf(r) === inlineKey) : null;
   const briefFirst = !!single && !!briefOf(single);
+  // FIX scout-company-lookup S3: nobody owns the record asked about - each member is a button to the assign card
+  const offerRow = turn.offer ? sections.flatMap(s => s.rows).find(r => keyOf(r) === turn.offer.key) : null;
   return (
     <div className="scout-answer" data-scout-answer>
       <div className="scout-head scout-q"><span className="scout-neon" style={{ display: 'inline-flex' }}><StarGlyph /></span><span>{turn.q}</span>{scopeChip}</div>
@@ -63,6 +65,12 @@ export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer,
             </div>
           );
         })}
+        {offerRow && canAct && !offerRow.result && members.length > 0 && (
+          <div className="scout-pills" role="group" aria-label={`Assign ${offerRow.title}`} data-scout-offer>
+            <span className="scout-lbl">Assign to</span>
+            {members.map(m => <button key={m.user_id} type="button" className="scout-btn scout-btn--plain" data-scout-offer-member={m.user_id} onClick={() => onPick(offerRow, turn.offer.verb, { owner_user_id: m.user_id })}>{m.first}</button>)}
+          </div>
+        )}
         {inline?.why && <span className="scout-note is-inline" data-scout-inline title={inline.why}><b>{inline.title}</b> — {inline.why}</span>}
         {act}
         {(turn.actions || []).length > 0 && <div data-scout-actions>{turn.actions.map((a, i) => <div key={i} className="scout-actline">→ {a}</div>)}</div>}

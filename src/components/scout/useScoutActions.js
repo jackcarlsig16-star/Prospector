@@ -133,6 +133,14 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
     choose: c => (act?.kind === 'cant' && !act.ask ? run({ text: act.text, keys: [c.key] }) : undefined),
     // an ask that could not point at a row: the reason, and the rows to pick from when there are several
     askCant: (cant, q) => setAct({ kind: 'cant', cant: { pills: [], ...cant }, text: q, ask: true }),
+    // S4: a company the site has seen but Prospector has no record of - the pipeline's own Add as target
+    addTarget: async () => {
+      if (act?.kind !== 'cant' || !act.cant.add) return;
+      const add = act.cant.add;
+      setAct({ kind: 'planning', label: 'Adding…' });
+      try { const r = await goalsApi.addToPipeline(scope, { type: add.type, id: add.id, to: 'target' }); note('opened', r.already ? `${r.already.name} is already in the pipeline` : `${add.name} added as a target`); }
+      catch (e) { note('note', e.offline ? OFFLINE : e.message); }
+    },
     command: text => run({ text }),
     nearest: () => (act?.kind === 'cant' && act.cant.nearest?.id ? run({ verb: act.cant.nearest.id, text: act.text, keys: act.keys }) : undefined),
     say: text => note('note', text),
