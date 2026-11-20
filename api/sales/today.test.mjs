@@ -8,7 +8,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { buildToday, pickVerb, nbaOf, badgeCount, sourceOf, VERBS, VERB_IDS, OVERDUE_FOLD, GROUPS, STALE_DAYS } from './todayRank.js';
-import { groundsFor, templateSteps, citedSteps, stepsAsk, promptPack, work, ASKS, STEPS_MAX } from './todayWork.js';
+import { groundsFor, templateSteps, citedSteps, dateTokens, stepsAsk, promptPack, work, ASKS, STEPS_MAX } from './todayWork.js';
 import { buildFixes, parseTodayQuery } from './todayRoutes.js';
 import { createRegistry } from '../scout/registry.js';
 import { plan, act, undo, actDeps } from '../scout/actions.js';
@@ -202,7 +202,7 @@ const deps = (over = {}) => {
   const log = [];
   return { log, d: {
     loadToday: async () => material(),
-    compose: async (_sb, a) => { log.push(['compose', a.type, a.id, a.person, a.extra.ask]); return { status: 200, body: { draft: { subject: 'An idea for Dana', body: 'Hi Dana,\n\nWorth 15 minutes?\n\nAna', why: 'w' }, lint: { ok: true, issues: [] }, cost_usd: 0.0131, cap: { used: 3, max: 30 }, extra: { steps: [{ text: 'Follow up Friday', ground: 'G1' }, { text: 'Made up', ground: 'G77' }] } } }; },
+    compose: async (_sb, a) => { log.push(['compose', a.type, a.id, a.person, a.extra.ask]); return { status: 200, body: { draft: { subject: 'An idea for Dana', body: 'Hi Dana,\n\nWorth 15 minutes?\n\nAna', why: 'w' }, lint: { ok: true, issues: [] }, cost_usd: 0.0131, cap: { used: 3, max: 30 }, extra: { steps: [{ text: 'Follow up on the visit', ground: 'G1' }, { text: 'Made up', ground: 'G77' }] } } }; },
     cap: async () => ({ used: 2, max: 30 }),
     brief: async () => ({ status: 200, body: { markdown: '# Brief: Cloudflare\n- [B1] Cloudflare, employer' } }),
     pack: async (_sb, a) => { log.push(['pack', a.records, a.question]); return { text: `Question: ${a.question}\nScope: 2026-11-19 · 1 record\n\n## Cloudflare\n- stage contacted`, records: 1, chars: 80 }; },
@@ -222,7 +222,7 @@ test('work: Draft email is ONE call (the Write-email call) addressed to the row\
   assert.deepEqual(calls[0].slice(1, 4), ['employer', CO.cloud, { person_key: 'prospect:p1', name: 'Dana Mayer', title: 'VP People' }]);
   assert.match(calls[0][4], /GROUNDS[\s\S]*\[G1\] Dana Mayer: 2 sent, 1 opened/);
   assert.deepEqual(r.body.draft, { to: { name: 'Dana Mayer', title: 'VP People', company: 'Cloudflare' }, tone: null, subject: 'An idea for Dana', body: 'Hi Dana,\n\nWorth 15 minutes?\n\nAna', lint: { ok: true, issues: 0 } });
-  assert.deepEqual(r.body.steps.map(s => [s.text, s.ground, s.source]), [['Follow up Friday', 'G1', 'model']]);
+  assert.deepEqual(r.body.steps.map(s => [s.text, s.ground, s.source]), [['Follow up on the visit', 'G1', 'model']]);
   assert.equal(r.body.steps[0].based_on, r.body.grounds[0].text);
   assert.deepEqual(r.body.usage, { calls: 1, cost_usd: 0.0131, cap: { used: 3, max: 30 } });
   assert.deepEqual(r.body.prompt_pack.asks.map(a => a.id), ASKS.map(a => a[0]));
@@ -449,4 +449,30 @@ test('D38 a failed call still answers with what needed no call: the row, the gro
   assert.equal(r.body.prompt_pack.asks.length, ASKS.length); assert.ok(r.body.grounds.length > 0); assert.equal(r.body.draft, undefined);
   const prep = await work(sb, { businessId: B, auth: ana, key: flat(view).find(x => x.text === 'Call Cloudflare about the pilot').key, body: {}, now: NOW, deps });
   assert.equal(prep.status, 502); assert.equal(prep.body.prompt_pack.asks.length, ASKS.length);
+});
+
+test('C2 steps carry no invented dates: a step naming a date its own ground does not name is dropped (the "by Nov 16" case); a date the ground names is kept in any spelling', () => {
+  const grounds = [
+    { id: 'G1', kind: 'note', text: 'Call note Nov 12 (Intro call): they want pricing for 400 employees and a second call' },
+    { id: 'G2', kind: 'nba', text: 'Reply today: Replied with a follow-up question', rule: 'reply_today' },
+    { id: 'G3', kind: 'stage', text: 'Acme is at contacted; last touch Nov 9 by email' },
+    { id: 'G4', kind: 'todos', text: '1 other open to-do on Acme: "Send the deck" (due Nov 21)' },
+  ];
+  const kept = raw => citedSteps(raw, grounds).map(s => s.text);
+  assert.deepEqual(kept([{ text: 'Send the pricing proposal by Nov 16', ground: 'G1' }]), [], 'Nov 16 is in no ground: the model made it up');
+  assert.deepEqual(kept([
+    { text: 'Send the pricing they asked for on the Nov 12 call', ground: 'G1' },
+    { text: 'Answer the follow-up question today', ground: 'G2' },
+    { text: 'Book the second call for Thursday', ground: 'G1' },
+    { text: 'Follow up tomorrow morning', ground: 'G2' },
+    { text: 'Send the deck before it is due on November 21st', ground: 'G4' },
+    { text: 'Check in again next week', ground: 'G3' },
+    { text: 'Reference the 11/9 email when you write', ground: 'G3' },
+    { text: 'Send the deck by 2026-11-21', ground: 'G3' },
+    { text: 'Ask who else joins the second call', ground: 'G1' },
+  ]).slice(0, 9), ['Send the pricing they asked for on the Nov 12 call', 'Answer the follow-up question today', 'Send the deck before it is due on November 21st', 'Reference the 11/9 email when you write', 'Ask who else joins the second call'].slice(0, STEPS_MAX));
+  // the date must be in the step's OWN ground, not just any ground
+  assert.deepEqual(kept([{ text: 'Send it by Nov 21', ground: 'G1' }]), []);
+  assert.deepEqual([...dateTokens('by November 16th, or Tues 11/18; in 3 days, end of the month, next week, in December')].sort(), ['dec', 'edge of month', 'in 3 day', 'next week', 'nov 16', 'nov 18', 'tuesday']);
+  assert.deepEqual([...dateTokens('Ask for 400 seats, step 2 of 3, a may-be and the March of Dimes')], []);
 });

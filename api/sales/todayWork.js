@@ -8,6 +8,7 @@ import { nbaOf, VERB_IDS } from './todayRank.js';
 // GROUNDS (Q9) are stored facts only, assembled BEFORE any call and handed over as the only material. A step is
 // either a template keyed by the matched Next Best Action rule (no model text at all) or a model step that cites ONE
 // ground id - its "based on" line is that ground's own text, never the model's; a step citing no ground is dropped.
+// (C2: so is a step that names a date its ground does not.)
 // Calls: Draft email / Draft reply = ONE call (the Write-email call, returning the draft and its steps together);
 // Prep call = one call; Next steps = one call, none when there is no ground; Find people = none. Every call is a
 // Write-email call (callType intent_compose): its daily cap governs, and the cost is the usage row's, never a constant.
@@ -57,7 +58,32 @@ export function groundsFor({ row, person = null, visit = null, score = null, pin
 }
 
 export const templateSteps = grounds => grounds.filter(g => g.kind === 'nba' && STEP_TEMPLATES[g.rule]).slice(0, 1).map(g => ({ text: STEP_TEMPLATES[g.rule], ground: g.id, based_on: g.text, source: 'rule' }));
-// The model's steps: kept only when they cite ONE ground that exists; "based on" is the ground's text.
+// actions-v2 follow-up (ruling C2): the dates a line names - a month and day ("Nov 16", "11/16", an ISO day), a
+// weekday, a relative day ("today", "tomorrow", "next week", "in 3 days", "end of the month"), a bare month - each in
+// one comparable form, so "November 16th" and "Nov 16" are the same date.
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const MONTH_WORD = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const DAYS = { mon: 'monday', tue: 'tuesday', tues: 'tuesday', wed: 'wednesday', thu: 'thursday', thur: 'thursday', thurs: 'thursday', fri: 'friday' };
+export function dateTokens(text) {
+  let t = ` ${String(text || '').toLowerCase()} `;
+  const out = new Set();
+  const take = (re, f) => { t = t.replace(re, (...m) => { out.add(f(m)); return ' '; }); };
+  const md = (mon, day) => `${MONTHS[mon]} ${Number(day)}`;
+  take(/\b\d{4}-(\d{2})-(\d{2})\b/g, m => md(Number(m[1]) - 1, m[2]));
+  take(/\b(\d{1,2})\/(\d{1,2})(?:\/\d{2,4})?\b/g, m => md(Number(m[1]) - 1, m[2]));
+  take(new RegExp(`\\b${MONTH_WORD}\\.? (\\d{1,2})(?:st|nd|rd|th)?\\b`, 'g'), m => md(MONTHS.indexOf(m[1].slice(0, 3)), m[2]));
+  take(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)? (?:of )?${MONTH_WORD}\\b`, 'g'), m => md(MONTHS.indexOf(m[2].slice(0, 3)), m[1]));
+  take(new RegExp(`\\b(?:in|by|during|early|mid|late|this|next|last) ${MONTH_WORD}\\b`, 'g'), m => MONTHS[MONTHS.indexOf(m[1].slice(0, 3))]);
+  take(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tues|thurs|thur|tue|wed|thu|fri)\b/g, m => DAYS[m[1]] || m[1]);
+  take(/\b(today|tonight|tomorrow|yesterday|eod|eow)\b/g, m => m[1]);
+  take(/\b(this|next|last) (week|month|quarter|year)\b/g, m => `${m[1]} ${m[2]}`);
+  take(/\b(?:end|start|beginning) of (?:the |this |next )?(day|week|month|quarter|year)\b/g, m => `edge of ${m[1]}`);
+  take(/\b(?:in|within) (?:the next )?(\d{1,3}|a|an|one|two|three|four|five|six|seven) (day|week|month)s?\b/g, m => `in ${m[1]} ${m[2]}`);
+  return out;
+}
+
+// The model's steps: kept only when they cite ONE ground that exists; "based on" is the ground's text. C2: a step
+// naming a date its ground does not name is dropped too - the model made the date up.
 export function citedSteps(raw, grounds, have = []) {
   const byId = new Map(grounds.map(g => [g.id, g]));
   const out = [...have];
@@ -65,12 +91,14 @@ export function citedSteps(raw, grounds, have = []) {
     const g = typeof s?.ground === 'string' ? byId.get(s.ground.trim()) : null;
     const text = cleanText(String(s?.text || ''), 160);
     if (!g || !text || hasPii(String(s.text)) || out.some(o => o.text.toLowerCase() === text.toLowerCase())) continue;
+    const known = dateTokens(g.text);
+    if ([...dateTokens(String(s.text))].some(d => !known.has(d))) continue;
     out.push({ text, ground: g.id, based_on: g.text, source: 'model' });
   }
   return out.slice(0, STEPS_MAX);
 }
 export const groundsBlock = grounds => ['GROUNDS (stored facts - the only material a step may use):', ...grounds.map(g => `- [${g.id}] ${g.text}`)].join('\n');
-const STEPS_RULE = 'each { "text": a short imperative line, "ground": "G2" } citing exactly ONE ground id from GROUNDS. A step with no ground must not be returned. No email address or phone number.';
+const STEPS_RULE = 'each { "text": a short imperative line, "ground": "G2" } citing exactly ONE ground id from GROUNDS. A step with no ground must not be returned. A step names a date, a weekday or a deadline only when its ground names that same date; never invent one. No email address or phone number.';
 export const stepsAsk = (grounds, { replyTo = null, tone = null } = {}) => [
   replyTo ? `This is a REPLY, not a first email: ${replyTo} wrote back. Answer them directly and keep the ask.` : null,
   tone ? TONES[tone] : null,
