@@ -96,6 +96,13 @@ export const goalsApi = {
   // params owner=me, chips, source, q) and the Needs attention fixes. 0 AI, 0 Apollo.
   today: (id, params = {}) => call(id, `/today?${q(params)}`),
   todayFixes: id => call(id, '/today/fixes'),
+  // actions-v2 A2 - the work panel of one row: { grounds, steps, draft | brief | people, prompt_pack, usage }. A call that
+  // failed still answers with what needed no call, so this resolves with `failed: { status, error }` instead of throwing.
+  todayWork: async (id, key, body = {}) => {
+    const res = await fetch(`/api/sales/${id}/goals/today/${encodeURIComponent(key)}/work`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    return res.ok ? data : { ...data, failed: { status: res.status, error: data.error || `Request failed (${res.status})` } };
+  },
   // actions-home-attention-v1 D4 - sync status + counts; fresh = re-read the held partner moves (cached 15 min otherwise).
   attention: (id, { fresh = false } = {}) => call(id, `/attention${fresh ? '?fresh=1' : ''}`),
   // seif-campaign-v1 - outreach campaigns (Pipeline > Campaigns). No response carries a contact's address.

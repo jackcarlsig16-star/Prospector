@@ -13,6 +13,7 @@ import { NBA_RULES } from './nextBestAction.js';
 export const OVERDUE_FOLD = 3; // REVISABLE (Q1): the overdue rows shown before "Show all n overdue"
 export const VISIT_DAYS = 7;
 export const FIVE = 5;
+export const STALE_DAYS = 30; // REVISABLE (Q5): an Everything-else row untouched this long can be dropped in bulk
 export const GROUPS = [
   ['due', 'Due and overdue', 'due today or earlier, earliest first'],
   ['top', 'Pinned or P1 company', 'the company is pinned or in the top band'],
@@ -57,7 +58,7 @@ const order = (a, b) => ((a.due == null) - (b.due == null)) || (a.due && b.due ?
 // todos: open to-dos (openTodosFor) · waiting: open kind 'waiting' rows · five: this week's commitment rows ·
 // scores: listScores rows · people: peopleActivity rows · visits: web_visits rows · members: [{ id, name }].
 // filter: { owner: <user id> | 'unassigned' | null (team), chip: 'overdue' | 'undated' | null, source, q }.
-export function buildToday({ todos = [], waiting = [], five = [], scores = [], people = [], visits = [], members = [], today, filter = {}, snoozed = 0 }) {
+export function buildToday({ todos = [], waiting = [], five = [], scores = [], people = [], visits = [], members = [], today, filter = {}, snoozed = 0, flags = {} }) {
   const scoreOf = new Map(scores.map(s => [`${s.type}:${s.id}`, s]));
   const personOf = new Map(people.map(p => [p.key, p]));
   const peopleAt = new Map();
@@ -106,11 +107,12 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
   }
 
   // This week's five sit above the list and out of the ranking (Q2): each slot is a commitment row of the week; a
-  // slot made from a to-do carries that to-do's id (carried_from_id) and takes the to-do out of the groups.
+  // slot made from a to-do links it (R2: link_type 'todo' + link_id) and takes the to-do out of the groups.
   const slots = five.filter(c => c.status !== 'dropped').sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.created_at || '').localeCompare(String(b.created_at || ''))).slice(0, FIVE);
-  const inFive = new Set(slots.map(c => c.carried_from_id).filter(Boolean));
+  const todoOf = c => (c.link_type === 'todo' ? c.link_id : null);
+  const inFive = new Set(slots.map(todoOf).filter(Boolean));
   const byId = new Map(rows.filter(r => r.kind === 'todo').map(r => [r.id, r]));
-  const strip = slots.map((c, i) => { const r = c.carried_from_id ? byId.get(c.carried_from_id) || null : null; return { slot: i + 1, id: c.id, todo_id: c.carried_from_id || null, text: cleanText(r?.text || c.text, 200), company: r?.company?.name || null, due: r?.due || null, late_days: r?.late_days || 0, status: c.status, owner_user_id: c.owner_user_id || null, updated_at: c.updated_at || null }; });
+  const strip = slots.map((c, i) => { const r = todoOf(c) ? byId.get(todoOf(c)) || null : null; return { slot: i + 1, id: c.id, todo_id: todoOf(c), text: cleanText(r?.text || c.text, 200), company: r?.company?.name || null, due: r?.due || null, late_days: r?.late_days || 0, status: c.status, owner_user_id: c.owner_user_id || null, updated_at: c.updated_at || null }; });
 
   const ranked = rows.filter(r => !(r.kind === 'todo' && inFive.has(r.id)));
   const mine = r => (filter.owner === 'unassigned' ? !r.owner_user_id : filter.owner ? r.owner_user_id === filter.owner : true);
@@ -119,9 +121,12 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
   const shown = scoped.filter(r => (filter.chip === 'overdue' ? r.overdue : filter.chip === 'undated' ? !r.due && r.kind === 'todo' : true)
     && (!filter.source || r.source === filter.source) && (!q || `${r.text} ${r.company?.name || ''} ${r.person?.name || ''}`.toLowerCase().includes(q)));
 
-  let rank = 0;
+  // P3: the number is the display order. `rank` counts the rows shown while the overdue fold is closed (a folded row
+  // has none); `rank_open` counts them with the fold open, where the folded rows follow the shown rows of group 1.
+  const staleBefore = addDays(today, -STALE_DAYS);
+  let rank = 0, rankOpen = 0;
   const groups = GROUPS.map(([id, label, note]) => {
-    const list = shown.filter(r => r.group === id).sort(id === 'rest' ? (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) : order);
+    let list = shown.filter(r => r.group === id).sort(id === 'rest' ? (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')) : order);
     let fold = null;
     if (id === 'due') {
       // Q1: every row due today + the OVERDUE_FOLD most recent overdue; older overdue stay in the count, behind the fold.
@@ -129,12 +134,14 @@ export function buildToday({ todos = [], waiting = [], five = [], scores = [], p
       const keep = new Set(late.slice(-OVERDUE_FOLD).map(r => r.key));
       for (const r of late) r.folded = !keep.has(r.key);
       if (late.length > OVERDUE_FOLD) fold = { overdue: late.length, hidden: late.length - OVERDUE_FOLD, oldest_days: late[0].late_days };
+      list = [...list.filter(r => !r.folded), ...list.filter(r => r.folded)];
     }
-    return { id, label, note, n: list.length, collapsed: id === 'rest', fold, rows: list.map(r => ({ ...r, rank: ++rank })) };
+    if (id === 'rest') for (const r of list) r.stale = r.kind === 'todo' && String(r.updated_at || r.created_at || today).slice(0, 10) < staleBefore;
+    return { id, label, note, n: list.length, collapsed: id === 'rest', fold, rows: list.map(r => ({ ...r, rank: r.folded ? null : ++rank, rank_open: ++rankOpen })) };
   });
   const todoRows = ranked.filter(r => r.kind === 'todo');
   return {
-    groups, strip, five: { used: strip.length, max: FIVE }, rule: RULE_TEXT, today,
+    groups, strip, five: { used: strip.length, max: FIVE, can_add: !!flags.data_keys }, rule: RULE_TEXT, today,
     counts: { shown: shown.length, mine: scoped.length, team: ranked.length, overdue: scoped.filter(r => r.overdue).length, undated: scoped.filter(r => !r.due && r.kind === 'todo').length, snoozed,
       open_todos: todoRows.length, sources: Object.fromEntries(SOURCES.map(s => [s, scoped.filter(r => r.source === s).length])) },
     verbs: Object.fromEntries(VERB_IDS.map(v => [v, shown.filter(r => r.verb === v).length])),

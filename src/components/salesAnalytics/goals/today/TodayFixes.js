@@ -8,12 +8,13 @@ import { bulkDates, dayWords } from './todayRows';
 // actions-v2 A4 - "Fix the list": the top of the Needs attention drawer. At most five fixes, worst first (GET
 // goals/today/fixes, computed when the drawer opens). Every button is one of Scout's verbs: it shows Scout's confirm
 // card with each row listed, Confirm writes the batch, and the done line carries one Undo. A Viewer reads the list.
-// onCount(n): the drawer adds the number of fixes to the number on its button.
+// A failed feed is a fix too: it sits on top, in red. onCount(n, feeds): the drawer adds n to the number on its button
+// - the fixes that are NOT feeds, since the drawer counts a failed feed itself (once) - and shows the feeds under them.
 export default function TodayFixes({ businessId, canEdit, onCount }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [dating, setDating] = useState(null);
-  const load = useCallback(() => goalsApi.todayFixes(businessId).then(d => { setData(d); setError(''); onCount?.(d.n); }).catch(e => setError(e.message)), [businessId, onCount]);
+  const load = useCallback(() => goalsApi.todayFixes(businessId).then(d => { setData(d); setError(''); onCount?.(d.items.filter(i => !i.id.startsWith('feed:')).length, d.feeds || []); }).catch(e => setError(e.message)), [businessId, onCount]);
   useEffect(() => { load(); }, [load]);
   const actions = useTodayActions({ businessId, onChanged: () => { load(); window.dispatchEvent(new Event(TODOS_CHANGED)); } });
   const s = actions.state;
@@ -27,7 +28,7 @@ export default function TodayFixes({ businessId, canEdit, onCount }) {
       <p className="td-note" style={{ margin: '4px 0 8px' }}>{data.items.length ? `The ${data.items.length === 1 ? 'one thing' : `${data.items.length} things`} most worth fixing, worst first. Never more than five.` : 'Nothing to fix.'}</p>
       {data.items.map(fix => (
         <div key={fix.id} className="td-fix" data-today-fix={fix.id}>
-          <b>{fix.title}</b>
+          <b className={fix.id.startsWith('feed:') ? 'td-bad' : undefined}>{fix.title}</b>
           <span className="td-note">{fix.note}</span>
           {canEdit && fix.action && (
             <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>

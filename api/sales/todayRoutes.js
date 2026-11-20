@@ -9,6 +9,7 @@ import { visitIndex } from './visitJoin.js';
 import { linkFor, linkRecords } from './todoLink.js';
 import { buildToday, badgeCount, SOURCES } from './todayRank.js';
 import { work } from './todayWork.js';
+import { dataKeysRan } from './dataKeysFlag.js';
 
 // actions-v2 A1 / A4 - the routes behind Actions › Today.
 //   GET  goals/today?owner=me|<user id>|unassigned&chips=overdue|undated|snoozed&source=&q=   the five groups (Viewer+)
@@ -21,7 +22,7 @@ export const FIXES_MAX = 5;
 export const BATCH = 25; // Scout's card holds 25 rows; a fix says so when it has more
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-export const todayReads = { openTodosFor, listScores, peopleActivity };
+export const todayReads = { openTodosFor, listScores, peopleActivity, dataKeysRan };
 
 export function parseTodayQuery(q = {}, meId = null) {
   const chips = String(q.chips || '').split(',').map(s => s.trim());
@@ -36,7 +37,7 @@ export function parseTodayQuery(q = {}, meId = null) {
 export async function loadToday(supabase, businessId, { now = Date.now(), filter = {} } = {}) {
   const today = laDateString(new Date(now)), week = laMonday(today);
   const goals = build => selectAllPages(() => build(supabase.from('sales_week_goals').select('*').eq('business_id', businessId)).order('id'));
-  const [open, scored, peopled, visits, waiting, five, memberRows] = await Promise.all([
+  const [open, scored, peopled, visits, waiting, five, memberRows, dataKeys] = await Promise.all([
     todayReads.openTodosFor(supabase, businessId, null, { today, snoozed: filter.snoozed ? 'only' : 'hide' }),
     todayReads.listScores(supabase, businessId, {}, { now }),
     todayReads.peopleActivity(supabase, businessId, { window: 'all', now, snoozed: 'all' }),
@@ -44,12 +45,13 @@ export async function loadToday(supabase, businessId, { now = Date.now(), filter
     filter.snoozed ? [] : goals(x => x.eq('kind', 'waiting').eq('status', 'open')),
     goals(x => x.eq('kind', 'commitment').eq('week_start', week)),
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(must),
+    todayReads.dataKeysRan(supabase, now),
   ]);
   const scores = scored.status === 200 ? [...scored.body.rows, ...(scored.body.live || [])] : [];
   const people = peopled.status === 200 ? peopled.body.rows : [];
   const members = memberRows.map(m => ({ id: m.user_id, name: cleanText((m.profile?.display_name || m.name || 'Member').trim(), 80) }));
   // the reply-owed rows of the Snoozed view would be every reply again: that view is the hidden to-dos only
-  const view = buildToday({ todos: open.rows, waiting, five, scores, people: filter.snoozed ? people.map(p => ({ ...p, emails: { ...p.emails, replied: 0 } })) : people, visits, members, today, filter, snoozed: open.snoozed });
+  const view = buildToday({ todos: open.rows, waiting, five, scores, people: filter.snoozed ? people.map(p => ({ ...p, emails: { ...p.emails, replied: 0 } })) : people, visits, members, today, filter, snoozed: open.snoozed, flags: { data_keys: dataKeys } });
   return { view, todos: open.rows, people, scores, visitOf: visitIndex(visits), members };
 }
 

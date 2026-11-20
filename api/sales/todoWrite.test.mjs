@@ -54,7 +54,7 @@ test('every kind is exactly one event with before / after of the changed fields 
   const edit = await applyTodo(s.db, { businessId: B, todoId: id, patch: { text: 'Call MetLife again', sort_order: 3 }, origin: 'manual' });
   assert.equal(edit.event, null); assert.equal(edit.todo.text, 'Call MetLife again'); assert.equal(s.events().length, n);
   assert.deepEqual([...new Set(s.events().map(e => e.kind))].every(k => TODO_EVENT_KINDS.includes(k)), true);
-  assert.equal(kindOf({ person_key: 'k' }, {}), 'link'); assert.equal(TODO_ORIGINS.length, 11);
+  assert.equal(kindOf({ person_key: 'k' }, {}), 'link'); assert.equal(TODO_ORIGINS.length, 12); // 'reply' is written only once the data-keys migration has widened the CHECK (actions-v2 R3)
   assert.equal(JSON.stringify(s.events()).includes('@'), false);
 });
 

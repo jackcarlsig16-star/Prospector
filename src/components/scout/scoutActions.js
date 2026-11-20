@@ -9,7 +9,7 @@ export const UNDO_SECONDS = 10;
 export const PHONE_SHOWN = { people: 3, todos: 2 };
 
 // The first word decides (the server's parseCommand has the final say: { command: false } falls back to an ask).
-const COMMAND = /^(?:(?:please|scout|hey scout|ok|okay|can you|could you|go ahead and|now)[,\s]+)*(?:(?:re)?assign|unassign|mark|not a fit|deprioriti[sz]e|log|draft|write|snooze|add|create|make|new|\+ ?task|copy|send|email|reply|forward|delete|remove|erase|archive|move|advance|push|promote|change|put|enrol|enroll|sync|refresh|complete|finish|check off|close out|done with|drop|cancel|due|reschedule|set)\b|\bfor claude\b/i;
+const COMMAND = /^(?:(?:please|scout|hey scout|ok|okay|can you|could you|go ahead and|now)[,\s]+)*(?:(?:re)?assign|unassign|mark|not a fit|deprioriti[sz]e|log|draft|write|snooze|add|create|make|new|\+ ?task|copy|send|email|reply|forward|delete|remove|erase|archive|move|advance|push|promote|change|put|enrol|enroll|sync|refresh|complete|finish|check off|close out|done with|drop|cancel|due|reschedule|set|what should i do next|what'?s next|what next|next steps?|prep(?:are)?(?: me)?)\b|\bfor claude\b/i;
 export const looksLikeCommand = t => COMMAND.test(String(t || '').trim());
 
 const COMPANY = ['partners', 'employers', 'targets'];

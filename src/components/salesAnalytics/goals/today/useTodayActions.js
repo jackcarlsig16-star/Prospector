@@ -28,11 +28,12 @@ export function useTodayActions({ businessId, onChanged }) {
     catch (e) { setState({ kind: 'note', text: e.status === 410 ? 'That took too long - try again.' : e.message }); }
   }, []);
 
-  // rows: [{ entity, id, title, company? }] · instant: act without the card (one row picked in place)
-  const run = useCallback(async ({ verb, rows, args = {}, instant = false, say = {} }) => {
+  // rows: [{ entity, id, title, company? }] · instant: act without the card (one row picked in place) · text: the
+  // words of a typed verb (Add task reads the task from them)
+  const run = useCallback(async ({ verb, rows, args = {}, instant = false, say = {}, text = '' }) => {
     setState({ kind: 'busy' });
     let card;
-    try { card = await scoutApi.plan({ scope: businessId, verb, rows, keys: rows.map(scoutKey), args, text: '' }); }
+    try { card = await scoutApi.plan({ scope: businessId, verb, rows, keys: rows.map(scoutKey), args, text }); }
     catch (e) { setState({ kind: 'note', text: e.body?.cant?.reason || e.message }); return; }
     if (card.cant) { setState({ kind: 'note', text: card.cant.reason }); return; }
     if (!card.plan_id) { setState(null); return; }

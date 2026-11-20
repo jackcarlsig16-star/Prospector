@@ -1,0 +1,104 @@
+SPEC — actions-v2 REVISION 2  (Actions = an organised work list: one "who" control, grouped sections, the same action slots on every row,
+                    and every row adjustable in place — owner, due date, text)
+
+## Status
+REVISION 2 (planner, Fri Oct 23, 1:20 PM PT) — supersedes inbox/2026-10-23-1215-actions-v2.txt (moved to
+specs/superseded/). Change: A2's sections now follow the priority-v2 AUDIT's item-urgency bands (audits/priority-v2-report.txt
+§D, 12:27 PM) so Actions isn't reorganised twice; the band function itemUrgency() is created here in api/sales/priority.js
+(the file the coming SPEC priority-v2 fills with companyPriority()). Audit facts: only 25 of 215 rows are P1, but overdue +
+P1 fill the first screen; 17 of those 25 are website-visit signals (16 not linked to any Pipeline company); housekeeping
+("Set a date", 103 rows) inherits the company P and ranks next to replies; a positive Apollo reply reaches Actions only as a
+P3 Tidy row.
+Original: New (planner, Fri Oct 23, 12:15 PM PT). Jack, 11:57 AM (prod screenshot of Actions, Fri Oct 23):
+  "in the Actions tab it won't allow me to switch owner, so the Actions tab for tasks needs to be more dynamic and adjustable
+  on top of the actions on the right" · "Actions tab and actions on the right seem disorganized."
+What the screenshot shows (planner):
+  - TWO "Who" controls: the frame's Team | Jack | Cyrus (GoalsTab.js ~:321) and Actions' own Mine | Team (actionsModel.js
+    EMPTY_FILTERS :12) — different meanings, side by side.
+  - "Mine" shows unowned rows too (actionsModel.js :5-6/:17: Mine = owned by me OR by no one), so a "Mine" list reads
+    "Team" in the Owner column on most rows.
+  - 202 rows in one list; nearly everything is P1 (signals + Tidy), so the ranking separates nothing (priority itself is
+    fixed by SPEC priority-v2, not here).
+  - The action column changes shape per kind: to-do = Done · Snooze… · Reassign…; Tidy = Accept · Done · Dismiss · Snooze;
+    signal = Accept · Done · Dismiss; waiting = Got it · Nudge; campaign = Copy email · Sent · Stop · More…. Buttons never
+    line up and their order differs.
+  - Owner can only be changed on to-do rows (Reassign…, ActionsView.js :138-141); signals, Tidy suggestions, waiting rows
+    and flags have no owner control at all — the "won't let me switch owner" Jack hit.
+  - Due date, text and priority can't be edited from the row; Why is cut off.
+Order: after lead-source-v1 Stage 3 and FIX people-apollo-visibility-v1 (both queued). HEAD at writing: 0e647c2.
+
+## Ground truth (re-check every line in Stage 0)
+- goals/ActionsView.js: acts{} :114-150 (signal :115-118, tidy :119-124, waiting :125-128, todo :129-141, flag :142+,
+  campaign rows from seif-campaign Stage 3 ContactActions.js); finish/change helpers :96-100; columns :170-180 (owner cell
+  :166-167, owner column :178); row detail renderDetail ~:174/:200; toast + Undo.
+- goals/actionsModel.js: KIND_LABEL :8, VIEWER_KINDS :11, EMPTY_FILTERS { who:'mine', kind:'', q:'' } :12, filter :17,
+  actionSource :52; ranking from the server (overdue → P1..P4 → due).
+- api/sales/actionsRoutes.js: KINDS/KIND_LABEL :20-21, DEFAULT_PRIORITY :22, push :44, buildActions :35, listActions :103.
+- Frame row: goals/GoalsTab.js ~:321 "Who" Segmented (Team / members) shown when showPeople; ~:337 "Plan this week";
+  week navigator; Needs attention button (760ad60).
+- Writes that exist: PATCH week-goals (owner_user_id, due_date, status, text — goalsRoutes.js), signal accept/done/dismiss,
+  suggestion accept/done/dismiss/snooze (accept creates the to-do owned by the caller — tidyRoutes.js acceptSuggestion,
+  signalsRoutes.js acceptSignal), waiting Got it / Nudge, flag complete, campaign contact actions.
+- Kit: DataTable groups (collapsible, counts), EditableCell.js, FilterSelect, Segmented, Tag (ui-clarity roles).
+
+## Design — DECIDED (planner; REVISABLE values marked)
+A1 One "who" control. The frame's Team | Jack | Cyrus control is the only one on Actions; Actions' own Mine | Team goes.
+   Meaning: <person> = rows owned by that person; Team = everything; a new "Unassigned (n)" chip shows rows with no owner
+   (so "mine" no longer hides that most rows belong to nobody). Default = the signed-in person. Remembered per browser.
+A2 Sections = item-urgency bands (priority-v2 AUDIT §D), DataTable groups with counts, collapsible, remembered:
+     NOW        replies (Apollo + campaign), overdue waiting-on, open flags < 5 d, reply/meeting with no to-do (reply_task)
+                + any row overdue
+     TODAY      interest follow-up (click / 2+ human opens), visited-no-touch, stale follow-up, campaign sends due,
+                Focus 5, to-dos due today
+     THIS WEEK  new website + Scout signals, research-or-drop, to-dos/waiting due later this week
+     HOUSEKEEPING  set a date, duplicate, flag going cold, undated to-dos — collapsed by default
+   Inside a band: company P (today's values until priority-v2 lands) → due → age. Sort headers work inside a band.
+   The band comes from ONE function itemUrgency(kind, meta) in a new api/sales/priority.js (pure; reads nothing); the
+   server sends band on every row; actionsRoutes stops using DEFAULT_PRIORITY / TIDY_PRIORITY to ORDER rows (the chip
+   still shows the company P). reply_task and a positive reply are NOW regardless of company P (fixes audit S1/S19).
+A3 Same action slots on every row, in the same place: [Primary] [Done] [More ▾]. Primary per kind: to-do → Done becomes
+   the primary and slot 2 shows the due-date button; signal → Accept; Tidy → Accept; waiting → Got it; flag → Mark
+   contacted; campaign send → Copy email (Sent in slot 2); campaign reply → Respond (opens the company window). Everything
+   else per kind goes in More ▾ (Dismiss, Snooze, Nudge, Skip, Stop, statuses, Promote…) — nothing is lost, every existing
+   action keeps its write and its Undo. Column widths fixed so the slots line up (N2).
+A4 Adjust in place (Members; Viewers read-only):
+   - Owner cell = a select on EVERY row kind. To-do / waiting / flag: PATCH owner_user_id. Signal / Tidy suggestion: picking
+     an owner = Accept on that person's behalf (the to-do is created owned by them; the row becomes their to-do) — no new
+     column, the existing accept writes with an owner parameter. Campaign rows: the contact's owner (seif-campaign route).
+     Choices: each member + "Unassigned".
+   - Due cell = a date button (to-do, waiting, campaign send): today / tomorrow / Friday / next Monday / pick a date / no date.
+   - What to do (to-do, waiting): click the text in the row detail panel → edit in place (Enter saves, Esc cancels).
+   - Every change: Undo for 10 s, same toast.
+A5 Header tidy: the frame row keeps the "who" control, week navigator, Needs attention and Plan this week; the Actions
+   filter row keeps Kind + Search + the Unassigned chip. Why column gets the width the second Who control frees; full text
+   stays in the row detail (ebcbff4).
+
+## Out of scope (own SPECs)
+Priority rules (priority-v2) · company-window guided steps (company-workflow-v1) · new row kinds · bulk select.
+
+## Landmines (inlined)
+- Every action keeps its existing write + Undo; partner touches/stages only via applyPartnerSignal with expect (Done on a
+  partner still logs ONE email touch, 0f88857).
+- Accept-with-owner must keep the final-week guard (weekIsFinal 409) and the signal/suggestion undo paths.
+- Viewers: no edit controls, no Accept/Done; read-only cells. Campaign rows stay hidden from Viewers (VIEWER_KINDS).
+- ui-clarity roles (one primary per row, secondary/tertiary, R5 tags), contrast 0 failures, N2 ≤ 1 px, no new dependency.
+- No emails/phones anywhere (campaign rows show names only).
+- Verify scripts that click Actions buttons by position/name must be updated in the same commit.
+
+## Implementation
+Stage 0 — reads (≤30 lines): every ground-truth line; counts per band (NOW/TODAY/THIS WEEK/HOUSEKEEPING) on HomeLover today; reproduce "won't let me switch owner" on prod data read-only (which
+  kinds Jack's rows were; is Reassign absent or failing); counts per proposed section on HomeLover today; which verify
+  scripts depend on button order/labels. STOP.
+Stage 1 — server: api/sales/priority.js itemUrgency + unit tests per kind; actions payload band + ordering by band; accept (signal + suggestion) accepts an optional owner_user_id (Member of the business; default caller);
+  actions payload carries section id + what the cells need; unit tests (accept-with-owner, final-week guard, undo).
+  Commit, push, STOP.
+Stage 2 — UI: A1–A5, row detail edit, Viewer pass, 1440 + 390 (phone: slots collapse to Primary + More ▾), contrast 0,
+  N2, live in a temp workspace with the real-call guard (0 Claude/Apollo). Full suite before push. Commit, push, STOP.
+
+## Bar 5 (Jack, prod)
+Actions opens on "Jack" with NOW / TODAY / THIS WEEK / HOUSEKEEPING (housekeeping folded); change the owner of a signal to Cyrus → it leaves your list and appears as Cyrus's
+to-do; move a to-do's due date to Friday; the buttons on every row line up (Primary · Done/Due · More ▾); Unassigned (n)
+shows what nobody owns.
+
+## Commit
+One commit per stage referencing actions-v2 REV2. Push, ls-remote, close-out, STOP after each stage.

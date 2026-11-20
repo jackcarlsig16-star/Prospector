@@ -19,7 +19,11 @@ import TodayFixes from './today/TodayFixes';
 // A page-load pull / Tidy failure (pageLoadFailures, loop-quickfixes Q5) shows
 // as Failed "on page load" until the source reports OK again. Viewers read.
 // actions-v2 A4: "Fix the list" (TodayFixes) sits on top - its fixes count toward the number on the button.
-const WIDTH = 380;
+// Stage 3 (P1 / P2): the drawer is 440 px over the list (a full sheet under 1100 px), and "Data feeds" under the fixes
+// lists every feed with its last run - a failed one first, in red, counted once.
+const WIDTH = 440;
+const FEED_ORDER = { failed: 0, stale: 1 };
+export const feedsFirst = sources => [...sources].sort((a, b) => (FEED_ORDER[a.status] ?? 2) - (FEED_ORDER[b.status] ?? 2));
 const STATUS = { ok: ['OK', SA.good], stale: ['Stale', SA.warn], failed: ['Failed', SA.bad], running: ['Running', SA.accent], not_connected: ['Not connected', SA.borderStrong] };
 const PAGE_LOAD = { apollo: 'apollo', visitors: 'visits', tidy: 'tidy' };
 const ERR_SHOWN = 90;
@@ -61,7 +65,7 @@ function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
   return (
     <li data-source={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${SA.track}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32 }}>
-        <span style={{ fontSize: 14, fontWeight: 600, color: SA.text, flex: '1 1 auto', minWidth: 0 }}>{s.label}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: s.status === 'failed' ? SA.bad : SA.text, flex: '1 1 auto', minWidth: 0 }}>{s.label}</span>
         <Tag color={tone}>{label}</Tag>
         {canEdit && control && s.status !== 'not_connected' && <Button size="sm" disabled={busy || s.status === 'running'} disabledReason={s.status === 'running' ? 'Running now' : 'Working…'} onClick={() => onRun(s.id)}>{busy ? 'Working…' : control}</Button>}
       </div>
@@ -118,9 +122,11 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [fixN, setFixN] = useState(0);
+  const [noteFeed, setNoteFeed] = useState(null); // call-note intake: the one feed the sync status does not carry
+  const onFixes = useCallback((n, feeds = []) => { setFixN(n); setNoteFeed(feeds.find(f => f.id === 'call_notes') || null); }, []);
 
   const load = useCallback(fresh => goalsApi.attention(businessId, { fresh }).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
-  useEffect(() => { load(false); goalsApi.todayFixes(businessId).then(d => setFixN(d.n)).catch(() => {}); }, [load, businessId]);
+  useEffect(() => { load(false); goalsApi.todayFixes(businessId).then(d => onFixes(d.items.filter(i => !i.id.startsWith('feed:')).length, d.feeds)).catch(() => {}); }, [load, businessId, onFixes]);
   useEffect(() => {
     const close = () => setOpen(false);
     window.addEventListener(OPEN_TASKS, close);
@@ -170,12 +176,12 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
     else onNav('pipeline', target);
   };
 
-  const sources = data ? withPageLoad(data.sources, pageLoadFailures) : [];
+  const sources = data ? feedsFirst(withPageLoad(data.sources, pageLoadFailures)) : [];
   const n = data ? attentionN(sources, data.counts) + fixN : 0;
   const button = !data
     ? <Button variant="tertiary" disabled disabledReason="Checking…">Checking…</Button>
     : n
-      ? <Button aria-haspopup="dialog" aria-expanded={open} onClick={show}>Needs attention ({n})</Button>
+      ? <Button aria-haspopup="dialog" aria-expanded={open} onClick={show}>Needs attention <b style={numStyle}>{n}</b></Button>
       : <Button variant="tertiary" aria-haspopup="dialog" aria-expanded={open} onClick={show}>All clear</Button>;
   const root = document.getElementById(SA_THEME_ROOT_ID) || document.body;
 
@@ -185,21 +191,27 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
       {open && createPortal(
         <>
           {compact && <div onClick={() => setOpen(false)} className="no-print" style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 4001 }} />}
-          <aside className={`${SA_THEME_CLASS} no-print`} role="dialog" aria-modal={compact ? true : undefined} aria-labelledby="attention-drawer-title" data-attention-drawer
+          <div className={`${SA_THEME_CLASS} no-print`} role="dialog" aria-modal={compact ? true : undefined} aria-labelledby="attention-drawer-title" data-attention-drawer
             style={{ ...saSans, position: 'fixed', top: 0, right: 0, bottom: 0, width: compact ? '100vw' : WIDTH, maxWidth: '100vw', boxSizing: 'border-box', zIndex: 4002, background: SA.ground, color: SA.text, borderLeft: `1px solid ${SA.border}`, display: 'flex', flexDirection: 'column', boxShadow: '-12px 0 32px rgba(0,0,0,0.35)' }}>
             <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 12px 12px 16px', borderBottom: `1px solid ${SA.border}` }}>
-              <h2 id="attention-drawer-title" style={{ ...SA_TYPE.cardTitle, fontSize: 17, margin: 0, color: SA.text }}>{n ? `Needs attention (${n})` : 'All clear'}</h2>
+              <h2 id="attention-drawer-title" style={{ ...SA_TYPE.cardTitle, fontSize: 17, margin: 0, color: SA.text }}>{n ? `Needs attention · ${n}` : 'All clear'}</h2>
               <div style={{ flex: 1 }} />
               <Button className="ui-btn--icon" onClick={() => setOpen(false)} aria-label="Close needs attention" style={{ width: 36, height: 36, fontSize: 20 }}>×</Button>
             </header>
             <div style={{ flex: '1 1 auto', overflowY: 'auto', padding: '8px 16px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
               {error && <ErrorNote message={error} />}
               {!canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
-              <TodayFixes businessId={businessId} canEdit={canEdit} onCount={setFixN} />
-              <section aria-label="Sync status">
-                <h3 className="ui-group-label" style={{ margin: '8px 0 0' }}>Sync status</h3>
+              <TodayFixes businessId={businessId} canEdit={canEdit} onCount={onFixes} />
+              <section aria-label="Data feeds" data-attention-feeds>
+                <h3 className="ui-group-label" style={{ margin: '8px 0 0' }}>Data feeds</h3>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sources.map(s => <SourceLine key={s.id} s={s} canEdit={canEdit} isAdmin={isAdmin} busy={busy === s.id} onRun={run} />)}
+                  {noteFeed && (
+                    <li data-source="call_notes" style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${SA.track}` }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 32 }}><span style={{ fontSize: 14, fontWeight: 600, color: SA.text, flex: '1 1 auto' }}>{noteFeed.label}</span><Tag color={noteFeed.status === 'ok' ? SA.good : SA.borderStrong}>{noteFeed.status === 'ok' ? 'OK' : 'None yet'}</Tag></div>
+                      <span style={{ fontSize: 12, color: SA.soft, ...numStyle }}>{noteFeed.line}</span>
+                    </li>
+                  )}
                 </ul>
                 {note && <p role="status" style={{ fontSize: 12, color: SA.soft, margin: '6px 0 0' }}>{note}</p>}
               </section>
@@ -226,7 +238,7 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
                 </section>
               )}
             </div>
-          </aside>
+          </div>
         </>, root)}
     </>
   );

@@ -11,6 +11,8 @@ import { nbaOf, VERB_IDS } from './todayRank.js';
 // Calls: Draft email / Draft reply = ONE call (the Write-email call, returning the draft and its steps together);
 // Prep call = one call; Next steps = one call, none when there is no ground; Find people = none. Every call is a
 // Write-email call (callType intent_compose): its daily cap governs, and the cost is the usage row's, never a constant.
+// D38: a call that fails still answers with what needed no call (row, grounds, the rule's step, prompt_pack) beside
+// the error, so the Claude pane keeps working.
 export const STEP_TEMPLATES = { reply_today: 'Reply today', book_meeting: 'Book the meeting', contact_referral: 'Contact the referral', follow_up_clicked: 'Follow up — they clicked', linkedin_touch: 'LinkedIn touch', find_contact: 'Find the right contact' };
 export const STEPS_MAX = 4;
 export const NOTES_MAX = 3;
@@ -139,6 +141,8 @@ export async function work(supabase, { businessId, auth, key, body = {}, busines
     catch (e) { if (e.status !== 404) throw e; out.prompt_pack = null; }
   } else out.prompt_pack = null;
 
+  const failed = (status, body) => reply(status, { ...out, ...body });
+
   if (verb === 'find_people') {
     const taken = new Set(t.todos.map(x => x.person_key).filter(Boolean));
     out.people = t.people.filter(p => p.company?.id === c.id && p.company?.type === c.type && !taken.has(p.key)).sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1))
@@ -149,9 +153,12 @@ export async function work(supabase, { businessId, auth, key, body = {}, busines
 
   if (verb === 'draft_email' || verb === 'draft_reply') {
     const to = person ? { person_key: person.key, name: person.name, title: person.title || null } : null;
-    const r = await deps.compose(supabase, { businessId, userId: auth.user.id, userName: auth.user.name, type: c.type, id: c.id, person: to, now,
-      extra: { ask: stepsAsk(grounds, { replyTo: verb === 'draft_reply' ? person?.name || c.name : null, tone: body.tone || null }) } });
-    if (r.status !== 200) return r;
+    let r;
+    try {
+      r = await deps.compose(supabase, { businessId, userId: auth.user.id, userName: auth.user.name, type: c.type, id: c.id, person: to, now,
+        extra: { ask: stepsAsk(grounds, { replyTo: verb === 'draft_reply' ? person?.name || c.name : null, tone: body.tone || null }) } });
+    } catch (e) { return failed(502, { error: `The draft failed: ${e.message}` }); }
+    if (r.status !== 200) return failed(r.status, r.body);
     const d = r.body.draft;
     out.steps = citedSteps(r.body.extra?.steps, grounds, rule);
     out.usage = { calls: 1, cost_usd: r.body.cost_usd ?? null, cap: r.body.cap || null };
@@ -164,13 +171,16 @@ export async function work(supabase, { businessId, auth, key, body = {}, busines
 
   // Prep call and Next steps: one call of their own, under the same cap.
   const cap = await deps.cap(supabase, businessId, now);
-  if (cap.used >= cap.max) return reply(429, { error: `Write email cap reached (${cap.max} per day for this workspace)`, used: cap.used, max: cap.max });
+  if (cap.used >= cap.max) return failed(429, { error: `Write email cap reached (${cap.max} per day for this workspace)`, used: cap.used, max: cap.max });
   let material = groundsBlock(grounds);
-  if (c) { const b = await deps.brief(supabase, { businessId, type: c.type, id: c.id, now }); if (b.status !== 200) return b; material = `${b.body.markdown}\n\n${material}`; }
-  const data = await deps.call({ system: workSystem(verb), messages: [{ role: 'user', content: `${material}\n\nThe to-do: ${row.text}` }], max_tokens: WORK_MAX_TOKENS, model: MODELS.STANDARD, thinking: false, timeoutMs: 60000, supabase, businessId, userId: auth.user.id, callType: 'intent_compose' });
-  if (data.stop_reason === 'max_tokens') return reply(502, { error: 'The answer was cut off - try again' });
+  if (c) { const b = await deps.brief(supabase, { businessId, type: c.type, id: c.id, now }); if (b.status !== 200) return failed(b.status, b.body); material = `${b.body.markdown}\n\n${material}`; }
+  let data;
+  try {
+    data = await deps.call({ system: workSystem(verb), messages: [{ role: 'user', content: `${material}\n\nThe to-do: ${row.text}` }], max_tokens: WORK_MAX_TOKENS, model: MODELS.STANDARD, thinking: false, timeoutMs: 60000, supabase, businessId, userId: auth.user.id, callType: 'intent_compose' });
+  } catch (e) { return failed(502, { error: `The call failed: ${e.message}` }); }
+  if (data.stop_reason === 'max_tokens') return failed(502, { error: 'The answer was cut off - try again' });
   const j = jsonIn((data.content || []).filter(x => x.type === 'text').map(x => x.text).join(''));
-  if (!j) return reply(502, { error: 'The model returned nothing readable - try again' });
+  if (!j) return failed(502, { error: 'The model returned nothing readable - try again' });
   out.steps = citedSteps(j.steps, grounds, rule);
   out.usage = { calls: 1, cost_usd: usd(estimateCostUsd(data.usage?.model || MODELS.STANDARD, data.usage) ?? null), cap: { used: cap.used + 1, max: cap.max } };
   if (verb === 'prep_call') {

@@ -4,9 +4,9 @@ import { companyWindowUrl } from '../../salesNav';
 import HeatPill from '../../people/HeatPill';
 import { SOURCE, VERB_LABEL, dueWords, dayWords, snoozeChoices, dueChoices } from './todayRows';
 
-// actions-v2 Stage 2 - the pieces of the Today list (specs/design/actions-v2/ActionsToday · States · Phone): the five
-// strip, a row's cells, the check circle, the ⋯ menu that changes in place, the done line. Every control here calls
-// back; nothing in this file writes.
+// actions-v2 - the pieces of the Today list (specs/design/actions-v2/ActionsToday · States · Phone): the five strip,
+// a row's cells, the check circle, the verb button, the ⋯ menu that changes in place, the done line. Every control
+// here calls back; nothing in this file writes.
 const Svg = ({ d, size = 14, fill = false, sw = 1.5 }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill={fill ? 'currentColor' : 'none'} stroke={fill ? 'none' : 'currentColor'} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>
 );
@@ -15,7 +15,8 @@ const STAR = 'M8 1.800l1.900 3.900 4.300.600-3.100 3 .700 4.300L8 11.600l-3.800 
 const DOTS = 'M3.500 8h.010M8 8h.010M12.500 8h.010';
 export const Icon = Svg;
 
-export function Strip({ strip, five, open, onToggle }) {
+// onRemove(slot): given only when the viewer may change the five (a member, after the data-keys migration).
+export function Strip({ strip, five, open, onToggle, onRemove = null }) {
   if (!strip.length) return null;
   return (
     <section className="td-card td-strip" aria-label="This week’s five" data-today-strip>
@@ -36,6 +37,7 @@ export function Strip({ strip, five, open, onToggle }) {
                 <div className="t">{s.text}</div>
                 <div className="s">{s.company || 'no company'} · {s.late_days ? `${s.late_days} d late` : s.due ? dayWords(s.due) : 'no date'}</div>
               </div>
+              {onRemove && s.todo_id && <button type="button" className="td-mb" style={{ marginLeft: 'auto', flex: 'none' }} aria-label={`Remove from this week’s five: ${s.text}`} onClick={() => onRemove(s)} data-today-slot-remove>×</button>}
             </div>
           ))}
         </div>
@@ -69,14 +71,14 @@ export function DueCell({ row, today, canEdit, onSetDate }) {
   return canEdit && row.kind === 'todo' ? <button type="button" className="td-link" onClick={onSetDate} data-today-setdate>Set date</button> : <span className="td-dash">—</span>;
 }
 export const FromCell = ({ source }) => { const [label, d] = SOURCE[source] || SOURCE.manual; return <span className="td-og" title={`From: ${label}`} role="img" aria-label={`From: ${label}`}><Svg d={d} /></span>; };
-// The verb names what Scout can do on the row. The work panel it opens is Stage 3: until then it is a label, not a button.
-export const Verb = ({ verb }) => <span className="td-vb" data-today-verb={verb} title="Scout’s work panel for this row arrives with the next stage"><Svg d={SPARK} size={12} />{VERB_LABEL[verb]}</span>;
+// D30: the row's one verb. It opens Scout's work panel on the row (filled while open); nothing is generated before the click.
+export const Verb = ({ row, open, onClick }) => <button type="button" className="td-vb" aria-expanded={open} aria-label={`${VERB_LABEL[row.verb]}: ${row.text}`} onClick={onClick} data-today-verb={row.verb}><Svg d={SPARK} size={12} />{VERB_LABEL[row.verb]}</button>;
 export const Check = ({ row, onDone }) => <button type="button" className="td-ck" aria-label={`Done: ${row.text}`} onClick={onDone} data-today-done><Svg d={CHECK} size={12} /></button>;
 export const MoreButton = ({ row, open, onClick, buttonRef }) => <button type="button" ref={buttonRef} className="td-mb" aria-haspopup="menu" aria-expanded={open} aria-label={`More for ${row.text}`} onClick={onClick} data-today-more><Svg d={DOTS} size={16} sw={2.2} /></button>;
 
 // The ⋯ menu: Reassign, Snooze and Due change in place (a second list inside the same menu), Open, Drop.
 // onPick({ verb, args, say }) - the caller sends it through Scout's plan.
-export function RowMenu({ row, anchor, today, members, initial = null, onPick, onClose }) {
+export function RowMenu({ row, anchor, today, members, initial = null, canFive = false, onPick, onClose }) {
   const [sub, setSub] = useState(initial);
   const [pos, setPos] = useState(null);
   const ref = useRef(null);
@@ -100,6 +102,7 @@ export function RowMenu({ row, anchor, today, members, initial = null, onPick, o
       {row.kind === 'todo' && item('Reassign', () => setSub('assign'), row.owner || 'Unassigned')}
       {row.kind === 'todo' && item('Snooze', () => setSub('snooze'))}
       {row.kind === 'todo' && item('Due', () => setSub('due'), row.due ? dayWords(row.due) : 'no date')}
+      {row.kind === 'todo' && canFive && item('Add to this week’s five', () => onPick({ verb: 'five_add', args: {}, say: {} }))}
       {row.kind === 'reply' && item('Add to-do', () => onPick({ verb: 'reply_todos', args: {}, say: {} }))}
       {row.company?.id && <><div className="td-sepr" /><a role="menuitem" className="td-mi" href={companyWindowUrl({ type: row.company.type, id: row.company.id })} style={{ textDecoration: 'none' }}>Open <em>{row.company.name}</em></a></>}
       {row.kind === 'todo' && <><div className="td-sepr" />{item('Drop', () => onPick({ verb: 'task_drop', args: {}, say: {} }), null, 'td-mi--bad')}</>}
@@ -122,7 +125,17 @@ export function RowMenu({ row, anchor, today, members, initial = null, onPick, o
   );
 }
 
-export function Toast({ state, onUndo, onClose }) {
+// copied = { text, onDone? }: the line after Copy (D37) - it offers Done in place of Undo; Copy never marks done itself.
+export function Toast({ state, copied = null, onUndo, onClose, onCopiedClose }) {
+  if (copied && (!state || state.kind === 'card')) {
+    return (
+      <div className="td-toast" role="status" data-today-toast="copied">
+        <span>{copied.text}</span>
+        {copied.onDone && <button type="button" className="u" onClick={copied.onDone} data-today-copied-done>Done</button>}
+        <button type="button" className="u" aria-label="Dismiss" onClick={onCopiedClose}>×</button>
+      </div>
+    );
+  }
   if (!state || state.kind === 'card') return null;
   const text = state.kind === 'busy' ? 'Working…' : state.kind === 'note' ? state.text : state.line;
   return (

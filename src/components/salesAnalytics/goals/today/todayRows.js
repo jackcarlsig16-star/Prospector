@@ -50,7 +50,30 @@ export function doneWords(verb, result, { date = null, ownerName = null } = {}) 
   if (verb === 'task_drop') return `Dropped: ${one || n}.`;
   if (verb === 'task_due') return one ? `Due ${dayWords(date)}: ${one}.` : `Dated ${n} ${dayWords(date)}.`;
   if (verb === 'reply_todos') return `Added ${ok.length} to-do${ok.length === 1 ? '' : 's'}.`;
+  if (verb === 'task_finish') return one ? `Done: ${one}.${ok[0].to?.includes('contacted') ? ` ${ok[0].to.replace(/^done · /, '').replace(/ contacted$/, '')} marked contacted.` : ''}` : `Done: ${n}.`;
+  if (verb === 'five_add') return `Added to this week’s five: ${one || n}.`;
+  if (verb === 'five_remove') return `Back on the list: ${one || n}.`;
+  if (verb === 'add_task') return one ? `Added: ${one}.` : result.line;
   return result.line;
 }
+
+// --- the work panel (Stage 3) ---
+export const PANE_TITLE = { draft_email: 'Draft · email', draft_reply: 'Draft · reply', prep_call: 'Brief · call prep', find_people: 'People · not on a to-do yet' };
+export const TAB_LABEL = { draft_email: 'Draft', draft_reply: 'Draft', prep_call: 'Brief', find_people: 'People' };
+export const firstName = name => String(name || '').trim().split(/\s+/)[0] || '';
+// The company of a Today row as one of Scout's rows (Add to-do links it).
+export const companyRow = c => (c?.id ? { entity: `${c.type}s`, id: c.id, title: c.name } : null);
+// "What Scout read": counted off the grounds the server assembled - never a guess.
+export function readLine(data, row) {
+  const kinds = (data?.grounds || []).map(g => g.kind);
+  const count = (k, one, many) => { const n = kinds.filter(x => x === k).length; return n ? `${n} ${n === 1 ? one : many}` : null; };
+  return ['The to-do', row.company?.id ? `${row.company.name}’s record` : null, kinds.includes('visit') ? 'its site visits' : null, kinds.includes('activity') ? 'the person’s email activity' : null, count('note', 'call note', 'call notes'), kinds.includes('todos') ? 'the other open to-dos' : null].filter(Boolean).join(' · ');
+}
+
+// D41: Scout opens the work panel on a row. The ask is held until the list is on screen (Scout may be on another page).
+export const TODAY_WORK = 'prospector:today-work'; // detail { key, verb }
+let wanted = null;
+export const queueWork = d => { wanted = d; window.dispatchEvent(new CustomEvent(TODAY_WORK, { detail: d })); };
+export const takeWork = () => { const d = wanted; wanted = null; return d; };
 
 export const todayQuery = ({ owner, chip, source, q }) => ({ ...(owner === 'me' ? { owner: 'me' } : {}), ...(chip ? { chips: chip } : {}), ...(source ? { source } : {}), ...(q ? { q } : {}) });

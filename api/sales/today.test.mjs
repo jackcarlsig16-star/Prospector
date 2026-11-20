@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { buildToday, pickVerb, nbaOf, badgeCount, sourceOf, VERBS, VERB_IDS, OVERDUE_FOLD, GROUPS } from './todayRank.js';
+import { buildToday, pickVerb, nbaOf, badgeCount, sourceOf, VERBS, VERB_IDS, OVERDUE_FOLD, GROUPS, STALE_DAYS } from './todayRank.js';
 import { groundsFor, templateSteps, citedSteps, stepsAsk, promptPack, work, ASKS, STEPS_MAX } from './todayWork.js';
 import { buildFixes, parseTodayQuery } from './todayRoutes.js';
 import { createRegistry } from '../scout/registry.js';
@@ -76,7 +76,8 @@ test('buildToday: five groups, a row once in the first group it fits, earliest d
   const v = buildToday({ ...base, filter: {} });
   assert.deepEqual(v.groups.map(g => g.id), GROUPS.map(g => g[0]));
   const by = Object.fromEntries(v.groups.map(g => [g.id, g.rows.map(r => r.text)]));
-  assert.deepEqual(by.due, ['Old overdue A', 'Old overdue B', 'Old overdue C', 'Old overdue D', 'Send the benefits one-pager', 'Confirm the December demo time']);
+  // P3: the rows shown come first, the folded overdue rows after them
+  assert.deepEqual(by.due, ['Old overdue C', 'Old overdue D', 'Send the benefits one-pager', 'Confirm the December demo time', 'Old overdue A', 'Old overdue B']);
   // Cloudflare is P1; Northrop is pinned but its one to-do is overdue, so it sits in group 1 (first fit)
   assert.deepEqual(by.top, ['Email the People team', 'Call Cloudflare about the pilot']);
   // first fit holds for a virtual row too: Crys replied, and her company visited this week
@@ -85,7 +86,12 @@ test('buildToday: five groups, a row once in the first group it fits, earliest d
   assert.deepEqual(by.rest.sort(), ['Ask Flowserve for the org chart', 'Draft the partner recap', 'Find the benefits lead'].sort());
   const rows = flat(v);
   assert.equal(new Set(rows.map(r => r.key)).size, rows.length, 'a row appears once');
-  assert.deepEqual(rows.map(r => r.rank), rows.map((_, i) => i + 1));
+  // P3: the number is the display order - the shown rows read 1…n, a folded row has no number until the fold opens
+  const shownRows = rows.filter(r => !r.folded);
+  assert.deepEqual(shownRows.map(r => r.rank), shownRows.map((_, i) => i + 1));
+  assert.deepEqual(rows.filter(r => r.folded).map(r => [r.rank, r.rank_open]), [[null, 5], [null, 6]]);
+  assert.deepEqual(rows.map(r => r.rank_open), rows.map((_, i) => i + 1));
+  assert.equal(rows.find(r => r.text === 'Email the People team').rank, 5);
   assert.equal(v.groups[4].collapsed, true);
   // verbs
   const verb = t => rows.find(r => r.text === t).verb;
@@ -143,10 +149,12 @@ test('chips and the owner filter: Mine / Team / Overdue / Undated counts, the so
 });
 
 test('the five strip: this week\'s commitment rows sit above the list; a slot made from a to-do takes it out of the ranking', () => {
-  const five = [{ id: u('f'), kind: 'commitment', status: 'open', text: 'Book two meetings', sort_order: 1, carried_from_id: null }, { id: u('e'), kind: 'commitment', status: 'open', text: 'x', sort_order: 0, carried_from_id: TODOS[6].id }, { id: u('d'), kind: 'commitment', status: 'dropped', text: 'gone', sort_order: 2 }];
+  const five = [{ id: u('f'), kind: 'commitment', status: 'open', text: 'Book two meetings', sort_order: 1, link_type: null, link_id: null }, { id: u('e'), kind: 'commitment', status: 'open', text: 'x', sort_order: 0, link_type: 'todo', link_id: TODOS[6].id }, { id: u('d'), kind: 'commitment', status: 'dropped', text: 'gone', sort_order: 2 }];
   const v = buildToday({ ...base, five, filter: {} });
   assert.deepEqual(v.strip.map(s => [s.slot, s.text, s.company, s.due]), [[1, 'Email the People team', 'Cloudflare', '2026-11-20'], [2, 'Book two meetings', null, null]]);
-  assert.deepEqual(v.five, { used: 2, max: 5 });
+  assert.deepEqual(v.five, { used: 2, max: 5, can_add: false });
+  assert.equal(buildToday({ ...base, five, filter: {}, flags: { data_keys: true } }).five.can_add, true);
+  assert.equal(v.strip[0].todo_id, TODOS[6].id);
   assert.equal(flat(v).some(r => r.text === 'Email the People team'), false);
 });
 
@@ -305,9 +313,13 @@ const seed = todos => fakeSupabase({
   sales_prospect_state: [{ business_id: B, contact_id: 'p1', name: 'Dana Mayer', status: 'new', snooze_until: null, opportunity_id: CO.cloud, goal_id: null }, { business_id: B, contact_id: 'p2', name: 'Crys Pringle', status: 'contacted', snooze_until: null, opportunity_id: CO.qub, goal_id: null }],
   sales_week_goals: todos.map(t => ({ ...t, business_id: B })),
 });
+let MIGRATED = false;
 const fakeWrites = todos => {
   const log = [];
   Object.assign(salesWrites, {
+    dataKeys: async () => MIGRATED,
+    weekGoalCreate: async ({ body }) => { log.push(['weekGoalCreate', body.kind, body.link_type, body.link_id, body.text, body.week_start]); return { status: 201, body: { goal: { id: 'slot-new' } } }; },
+    weekGoalUpdate: async ({ params, body }) => { log.push(['weekGoalUpdate', params.id, body.status, body.expect || null]); return { status: 200, body: { goal: {} } }; },
     todoLoad: async (_sb, _b, id) => todos.find(x => x.id === id) || null,
     todo: async (_sb, a) => { log.push(['todo', a.todoId, a.patch, a.kind, a.expect, a.origin, a.batchId]); return { todo: {}, event: { id: `ev-${log.length}` } }; },
     todoEventUndo: async (_sb, a) => { log.push(['todoEventUndo', a.eventId]); return {}; },
@@ -382,4 +394,59 @@ test('A6 Scout opens the work panel on a to-do row: "draft the email for the fir
   assert.deepEqual(r.body.open, { panel: 'today_work', key: `todo:${TODOS[9].id}`, verb: 'prep_call' });
   assert.deepEqual((await go('what should I do next')).body, { command: false }, 'no to-do named: the ask answers it');
   assert.deepEqual((await plan(sb, registry, { auth: ana, body: { scope: B, text: 'what should I do next on #1', rows: [] } })).body, { command: false });
+});
+
+test('R3 reply to-dos carry origin reply once the data-keys migration has run; R2 This week\'s five: add and remove are verbs behind the same flag, each undone', async () => {
+  const slot = { id: u('5'), business_id: B, kind: 'commitment', status: 'open', week_start: '2026-11-16', text: 'Email the People team', link_type: 'todo', link_id: TODOS[6].id };
+  const sb = fakeSupabase({ businesses: [{ id: B, name: 'Alpha', features: { goals_sales: true } }], business_members: [{ business_id: B, user_id: ANA, name: 'Ana Member', role: 'member' }], sales_goals: [], sales_opportunities: [], sales_targets: [], sales_prospect_state: [], sales_week_goals: [...TODOS.map(t => ({ ...t, business_id: B })), slot] });
+  const registry = createRegistry(); await register(registry);
+  const log = fakeWrites(TODOS);
+  // before the migration: both five verbs say why, and nothing is planned
+  let r = await run(sb, registry, { verb: 'five_add', rows: [trow(TODOS[9])], keys: [`todos:${TODOS[9].id}`] });
+  assert.match(r.p.body.cant.reason, /data-keys database update/); assert.equal(r.a, null);
+  r = await run(sb, registry, { verb: 'five_remove', rows: [trow(TODOS[6])], keys: [`todos:${TODOS[6].id}`] });
+  assert.match(r.p.body.cant.reason, /data-keys database update/);
+  assert.equal(log.length, 0);
+  MIGRATED = true;
+  try {
+    r = await run(sb, registry, { verb: 'reply_todos', rows: [{ entity: 'people', id: 'prospect:p9', title: 'Lee Stone' }], keys: ['people:prospect:p9'] });
+    assert.equal(log[0][5], 'reply');
+    log.length = 0;
+    // add: a to-do already in the five is skipped; the other becomes a commitment row that links it
+    r = await run(sb, registry, { verb: 'five_add', rows: [trow(TODOS[6]), trow(TODOS[9])], keys: [`todos:${TODOS[6].id}`, `todos:${TODOS[9].id}`] });
+    assert.deepEqual(r.p.body.rows.map(x => [x.title, x.to, x.skipped]), [['Email the People team', "this week's five", 'already one of the five'], ['Call Cloudflare about the pilot', "this week's five", null]]);
+    assert.deepEqual(log, [['weekGoalCreate', 'commitment', 'todo', TODOS[9].id, 'Call Cloudflare about the pilot', '2026-11-16']]);
+    log.length = 0;
+    await undo(sb, registry, { auth: ana, body: { plan_id: r.p.body.plan_id } });
+    assert.deepEqual(log, [['weekGoalUpdate', 'slot-new', 'dropped', null]]);
+    log.length = 0;
+    // remove: the slot's row is dropped (never deleted); Undo opens it again
+    r = await run(sb, registry, { verb: 'five_remove', rows: [trow(TODOS[6]), trow(TODOS[9])], keys: [`todos:${TODOS[6].id}`, `todos:${TODOS[9].id}`] });
+    assert.deepEqual(r.p.body.rows.map(x => [x.from, x.to, x.skipped]), [["this week's five", 'the list', null], [null, null, 'not one of the five']]);
+    assert.deepEqual(log, [['weekGoalUpdate', slot.id, 'dropped', { status: 'open' }]]);
+    log.length = 0;
+    await undo(sb, registry, { auth: ana, body: { plan_id: r.p.body.plan_id } });
+    assert.deepEqual(log, [['weekGoalUpdate', slot.id, 'open', null]]);
+  } finally { MIGRATED = false; }
+});
+
+test('R1 bulk drop: an Everything-else to-do untouched for 30+ days is marked stale; a dated or recent row is not', () => {
+  const old = { ...TODOS[10], created_at: '2026-10-01T10:00:00Z', updated_at: '2026-10-05T10:00:00Z' };
+  const v = buildToday({ ...base, todos: [old, { ...TODOS[11], created_at: '2026-11-10T10:00:00Z', updated_at: null }, TODOS[1]], filter: {} });
+  assert.equal(STALE_DAYS, 30);
+  assert.deepEqual(v.groups[4].rows.map(r => [r.text, r.stale]), [['Ask Flowserve for the org chart', false], ['Draft the partner recap', true]]);
+  assert.equal(flat(v).find(r => r.text === 'Confirm the December demo time').stale, undefined);
+});
+
+test('D38 a failed call still answers with what needed no call: the row, the grounds, the rule\'s step and the prompt pack', async () => {
+  const sb = fakeSupabase({ sales_call_notes: [], sales_opportunities: [] });
+  const view = buildToday({ ...base, filter: {} });
+  const deps = { loadToday: async () => ({ view, todos: TODOS, people, scores, visitOf: () => null, members }), pack: async () => ({ text: 'Question: q\nCloudflare · employer', records: [{ type: 'employer' }] }),
+    compose: async () => { throw new Error('timeout'); }, cap: async () => ({ used: 0, max: 30 }), brief: async () => ({ status: 200, body: { markdown: 'Brief' } }), call: async () => { throw new Error('timeout'); } };
+  const key = flat(view).find(r => r.text === 'Email the People team').key;
+  const r = await work(sb, { businessId: B, auth: ana, key, body: {}, now: NOW, deps });
+  assert.equal(r.status, 502); assert.match(r.body.error, /The draft failed: timeout/);
+  assert.equal(r.body.prompt_pack.asks.length, ASKS.length); assert.ok(r.body.grounds.length > 0); assert.equal(r.body.draft, undefined);
+  const prep = await work(sb, { businessId: B, auth: ana, key: flat(view).find(x => x.text === 'Call Cloudflare about the pilot').key, body: {}, now: NOW, deps });
+  assert.equal(prep.status, 502); assert.equal(prep.body.prompt_pack.asks.length, ASKS.length);
 });

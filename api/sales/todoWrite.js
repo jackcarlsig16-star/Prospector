@@ -18,7 +18,7 @@ import { getSupabase } from './goalsShared.js';
 // (R3: a USER's undo). rollbackCreates is the other case - a request that failed half-way removing rows it inserted
 // moments ago, which never existed from the user's side: the rows are deleted and each leaves one 'undo' event.
 // Commitments, waiting rows and flags are not to-dos here (R1); steps are out of scope (R4).
-export const TODO_ORIGINS = ['manual', 'scout', 'call_notes', 'signal', 'tidy', 'panel', 'plan', 'nudge', 'carry_over', 'import', 'system'];
+export const TODO_ORIGINS = ['manual', 'scout', 'call_notes', 'signal', 'tidy', 'panel', 'plan', 'nudge', 'carry_over', 'import', 'system', 'reply'];
 export const TODO_EVENT_KINDS = ['create', 'done', 'undone', 'reassign', 'due', 'drop', 'snooze', 'unsnooze', 'link', 'undo'];
 export const UNDO_WINDOW_MS = 2 * 60e3; // screens show 10 s; the slack covers slow networks
 export const TRACKED = ['status', 'completed_at', 'owner_user_id', 'due_date', 'snooze_until', 'link_type', 'link_id', 'person_key'];

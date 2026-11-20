@@ -5,6 +5,8 @@ import { normName } from './intakeMatch.js';
 import { loadPerson } from './personWrite.js';
 import { readType } from './readType.js';
 import { linkFor } from './todoLink.js';
+import { laMonday } from './goalsShared.js';
+import { FIVE } from './todayRank.js';
 
 // scout-v3 S1 + the Stage 0 rulings (R1-R9) - the sales module's verbs for Scout's plan / act / undo. Every write goes
 // through an EXISTING route or its function with that route's guards, and every reverse is that route's own Undo:
@@ -17,6 +19,7 @@ import { linkFor } from './todoLink.js';
 // scout-v3.1: draft email = the Write-email call itself (composeEmail, its cap, its usage row) addressed to the person
 // of the row, returned as text - never sent (C2). Task verbs go through applyTodo with expect, the card's plan id as
 // batch_id and the event's own Undo (C4): add (typed), done, reassign (the assign verb), snooze, due, drop.
+// actions-v2 R2: This week's five - add a to-do to a slot (a commitment row that links it), remove = that row dropped.
 // actions-v2 A3 / A4 / A6: Today's batches are verbs here too - finish (the to-do done + its person contacted, one Undo),
 // reply to-dos (Q6: one to-do per unanswered reply), assign to the company's owner, link the company a to-do names -
 // and "draft / what next / prep me" on a to-do row opens Today's work panel on that row (no call is made here).
@@ -47,6 +50,9 @@ export const salesWrites = {
   rejectTarget: lazy('./targetsRoutes.js', 'rejectTarget'),
   deprioritize: lazy('./fitActions.js', 'deprioritize'),
   linkable: lazy('./todayRoutes.js', 'linkableRecords'),
+  weekGoalCreate: viaRoute('./goalsRoutes.js', 'createWeekGoalRoute'),
+  weekGoalUpdate: viaRoute('./goalsRoutes.js', 'updateWeekGoalRoute'),
+  dataKeys: lazy('./dataKeysFlag.js', 'dataKeysRan'),
 };
 const ok = r => { if (r.status >= 400) throw Object.assign(new Error(r.body?.error || 'failed'), { status: r.status, code: r.body?.code }); return r.body; };
 
@@ -385,7 +391,7 @@ const addTask = {
   },
   async act(sb, ctx, x) {
     const c = x.create;
-    const todo = await salesWrites.todoOn(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: c.link?.type || null, id: c.link?.id || null, text: c.text, today: ctx.today, dueDate: c.due_date, now: new Date(ctx.now), origin: 'scout', personKey: c.person_key, batchId: ctx.planId });
+    const todo = await salesWrites.todoOn(sb, { businessId: ctx.businessId, userId: ctx.auth.user.id, type: c.link?.type || null, id: c.link?.id || null, text: c.text, today: ctx.today, dueDate: c.due_date, now: new Date(ctx.now), origin: c.origin || 'scout', personKey: c.person_key, batchId: ctx.planId });
     return { undo: { todo_event: todo.event_id } };
   },
   async undo(sb, ctx, x, h) { await todoUndo(sb, ctx, h); },
@@ -461,16 +467,17 @@ const taskFinish = {
 };
 
 // Q6 - "Add n to-dos" for the replies nobody answers: one open to-do per person (their key, their company's record).
-// origin stays 'scout': 'reply' is not an origin the table admits, and the row still reads as a reply owed.
+// R3: origin 'reply' once the data-keys migration has widened the table's CHECK; 'scout' until then.
 const replyTodos = {
   id: 'reply_todos', label: 'Add reply to-dos', done: 'Added', pill: false, accepts: ['people'], lead: /^add\b.*\bto-?dos?\b.*\brepl/,
   async plan(sb, ctx, targets) {
     const rows = [];
+    const origin = (await salesWrites.dataKeys(sb, ctx.now)) ? 'reply' : 'scout';
     for (const t of targets) {
       const has = must(await sb.from('sales_week_goals').select('id').eq('business_id', ctx.businessId).eq('kind', 'todo').eq('status', 'open').eq('person_key', t.id)).length > 0;
       if (has) { rows.push({ ...base(t), from: null, to: 'open to-do', skipped: 'already has an open to-do' }); continue; }
       const { company } = await resolve(sb, ctx.businessId, t);
-      rows.push({ ...base(t), from: null, to: `open to-do · due ${ctx.today}`, note: company ? `linked to ${company.name}` : NO_RECORD, exec: { create: { text: `Reply to ${t.title}`, due_date: ctx.today, link: company ? { type: company.type, id: company.id } : null, person_key: t.id } } });
+      rows.push({ ...base(t), from: null, to: `open to-do · due ${ctx.today}`, note: company ? `linked to ${company.name}` : NO_RECORD, exec: { create: { text: `Reply to ${t.title}`, due_date: ctx.today, link: company ? { type: company.type, id: company.id } : null, person_key: t.id, origin } } });
     }
     return { rows };
   },
@@ -521,6 +528,50 @@ const linkNamed = {
   undo: (sb, ctx, x, h) => todoUndo(sb, ctx, h),
 };
 
+// R2 - This week's five. A slot is a commitment row of the current week that links ONE to-do (link_type 'todo'); the
+// table only admits that link once the data-keys migration has run, so both verbs say so until then.
+const FIVE_WAITS = "This week's five takes a to-do once the data-keys database update has run.";
+const fiveSlots = async (sb, ctx) => must(await sb.from('sales_week_goals').select('id, status, link_type, link_id').eq('business_id', ctx.businessId).eq('kind', 'commitment').eq('week_start', laMonday(ctx.today))).filter(c => c.status !== 'dropped');
+const slotPatch = (ctx, id, body) => salesWrites.weekGoalUpdate({ params: { businessId: ctx.businessId, id }, body, auth: ctx.auth });
+const fiveAdd = {
+  id: 'five_add', label: "Add to this week's five", done: 'Added', pill: false, accepts: ['todos'], lead: /^add\b.*\bweeks? five\b/,
+  async plan(sb, ctx, targets) {
+    if (!(await salesWrites.dataKeys(sb, ctx.now))) return { cant: { reason: FIVE_WAITS } };
+    const slots = await fiveSlots(sb, ctx);
+    const inFive = new Set(slots.filter(c => c.link_type === 'todo').map(c => c.link_id));
+    let free = FIVE - slots.length;
+    const rows = [];
+    for (const t of targets) {
+      const todo = await todoOf(sb, ctx, t);
+      if (!todo || todo.status !== 'open') { rows.push(block(t, GONE)); continue; }
+      const row = { ...base(t, taskTitle(todo)), kind: 'task', from: 'the list', to: "this week's five" };
+      if (inFive.has(todo.id)) rows.push({ ...row, skipped: 'already one of the five' });
+      else if (free <= 0) rows.push({ ...row, skipped: 'the five are full - remove one first' });
+      else { free--; rows.push({ ...row, note: 'out of the ranking until Monday', exec: { five: { todo: todo.id, text: taskTitle(todo) } } }); }
+    }
+    return { rows };
+  },
+  async act(sb, ctx, x) {
+    const r = ok(await salesWrites.weekGoalCreate({ params: { businessId: ctx.businessId }, body: { week_start: laMonday(ctx.today), kind: 'commitment', text: x.five.text, link_type: 'todo', link_id: x.five.todo, owner_user_id: ctx.auth.user.id }, auth: ctx.auth }));
+    return { undo: { slot: r.goal.id } };
+  },
+  async undo(sb, ctx, x, h) { ok(await slotPatch(ctx, h.slot, { status: 'dropped' })); },
+};
+const fiveRemove = {
+  id: 'five_remove', label: "Remove from this week's five", done: 'Removed', pill: false, accepts: ['todos'], lead: /^(?:remove|take)\b.*\bweeks? five\b/,
+  async plan(sb, ctx, targets) {
+    if (!(await salesWrites.dataKeys(sb, ctx.now))) return { cant: { reason: FIVE_WAITS } };
+    const slots = await fiveSlots(sb, ctx);
+    return { rows: targets.map(t => { const slot = slots.find(c => c.link_type === 'todo' && c.link_id === t.id); return slot ? { ...base(t), kind: 'task', from: "this week's five", to: 'the list', exec: { slot: slot.id, before: slot.status } } : block(t, 'not one of the five'); }) };
+  },
+  async act(sb, ctx, x) {
+    const r = await slotPatch(ctx, x.slot, { status: 'dropped', expect: { status: x.before } });
+    if (r.status === 409) return { skipped: 'changed meanwhile' };
+    ok(r); return { undo: { status: x.before } };
+  },
+  async undo(sb, ctx, x, h) { ok(await slotPatch(ctx, x.slot, { status: h.status })); },
+};
+
 const PACK_ENTITIES = ['people', ...COMPANY_ENTITIES];
 const copy = {
   id: 'copy', label: 'Copy for Claude', lead: /^copy\b|\bfor claude\b/, accepts: PACK_ENTITIES, free: true,
@@ -534,7 +585,7 @@ const copy = {
 };
 
 // Order = which lead wins: "mark ... contacted / not a fit" before "mark ... done"; the narrower assign and add first.
-export const salesVerbs = [assignOwner, assign, notFit, contacted, taskFinish, taskDone, taskDue, taskDrop, workPanel, draft, bundle, snooze, replyTodos, addTask, linkNamed, copy];
+export const salesVerbs = [assignOwner, assign, notFit, contacted, taskFinish, taskDone, taskDue, taskDrop, workPanel, draft, bundle, snooze, fiveAdd, fiveRemove, replyTodos, addTask, linkNamed, copy];
 
 const PACK_TYPE = { ...KIND, people: 'person' };
 export async function salesPack(sb, ctx, { q, records }) {

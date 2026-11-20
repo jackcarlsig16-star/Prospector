@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import AttentionDrawer, { withPageLoad, attentionN, windowText, peoplePullText } from './AttentionDrawer';
+import AttentionDrawer, { withPageLoad, attentionN, windowText, peoplePullText, feedsFirst } from './AttentionDrawer';
 import { goalsApi, OPEN_TASKS, OPEN_ATTENTION, OPEN_CONNECTIONS } from './goalsApi';
 import { triggerSync } from '../salesApi';
 
@@ -29,16 +29,16 @@ test('model: a page-load failure shows as Failed until the source is OK again; n
   expect(attentionN([src('a', 'A', 'running'), src('b', 'B', 'not_connected')], { x: 0 })).toBe(0);
 });
 
-test('Member: "Needs attention (n)" opens the drawer (fresh read), statuses in words, Sync now re-reads; counts open their lists', async () => {
+test('Member: "Needs attention n" opens the drawer (fresh read), statuses in words, Sync now re-reads; counts open their lists', async () => {
   triggerSync.mockResolvedValue({ id: 'r1' });
   const onNav = jest.fn();
   const opened = jest.fn();
   window.addEventListener(OPEN_ATTENTION, opened);
   render(<AttentionDrawer businessId="b1" canEdit compact={false} pageLoadFailures={{}} onNav={onNav} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention (5)' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention 5' }));
   expect(opened).toHaveBeenCalled();
   await waitFor(() => expect(goalsApi.attention).toHaveBeenLastCalledWith('b1', { fresh: true }));
-  const drawer = screen.getByRole('dialog', { name: 'Needs attention (5)' });
+  const drawer = screen.getByRole('dialog', { name: 'Needs attention · 5' });
   const apollo = drawer.querySelector('[data-source="apollo"]');
   expect(apollo).toHaveTextContent('Stale');
   const tidy = drawer.querySelector('[data-source="tidy"]');
@@ -57,10 +57,10 @@ test('Member: "Needs attention (n)" opens the drawer (fresh read), statuses in w
   fireEvent.click(within(drawer.querySelector('[data-count="overdue_todos"]')).getByRole('button', { name: 'Your overdue to-dos: 2 - open' }));
   expect(tasks.mock.calls[0][0].detail).toMatchObject({ filter: 'me' });
   expect(screen.queryByRole('dialog')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Needs attention (5)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Needs attention 5' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Your campaign sends due: 3 - open' }));
   expect(onNav).toHaveBeenCalledWith('pipeline', 'campaigns');
-  fireEvent.click(screen.getByRole('button', { name: 'Needs attention (5)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Needs attention 5' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '📝 Paste call notes' }));
   expect(tasks.mock.calls[1][0].detail).toMatchObject({ paste: true });
   window.removeEventListener(OPEN_TASKS, tasks);
@@ -89,7 +89,7 @@ test('All clear when nothing needs you; Esc closes; the Tasks drawer opening clo
 
 test('Viewer: statuses and counts, no manual buttons, no Quick add', async () => {
   render(<AttentionDrawer businessId="b1" canEdit={false} compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention (5)' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention 5' }));
   const drawer = screen.getByRole('dialog');
   expect(drawer).toHaveTextContent('read-only');
   for (const name of ['Sync now', 'Sync Outlook', 'Pull now', 'Tidy now', '📝 Paste call notes']) expect(within(drawer).queryByRole('button', { name })).toBeNull();
@@ -214,4 +214,34 @@ test('visitor email line: sent shows the words; missed and failed both offer Sen
   o.unmount();
   o = await open(missed, { isAdmin: false });
   expect(within(o.row).queryByRole('button', { name: 'Send now' })).toBeNull();
+});
+
+// actions-v2 Stage 3 (P1 / P2)
+test('P1 / P2: a 440 px drawer over the page (a full-width sheet when compact), Esc closes it; "Data feeds" sits under the fixes with every feed and its last run - a failed feed first, in red, counted once', async () => {
+  goalsApi.attention.mockResolvedValue({ ...DATA, sources: [src('outlook', 'Outlook (mail + calendar)', 'ok'), src('visitors', 'Site visitors', 'ok'), src('apollo', 'Apollo sync', 'failed', { error: 'Apollo answered 500' })], counts: { ...COUNTS, overdue_todos: 0, held_apollo: 0, campaign_sends: 0 } });
+  goalsApi.todayFixes.mockResolvedValue({ n: 2, today: '2026-10-22', items: [{ id: 'feed:apollo', n: 1, title: 'Apollo sync failed', note: 'Apollo answered 500', action: null }, { id: 'replies', n: 4, title: '4 replies have no to-do', note: 'People wrote back.', action: null }],
+    feeds: [{ id: 'apollo', label: 'Apollo sync', status: 'failed', failed: true, line: 'Apollo answered 500' }, { id: 'visitors', label: 'Site visitors', status: 'ok', failed: false, line: 'Last ran today' }, { id: 'call_notes', label: 'Call-note intake', status: 'ok', failed: false, line: 'Last note 2026-10-21 · 3 to-dos made' }] });
+  expect(feedsFirst([{ id: 'a', status: 'ok' }, { id: 'b', status: 'stale' }, { id: 'c', status: 'failed' }]).map(s => s.id)).toEqual(['c', 'b', 'a']);
+  const r = render(<AttentionDrawer businessId="b1" canEdit compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  // the failed feed is one of the fixes AND a failed source: it counts once (1 failed feed + 1 other fix)
+  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention 2' }));
+  const drawer = await screen.findByRole('dialog', { name: 'Needs attention · 2' });
+  expect(drawer.style.width).toBe('440px');
+  expect(drawer).not.toHaveAttribute('aria-modal');
+  await waitFor(() => expect(drawer.querySelector('[data-today-fix="feed:apollo"] b')).toHaveClass('td-bad'));
+  const feeds = drawer.querySelector('[data-attention-feeds]');
+  expect(within(feeds).getByRole('heading', { name: 'Data feeds' })).toBeInTheDocument();
+  await waitFor(() => expect([...feeds.querySelectorAll('[data-source]')].map(x => x.getAttribute('data-source'))).toEqual(['apollo', 'outlook', 'visitors', 'call_notes']));
+  expect(feeds.querySelector('[data-source="apollo"]')).toHaveTextContent('Failed');
+  expect(feeds.querySelector('[data-source="call_notes"]')).toHaveTextContent('Call-note intakeOKLast note 2026-10-21 · 3 to-dos made');
+  expect(drawer.compareDocumentPosition(feeds) & Node.DOCUMENT_POSITION_CONTAINED_BY).toBeTruthy();
+  expect(drawer.querySelector('[data-today-fixes]').compareDocumentPosition(feeds) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).toBeNull();
+  r.unmount();
+  render(<AttentionDrawer businessId="b1" canEdit compact pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Needs attention 2' }));
+  const sheet = await screen.findByRole('dialog');
+  expect(sheet.style.width).toBe('100vw');
+  expect(sheet).toHaveAttribute('aria-modal', 'true');
 });

@@ -31,7 +31,7 @@ const WAITING_ON_MAX = 120;
 // task-drawer-v1 - what a to-do serves. link_id: a commitment's, partner's,
 // target's or employer's (sales-ia-v2: 'opportunity') id, a metric key, or a
 // company's Apollo account_id (Goals > Companies).
-export const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target', 'opportunity'];
+export const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target', 'opportunity', 'todo'];
 export const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,7 +100,9 @@ export async function checkLink(supabase, businessId, payload, existing) {
   const id = 'link_id' in payload ? payload.link_id : existing?.link_id ?? null;
   if (touched && (type === null) !== (id === null)) return { error: 'link_type and link_id go together - set both, or both null to clear' };
   if (type === null) return null;
-  if ((payload.kind ?? existing?.kind ?? 'todo') === 'commitment') return { error: 'only a to-do can be linked' };
+  // actions-v2 R2: a slot of This week's five is a commitment row that links ONE to-do; nothing else links a to-do.
+  const slot = (payload.kind ?? existing?.kind ?? 'todo') === 'commitment';
+  if (slot !== (type === 'todo')) return { error: slot ? 'a commitment can only link a to-do' : "only a slot of this week's five links a to-do" };
   if (!touched) return null;
   const notFound = { error: `link: ${type} not found in this workspace` };
   if (type === 'metric') return LINKABLE_METRICS.includes(id) ? null : { error: `link: metric must be one of ${LINKABLE_METRICS.join('|')}` };
@@ -115,8 +117,8 @@ export async function checkLink(supabase, businessId, payload, existing) {
     if (error) return { status: 500, error: error.message };
     return data ? null : notFound;
   }
-  const { data, error } = type === 'commitment'
-    ? await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('id', id).eq('kind', 'commitment').maybeSingle()
+  const { data, error } = type === 'commitment' || type === 'todo'
+    ? await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('id', id).eq('kind', type).maybeSingle()
     : await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle();
   if (error) return { status: 500, error: error.message };
   return data ? null : notFound;

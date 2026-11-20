@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { scoutApi } from './scoutApi';
 import { goalsApi } from '../salesAnalytics/goals/goalsApi';
 import { playbookPrompt } from '../salesAnalytics/goals/companyPanelModel';
+import { queueWork } from '../salesAnalytics/goals/today/todayRows';
 import { SCOUT_CAPTURE, UNDO_SECONDS, planRows, keyOf, dateIn, cardTitle, withResults, withoutResults, withAction, undoneAction, copiedLine, bundleLine, TASK_LINE, draftText } from './scoutActions';
 
 // scout-v3 Stage 2 - one action at a time, for the answer on screen:
@@ -61,12 +62,13 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
         return undefined;
       }
       if (o.quick_capture) window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId: scope, ...o.quick_capture } }));
+      else if (o.panel === 'today_work') { queueWork({ key: o.key, verb: o.verb || null }); onOpenItem({ entity: 'todos', id: o.key.replace(/^todo:/, ''), title: '', open: { page: 'sales', params: { tab: 'actions' } } }); }
       else if (o.panel === 'compose') onCompose({ type: o.type, id: o.id, name: o.name, to: o.to || null, key: `${o.type}-${o.id}` });
       else { note('note', "Scout can't open that here."); return undefined; }
       note('opened', r.line || 'Opened');
     } catch (e) { note('note', e.offline ? OFFLINE : o.copy ? `Not copied: ${e.message.replace(/^Not copied: /, '')}` : e.message); }
     return undefined;
-  }, [scope, onCompose, packCopy]);
+  }, [scope, onCompose, onOpenItem, packCopy]);
 
   // -> 'ask' when the server says the text is not a command.
   const run = useCallback(async body => {

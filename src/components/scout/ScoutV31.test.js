@@ -345,3 +345,16 @@ test('a Viewer: asks and follow-ups work (the rows ride along, the focus chip sh
   expect($(container, '[data-scout-brief-grid]')).toBeTruthy();
   expect($(container, '[data-scout-draft]')).toBeNull(); expect($(container, '[data-scout-taskcard]')).toBeNull();
 });
+
+// actions-v2 A6 / D41 - Scout opens Today's work panel on a to-do row: the ask is queued for the list and the page moves to Actions.
+test('"what should I do next on the first task" opens the work panel on that row: the ask is handed to Today and Actions opens; no draft, no card', async () => {
+  const { takeWork } = require('../salesAnalytics/goals/today/todayRows');
+  const m = await answered();
+  replies.plan = () => json(200, { verb: 'work', label: 'Open the work panel', open: { panel: 'today_work', key: 'todo:t1', verb: 'next_steps' }, line: 'Opened the work panel on "Send the deck" — nothing sent' });
+  enter(m.input, 'what should I do next on the first task');
+  await waitFor(() => expect(m.onOpen).toHaveBeenCalledWith(expect.objectContaining({ entity: 'todos', id: 't1', open: { page: 'sales', params: { tab: 'actions' } } })));
+  expect(takeWork()).toEqual({ key: 'todo:t1', verb: 'next_steps' });
+  expect(m.container.querySelector('[data-scout-draft]')).toBeNull();
+  expect(m.container.querySelector('[data-scout-confirm]')).toBeNull();
+  expect(m.container.textContent).toContain('Opened the work panel');
+});
