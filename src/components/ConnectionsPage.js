@@ -8,11 +8,16 @@ import StatusPill from '../ui/StatusPill';
 import SectionLabel from '../ui/SectionLabel';
 import { mailboxConnectionProblem } from '../utils/mailboxStatus';
 import TetherMap from './connections/TetherMap';
+import FathomCard from './salesAnalytics/goals/FathomCard';
+import { SA_THEME_CSS, SA_THEME_CLASS } from './salesAnalytics/theme';
+import { roleAtLeast } from '../constants/roles';
 
 // shell-facelift-v1 Stage 3 - user menu > Connections: the signed-in user's
 // Google + Microsoft grants (held server-side; the browser only sees which
 // features are granted) and the Apollo mailboxes of their sales workspaces.
 // Same routes as the two pages this replaces; Apollo is read-only here.
+// fathom-notes-v1 follow-up (ruling S-1): the one Connections page - each sales workspace's Fathom card sits under
+// Microsoft and Apollo (the same card Sales › Settings showed; a Member acts on their own row, an Owner on anyone's).
 const when = iso => iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
 const day = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—';
 const n = v => Number(v || 0).toLocaleString('en-US');
@@ -194,14 +199,23 @@ function ApolloCard({ businesses }) {
   );
 }
 
-export default function ConnectionsPage({ businesses, microsoftResult }) {
+export default function ConnectionsPage({ businesses, microsoftResult, me = null }) {
+  const sales = businesses.filter(b => b.features?.goals_sales);
+  const canEdit = b => !!me && (!!me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === b.id)?.role, 'member'));
   return (
     <div style={{ maxWidth: KIT_MAX_WIDTH, margin: '0 auto', padding: `${KIT_SPACE[4]}px 0`, minWidth: 0, ...KIT_TYPE.body, color: ui.text }}>
+      {sales.length > 0 && <style>{SA_THEME_CSS}</style>}
       <PageHeader title="Connections" subtitle="Every mailbox you connected, and the exact workspace it works for. A line means that workspace uses that mailbox. No line, no access." />
       <div data-connections-grid style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: KIT_SPACE[3], alignItems: 'start' }}>
         <div data-provider="google" style={{ gridColumn: '1 / -1' }}><TetherMap businesses={businesses} /></div>
         <div data-provider="microsoft"><MicrosoftCard result={microsoftResult} /></div>
         <div data-provider="apollo"><ApolloCard businesses={businesses} /></div>
+        {sales.map(b => (
+          <div key={b.id} data-provider="fathom" className={`${SA_THEME_CLASS} ui-theme-dark`} style={{ gridColumn: '1 / -1', display: 'grid', gap: KIT_SPACE[1] }}>
+            {sales.length > 1 && <SectionLabel>{b.name}</SectionLabel>}
+            <FathomCard businessId={b.id} canEdit={canEdit(b)} />
+          </div>
+        ))}
       </div>
     </div>
   );

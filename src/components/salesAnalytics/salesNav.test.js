@@ -80,6 +80,7 @@ test('company-panel-v3 Copy link: Pipeline > Companies with ?open=<type>-<id>; o
 test('homelover-team-emails-v1: Sales › Settings opens on Team emails', () => {
   expect(normalizeNav('settings')).toEqual({ tab: 'settings', view: 'team-emails' });
   expect(normalizeNav('settings', 'bogus')).toEqual({ tab: 'settings', view: 'team-emails' });
-  expect(SUB_VIEWS.settings).toEqual([['team-emails', 'Team emails'], ['connections', 'Connections']]);
-  expect(normalizeNav('settings', 'connections')).toEqual({ tab: 'settings', view: 'connections' });
+  // fathom-notes-v1 follow-up (S-1): one Connections page (the user menu's); an old Settings › Connections link lands on Team emails.
+  expect(SUB_VIEWS.settings).toEqual([['team-emails', 'Team emails']]);
+  expect(normalizeNav('settings', 'connections')).toEqual({ tab: 'settings', view: 'team-emails' });
 });

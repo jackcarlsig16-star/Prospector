@@ -147,3 +147,28 @@ test('homelover-team-emails-v1: a grant without Mail.Send says "Reconnect to all
   await screen.findByRole('button', { name: 'Reconnect / switch account →' });
   expect(document.querySelector('[data-team-email-reconnect]')).toBeNull();
 });
+
+// fathom-notes-v1 follow-up (ruling S-1): one Connections page - a sales workspace's Fathom card under Microsoft and Apollo.
+test('Fathom: the card of each sales workspace sits after Microsoft and Apollo, editable for a Member, read-only for a Viewer; no card without the sales module', async () => {
+  const fathom = { connected: true, me: 'u1', owner: false, members: [{ user_id: 'u1', name: 'Jack', connected: true, status: 'connected', last_event_at: null, webhook: true, webhook_id_tail: '3456', pull: { started: false, more: false, finished: true }, stored: 4, last_recording: '2026-11-19' }], others: [], extracts: { cap: 10, used: 2, left: 8 }, stored: 4 };
+  const calls = [];
+  global.fetch = (url, init) => {
+    calls.push(`${init?.method || 'GET'} ${url}`);
+    if (/\/fathom(\/status)?$/.test(url)) return json(200, fathom);
+    if (url === '/api/microsoft/status') return json(200, { configured: true, email: null, scopes: [] });
+    return json(404, {});
+  };
+  const businesses = [{ id: 'b1', name: 'HomeLover', features: { goals_sales: true } }, { id: 'b2', name: 'Plain', features: {} }];
+  const me = role => ({ profile: { is_platform_owner: false }, memberships: [{ business_id: 'b1', role }] });
+  const { unmount } = page({ businesses, me: me('member') });
+  expect(await screen.findByRole('heading', { name: 'Fathom' })).toBeInTheDocument();
+  const order = [...document.querySelectorAll('[data-provider]')].map(n => n.dataset.provider);
+  expect(order).toEqual(['google', 'microsoft', 'apollo', 'fathom']);
+  expect(document.querySelectorAll('[data-fathom-card]').length).toBe(1);
+  expect(await screen.findByRole('button', { name: 'Test' })).toBeInTheDocument();
+  expect(calls.filter(c => /fathom/.test(c)).every(c => c.startsWith('GET ') && c.includes('/b1/'))).toBe(true);
+  unmount();
+  page({ businesses, me: me('viewer') });
+  await screen.findByRole('heading', { name: 'Fathom' });
+  expect(screen.queryByRole('button', { name: 'Test' })).toBeNull();
+});

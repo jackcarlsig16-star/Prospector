@@ -3,7 +3,7 @@ import { SA } from '../theme';
 import { fathomApi } from './fathomApi';
 import { ErrorNote, Btn, cardStyle, h3Style, inputStyle } from './goalsUi';
 
-// fathom-notes-v1 Stage 2 - Sales › Settings › Connections › Fathom. One row per member who connected; a member acts
+// fathom-notes-v1 Stage 2 - Connections › Fathom (the user menu's Connections page, under Microsoft and Apollo). One row per member who connected; a member acts
 // on their own row, an Owner on anyone's (F-7). The key is pasted, sealed on the server and never comes back: the
 // card only ever shows "Connected" and the dates. Each button is the one declared Fathom call behind it (Test 1,
 // Register 1, Disconnect 1, Pull up to 5) - nothing here calls Fathom on load.
