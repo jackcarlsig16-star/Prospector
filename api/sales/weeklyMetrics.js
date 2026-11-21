@@ -23,7 +23,9 @@ export const WORDING = {
   pace: 'Pace = this week to date ÷ the share of the week gone (whole days, today included), for counts only - rates and levels are never projected. This week is always read against the same point last week, never against a full week.',
   goals: 'A week goal is typed by the owner before or during its week (next week can be set ahead); a week that has ended takes no new goal.',
   manual: 'LinkedIn numbers are typed by a member for this week or last week; a cell nobody typed is empty, not zero.',
+  member: "A member's email numbers are the emails sent from the mailboxes mapped to that member; meetings are the events on that member's own connected calendar. A mailbox nobody is mapped to reads as Unassigned mailbox. Goals, Site, Pipeline and LinkedIn rows are team numbers.",
 };
+export const UNASSIGNED = { id: 'unassigned', name: 'Unassigned mailbox' };
 export const WEEK_ENDED_ERROR = 'That week has ended - a goal is set before or during its week';
 
 const memo = (ctx, key, f) => { if (!ctx.memo.has(key)) ctx.memo.set(key, f()); return ctx.memo.get(key); };
@@ -49,12 +51,12 @@ const pinsIn = (ctx, from, to) => {
 
 const m = (key, name, group, source, unit, kind, value, extra = {}) => ({ key, name, group, source, unit, kind, direction: 'up', goalable: true, goalKey: key, value, ...extra });
 export const METRICS = [
-  m('delivered', 'Delivered', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => { const p = pulse(c, f, t); return p.rows.length ? p.delivered : null; }, { hint: 'emails delivered, by send date' }),
-  m('deliverability', 'Deliverability', 'Outbound', 'Apollo', 'rate', 'flow', (c, f, t) => pulse(c, f, t).delivered_rate, { hint: 'delivered ÷ (delivered + hard bounces + spam blocks)' }),
-  m('human_open_rate', 'Human open rate', 'Outbound', 'Apollo', 'rate', 'flow', (c, f, t) => pulse(c, f, t).human_open_rate, { hint: 'tracked opens ÷ delivered, bots hidden' }),
-  m('human_clicks', 'Human clicks', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => funnel(c, f, t)?.human_clicks ?? null, { hint: 'of emails sent in the week, so far' }),
-  m('replies', 'Replies', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => funnel(c, f, t)?.replies ?? null, { hint: 'of emails sent in the week, so far' }),
-  m('meetings_set', 'Meetings set', 'Outbound', 'Outlook', 'count', 'flow', (c, f, t) => pulse(c, f, t).meetings, { hint: 'events with an external domain' }),
+  m('delivered', 'Delivered', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => { const p = pulse(c, f, t); return p.rows.length ? p.delivered : null; }, { member: true, hint: 'emails delivered, by send date' }),
+  m('deliverability', 'Deliverability', 'Outbound', 'Apollo', 'rate', 'flow', (c, f, t) => pulse(c, f, t).delivered_rate, { member: true, hint: 'delivered ÷ (delivered + hard bounces + spam blocks)' }),
+  m('human_open_rate', 'Human open rate', 'Outbound', 'Apollo', 'rate', 'flow', (c, f, t) => pulse(c, f, t).human_open_rate, { member: true, hint: 'tracked opens ÷ delivered, bots hidden' }),
+  m('human_clicks', 'Human clicks', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => funnel(c, f, t)?.human_clicks ?? null, { member: true, hint: 'of emails sent in the week, so far' }),
+  m('replies', 'Replies', 'Outbound', 'Apollo', 'count', 'flow', (c, f, t) => funnel(c, f, t)?.replies ?? null, { member: true, hint: 'of emails sent in the week, so far' }),
+  m('meetings_set', 'Meetings set', 'Outbound', 'Outlook', 'count', 'flow', (c, f, t) => pulse(c, f, t).meetings, { member: true, hint: 'events with an external domain' }),
   m('total_in_sequence', 'In sequence', 'Outbound', 'Apollo', 'count', 'stock', synced('total_in_sequence'), { context: true, hint: 'people in active sequences' }),
   m('sequences_running', 'Sequences running', 'Outbound', 'Apollo', 'count', 'stock', synced('sequences_running'), { context: true, hint: 'active sequences' }),
   m('companies_visited', 'Companies visited', 'Site', 'Website', 'count', 'flow', (c, f, t) => funnel(c, f, t)?.companies_visited ?? null, { hint: 'emailed and seen on the site in the week' }),
@@ -71,6 +73,7 @@ export const METRICS = [
   m('linkedin_posts', 'Posts', 'LinkedIn', 'Typed', 'count', 'manual', typed('linkedin_posts')),
 ];
 export const MANUAL_KEYS = METRICS.filter(x => x.kind === 'manual').map(x => x.key);
+export const MEMBER_KEYS = METRICS.filter(x => x.member).map(x => x.key);
 export const GOAL_KEYS = [...new Set(METRICS.filter(x => x.goalable).map(x => x.goalKey))];
 
 // ── Weeks and pace (W4) ─────────────────────────────────────────────────────
@@ -88,11 +91,22 @@ export function weeklyWindows(today, n = WEEKS_DEFAULT) {
   return [...weekList(today, n).map(w => ({ from: w, to: w === mon ? today : addDays(w, 6) })), samePointLastWeek(today)];
 }
 
+// email-by-member-v1 M2 - the member dimension is a ROW filter, never a second formula: the rows one member's mailboxes
+// sent (has(mailbox)) and the events on that member's own calendar go through the same functions as the team's.
+// { rows: loadFunnelRows' shape, counts: daily-count rows } -> the same shape, narrowed.
+export function memberRows({ rows, counts }, has, userId = null) {
+  return {
+    counts: counts.filter(r => has(r.mailbox)),
+    rows: { ...rows, delivered: rows.delivered.filter(d => has(d.mailbox)), events: rows.events.filter(e => has(e.sender ? e.sender.toLowerCase() : null)), calEvents: userId ? rows.calEvents.filter(e => e.user_id === userId) : [] },
+  };
+}
+
 // ctx: { now, pulse: { counts, opens, deliveredAt, events, visits: [], people, now }, funnel: funnelContext(rows),
 // partnerData, synced: Map 'key|from|to' -> value, pins: [iso], manual: Map 'key|week' -> row }.
 // goals: Map 'week|goalKey' -> number; firstTouched: Map week -> { goal, carried } (the Scorecard's carried rule);
 // names: Map user id -> first name. goals and firstTouched also carry next week (a goal can be set a week ahead).
-export function buildWeekly(ctx, { today, weeks = WEEKS_DEFAULT, goals = new Map(), firstTouched = new Map(), names = new Map() }) {
+// keys: only these registry rows (a member's read carries MEMBER_KEYS).
+export function buildWeekly(ctx, { today, weeks = WEEKS_DEFAULT, goals = new Map(), firstTouched = new Map(), names = new Map(), keys = null }) {
   ctx.memo = ctx.memo || new Map();
   const list = weekList(today, weeks), mon = laMonday(today), last = addDays(mon, -7), next = addDays(mon, 7), same = samePointLastWeek(today);
   const goalOf = (x, w) => {
@@ -103,7 +117,7 @@ export function buildWeekly(ctx, { today, weeks = WEEKS_DEFAULT, goals = new Map
   const hit = (x, value, goal) => (value == null || goal == null ? null : x.direction === 'up' ? value >= goal : value <= goal);
   // A cleared cell (value null) is empty again: nobody "entered" it.
   const entry = (x, w) => { const r = ctx.manual.get(`${x.key}|${w}`); return r && r.value != null ? { by: names.get(r.entered_by) || 'a member', at: r.entered_at, note: r.note || null } : null; };
-  const metrics = METRICS.map(x => {
+  const metrics = METRICS.filter(x => !keys || keys.includes(x.key)).map(x => {
     const series = list.map(w => ({ week_start: w, value: x.value(ctx, w, w === mon ? today : addDays(w, 6)), ...goalOf(x, w), ...(w === mon ? { current: true } : {}) }));
     const cur = series[series.length - 1], prev = series[series.length - 2];
     const at = x.kind === 'manual' ? null : x.value(ctx, same.from, same.to);

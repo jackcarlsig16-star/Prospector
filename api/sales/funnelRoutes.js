@@ -17,9 +17,9 @@ export async function loadFunnelRows(supabase, businessId) {
   const all = (table, cols, build = q => q, order = 'id') => selectAllPages(() => build(supabase.from(table).select(cols).eq('business_id', businessId)).order(order));
   const safe = p => p.catch(e => { if (MISSING_TABLE(e)) return []; throw e; });
   const [delivered, messages, events, prospects, partnerContacts, opportunities, targets, partners, sequenced, people, visits, runs, calEvents] = await Promise.all([
-    safe(all('sales_email_delivered', 'apollo_message_id, contact_id, account_id, delivered_at, delivered_day', q => q, 'apollo_message_id')),
+    safe(all('sales_email_delivered', 'apollo_message_id, contact_id, account_id, mailbox, delivered_at, delivered_day', q => q, 'apollo_message_id')),
     all('sales_email_messages', 'apollo_message_id, delivered_at, replied, reply_class, replied_at, replied_seen_at', q => q, 'apollo_message_id'),
-    all('sales_email_activity', 'id, apollo_message_id, event, occurred_at, user_agent, tracking_service'),
+    all('sales_email_activity', 'id, apollo_message_id, sender, event, occurred_at, user_agent, tracking_service'),
     all('sales_prospect_state', 'contact_id, name, company, opportunity_id, goal_id', q => q, 'contact_id'),
     all('partner_contacts', 'id, apollo_contact_id, goal_id'),
     all('sales_opportunities', 'id, organization, apollo_account_id'),
@@ -29,7 +29,7 @@ export async function loadFunnelRows(supabase, businessId) {
     all('sales_people', 'id, name, company_name, opportunity_id, target_id, apollo_person_id, created_at', q => q.eq('source_kind', 'web_visit').is('archived_at', null)),
     all('web_visits', 'id, company_key, pulled_on, seen_from, seen_to, matched_type, matched_id'),
     all('visit_pull_runs', 'id, la_date, kind, status, window_start, window_end', q => q.eq('kind', 'backfill')),
-    all('microsoft_events', 'id, graph_id, ical_uid, external_domains, start_at, is_cancelled, created_at_graph'),
+    all('microsoft_events', 'id, user_id, graph_id, ical_uid, external_domains, start_at, is_cancelled, created_at_graph'),
   ]);
   return { delivered, messages, events, prospects, partnerContacts, opportunities, targets, partners, sequenced, people, visits, runs, calEvents };
 }

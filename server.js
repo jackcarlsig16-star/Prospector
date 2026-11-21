@@ -1030,6 +1030,8 @@ app.delete('/api/sales/:businessId/goals/partners/:id/domains/:domainId', salesM
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/weekly', salesModuleRoute('./api/sales/weeklyRoutes.js', 'weeklyRoute', 'goals/weekly'));
 app.put('/api/sales/:businessId/goals/weekly/manual', salesModuleRoute('./api/sales/weeklyRoutes.js', 'manualRoute', 'goals/weekly/manual PUT'));
+app.get('/api/sales/:businessId/goals/mailbox-map', salesModuleRoute('./api/sales/mailboxMap.js', 'listMailboxesRoute', 'goals/mailbox-map'));
+app.put('/api/sales/:businessId/goals/mailbox-map', salesModuleRoute('./api/sales/mailboxMap.js', 'saveMailboxRoute', 'goals/mailbox-map PUT'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));
 app.get('/api/sales/:businessId/goals/pipeline-board', salesModuleRoute('./api/sales/pipelineBoard.js', 'pipelineBoardRoute', 'goals/pipeline-board'));

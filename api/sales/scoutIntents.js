@@ -164,17 +164,22 @@ const topItem = x => ({
 });
 
 export const WEEKLY_RULE = 'Weekly funnel: every number is this week to date against the same point last week; pace is a projection for counts only; a goal is the one typed for that week.';
-export const isWeekly = ask => !!ask.flags.weekly && !ask.flags.email_site && !ask.company.length;
+// email-by-member-v1 M6: "how is Cyrus's open rate trending", "my emails this week", "who sent the most this week" -
+// the same registry route read for one member (goals/weekly?member=), or for every sending member side by side.
+export const MEMBER_EMAIL_RULE = "By member: a member's email numbers are the emails sent from the mailboxes mapped to that member, this week to date against the same point last week; goals are team numbers and are not shown per member.";
+const WHO_SENT = /\bwho\b[^.?!]{0,40}\b(sent|emailed|delivered)\b|\b(sent|emailed)\b[^.?!]{0,24}\bmost\b/;
+export const isMemberEmail = ask => !ask.flags.email_site && !ask.company.length && (WHO_SENT.test(String(ask.q || '').toLowerCase()) || ((!!ask.member || !!ask.mine) && (!!ask.flags.weekly || !!ask.flags.emails || ask.entity === 'emails')));
+export const isWeekly = ask => !!ask.flags.weekly && !ask.flags.email_site && !ask.company.length && !isMemberEmail(ask);
 const wkNum = (x, v) => (v == null ? '—' : x.unit === 'rate' ? `${(100 * v).toFixed(1)} %` : String(Math.round(v * 10) / 10));
 // One registry row as a line: the numbers, then the direction in words (▲ / ▼ by what is good for the row).
-export function weeklyLine(x, b) {
+export function weeklyLine(x, b, { goals = true } = {}) {
   const t = x.this_week, l = x.last_week;
   const dir = t.delta == null ? null : t.delta === 0 ? 'flat against the same point last week' : `${(t.delta > 0) === (x.direction === 'up') ? '▲ better' : '▼ worse'} than the same point last week by ${x.unit === 'rate' ? `${Math.abs(100 * t.delta).toFixed(1)} pts` : Math.abs(Math.round(t.delta * 10) / 10)}`;
   const past = x.series.filter(s => !s.current && s.value != null);
   return [
     `${x.name} (${x.group})`, `this week to date ${wkNum(x, t.to_date)}`, x.kind === 'manual' ? null : `same point last week ${wkNum(x, t.same_point_last_week)}`, dir,
-    t.pace != null ? `on pace for about ${t.pace} by Sunday` : null, t.goal != null ? `goal ${wkNum(x, t.goal)}${t.progress != null ? `, ${Math.round(100 * t.progress)} % of it` : ''}` : 'no goal set this week',
-    l ? `last week ${wkNum(x, l.value)}${l.goal != null ? ` against a goal of ${wkNum(x, l.goal)}: ${l.hit == null ? 'no number' : l.hit ? 'hit' : 'missed'}` : ', no goal was set'}` : null,
+    t.pace != null ? `on pace for about ${t.pace} by Sunday` : null, !goals ? null : t.goal != null ? `goal ${wkNum(x, t.goal)}${t.progress != null ? `, ${Math.round(100 * t.progress)} % of it` : ''}` : 'no goal set this week',
+    l ? `last week ${wkNum(x, l.value)}${!goals ? '' : l.goal != null ? ` against a goal of ${wkNum(x, l.goal)}: ${l.hit == null ? 'no number' : l.hit ? 'hit' : 'missed'}` : ', no goal was set'}` : null,
     past.length ? `earlier weeks, oldest first: ${past.map(s => wkNum(x, s.value)).join(', ')}` : 'no earlier weeks on file',
     x.kind === 'manual' ? (x.entered.last_week ? `last week entered by ${x.entered.last_week.by}` : 'last week not entered') : null,
   ].filter(Boolean).join(' · ');
@@ -374,7 +379,26 @@ export const salesIntents = [
       items.push({ entity: 'weekly', id: 'how', title: 'How the weekly funnel is read', text: `${b.wording.week} ${b.wording.pace} ${b.wording.goals} ${b.wording.manual}` });
       return { read: `goals/weekly?weeks=12 · week of ${b.week_start} · day ${b.elapsed.days} of 7`, items };
     } },
-  { id: 'emails', example: 'how are our emails doing this month', match: ask => !ask.flags.email_site && !isWeekly(ask) && (ask.flags.emails || ask.entity === 'emails'),
+  { id: 'member_emails', example: 'who sent the most this week', title: 'Email by member', rule: MEMBER_EMAIL_RULE, match: isMemberEmail,
+    async run(sb, { businessId, auth, ask, now }) {
+      const q = String(ask.q || '').toLowerCase();
+      const whose = ask.member ? ask.member.id : ask.mine && !WHO_SENT.test(q) ? auth.user.id : 'all';
+      const r = await salesReads.loadWeekly(sb, businessId, { weeks: 12, member: whose, now });
+      if (r.status !== 200) return { read: `goals/weekly?member (${r.status})`, items: [] };
+      const b = r.body, how = { entity: 'weekly', id: 'member:how', title: 'How email by member is read', text: `${b.wording.member} ${b.wording.week} ${b.wording.pace}` };
+      const wanted = ms => { const named = ms.filter(x => q.includes(x.name.toLowerCase()) || (x.key === 'human_open_rate' && /\bopen rate\b|\bopens\b/.test(q))); return named.length ? named : ms; };
+      if (whose === 'all') {
+        const sent = row => row.metrics.find(x => x.key === 'delivered').this_week.to_date ?? -1;
+        const rows = [...b.rows.filter(x => x.id !== 'team').sort((x, y) => sent(y) - sent(x)), ...b.rows.filter(x => x.id === 'team')];
+        const items = rows.flatMap(row => wanted(row.metrics).map(x => ({ entity: 'weekly', id: `${row.id}:${x.key}`, title: `${row.name} · ${x.name}`, text: `${row.name} · ${weeklyLine(x, b, { goals: false })}` })));
+        return { read: `goals/weekly?member=all · week of ${b.week_start} · day ${b.elapsed.days} of 7 · ${b.rows.length - 1} member row${b.rows.length === 2 ? '' : 's'} + the team`, items: [...items, how] };
+      }
+      const read = `goals/weekly?member=${b.member.name} · week of ${b.week_start} · day ${b.elapsed.days} of 7`;
+      if (!b.members.some(x => x.id === b.member.id)) return { read, items: [{ entity: 'weekly', id: `${b.member.id}:none`, title: `${b.member.name} · no mailbox`, text: `${b.member.name} has no sending mailbox mapped, so there is no email number to read for ${b.member.name}.` }, how] };
+      const items = wanted(b.metrics).map(x => ({ entity: 'weekly', id: `${b.member.id}:${x.key}`, title: `${b.member.name} · ${x.name}`, text: `${b.member.name} · ${weeklyLine(x, b, { goals: false })}` }));
+      return { read, items: [...items, how] };
+    } },
+  { id: 'emails', example: 'how are our emails doing this month', match: ask => !ask.flags.email_site && !isWeekly(ask) && !isMemberEmail(ask) && (ask.flags.emails || ask.entity === 'emails'),
     async run(sb, { businessId, ask, now }) {
       const period = ask.since_kind === 'this week' || ask.since_kind === 'last week' ? 'week' : 'month';
       const p = await salesReads.loadPulse(sb, businessId, { period }, new Date(now));
