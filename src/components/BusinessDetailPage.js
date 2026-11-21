@@ -472,7 +472,8 @@ function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=
   );
 }
 
-export default function BusinessDetailPage({ scout, business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount, onSaveNuggets }) {
+// app-shell-v2: chrome={false} = no workspace header row (the shell's nav and header carry the workspace, the search and + To-do).
+export default function BusinessDetailPage({ scout, chrome = true, business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount, onSaveNuggets }) {
   const [business, setBusiness] = useState(businessProp);
   const compact = useMediaQuery('(max-width: 899px)');
   const [profile, setProfile] = useState(null);
@@ -698,7 +699,7 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
   const accent = business.color || C.gold;
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"0 0 8px":"0 40px 48px" }}>
+    <div style={{ minHeight: chrome ? "100vh" : undefined, background:C.bg, padding: !chrome ? 0 : compact?"0 0 8px":"0 40px 48px" }}>
       {/* sales-ia-v1 - Sales & Marketing caps itself per tab (SalesAnalyticsTab) so the Pipeline board can run full width inside the 40px padding; its header row spans the width on every sales tab. */}
       <div style={{ maxWidth: view === "sales-analytics" ? "none" : wideView ? 1100 : 700, margin:"0 auto" }}>
         {/* shell-facelift-v1 Stage 2 - one sticky row: avatar · name · emoji · (Sales & Marketing tabs, portaled
@@ -706,7 +707,7 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
             keeps nav-active-state-v1's "which business am I in" signal on the content. Tagline + URL live in
             a 20px line under the row on the Business Intel & Strategy view only. Not sticky on phones, where
             the row wraps to two lines. */}
-        <div data-workspace-header style={{ position: compact ? "static" : "sticky", top: 0, zIndex: 30, background: ui.surface, border: `1px solid ${ui.border}`, borderBottom: `2px solid ${accent}`, borderRadius: `0 0 ${KIT_RADIUS.inner}px ${KIT_RADIUS.inner}px`, padding: "0 12px", marginBottom: 24, ...KIT_TYPE.body, color: ui.text }}>
+        {chrome && <div data-workspace-header style={{ position: compact ? "static" : "sticky", top: 0, zIndex: 30, background: ui.surface, border: `1px solid ${ui.border}`, borderBottom: `2px solid ${accent}`, borderRadius: `0 0 ${KIT_RADIUS.inner}px ${KIT_RADIUS.inner}px`, padding: "0 12px", marginBottom: 24, ...KIT_TYPE.body, color: ui.text }}>
           <div data-workspace-row style={{ display:"flex", alignItems:"center", gap:12, minHeight:56, flexWrap: compact ? "wrap" : "nowrap", minWidth:0 }}>
           <div style={{ position:"relative", flexShrink:0 }}>
             <button
@@ -756,7 +757,6 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
               </>
             )}
           </div>
-          <div id="workspace-header-tabs" style={{ display:"flex", alignItems:"center", minWidth:0 }} />
           <div style={{ flex: compact ? "1 1 100%" : "1 1 auto", display:"flex", alignItems:"center", justifyContent:"flex-end", gap:8, minWidth:0, paddingBottom: compact ? 8 : 0 }}>
             {scout}
             <QuickCapture businessId={business.id} features={business.features} activeUser={activeUser} onSaveNuggets={onSaveNuggets} compact={compact} />
@@ -791,7 +791,7 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
               </span>
             </div>
           )}
-        </div>
+        </div>}
 
         {view === 'command-center' && (<>
           <SmartIntakeBox business={business} projects={projects} userEmail={userEmail}

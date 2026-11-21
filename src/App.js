@@ -10,7 +10,9 @@ import StaleSfdcBanner from './components/StaleSfdcBanner';
 import ProfilePanel, { BadgeToast, BADGES, getQuarterKey, calcTerritoryBreakdown, calcTerritoryScore } from './components/BadgesProfile';
 import { TaskModal } from './components/TaskPanel';
 import HomePage from './components/HomePage';
-import Sidebar from './components/Sidebar';
+import AppShell, { SettingsFrame, ComingSoon } from './shell/AppShell';
+import { useWorkspaceShell } from './components/useWorkspaceShell';
+import QuickCapture from './components/salesAnalytics/capture/QuickCapture';
 import ConnectionsPage from './components/ConnectionsPage';
 import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
@@ -74,6 +76,9 @@ try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_emai
 // (Portfolio, Territory/Prod Requests, Ledger, Outbound, Ideas-global,
 // Handoffs, Analytics, Intelligence, Uploads, Claim Jumper) is hidden: its
 // code stays, but any navigation to it lands on the workspace list.
+// app-shell-v2: workspace views the shell itself draws (Scout's page, the Marketing card).
+const SHELL_VIEWS = ["scout","marketing"];
+const DIRECT_VIEWS = ["accounts","projects","overview","tools","command-center"];
 const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","connections","ui-kit"];
 // The two pages Connections replaced (shell-facelift-v1 Stage 3): any caller still naming them lands on Connections.
 const RENAMED_PAGES = { "google-connections":"connections", "microsoft-connection":"connections" };
@@ -1020,8 +1025,11 @@ export default function App({ me }) {
         // page ON that link - landOn would send it to Actions - and only ?business= is consumed; the other params stay.
         const url = new URL(window.location.href);
         const deep = ['tab', 'view', 'open', 'visitors'].some(k => url.searchParams.has(k)) && homePage(landing || {}) === 'sales-analytics';
-        if (landing) { setActiveBusiness(landing); if (deep) setBusinessPage('sales-analytics'); else landOn(landing); setPage('business-detail'); }
-        url.searchParams.delete('business');
+        // app-shell-v2 Q2: the pages a workspace's nav no longer lists stay reachable by URL for the platform owner (?page=).
+        const direct = url.searchParams.get('page');
+        const directOk = !!landing && !!me.profile.is_platform_owner && DIRECT_VIEWS.includes(direct);
+        if (landing) { setActiveBusiness(landing); if (directOk) setBusinessPage(direct); else if (deep) setBusinessPage('sales-analytics'); else landOn(landing); setPage('business-detail'); }
+        url.searchParams.delete('business'); url.searchParams.delete('page');
         window.history.replaceState({}, '', url.pathname + url.search + url.hash);
       } else if (parseHkHash(window.location.hash)) {
         // hkos-project-shell-v1 S10 - a #hk/... link opens the Sales OS of the first hk_sales workspace you're in.
@@ -1203,8 +1211,6 @@ export default function App({ me }) {
   const activeInitials=activeUser.initials||(activeUser.name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   const firstName=activeUser.name.split(" ")[0];
   const showTasks=page==="business-detail"&&!!activeBusiness?.features?.goals_sales;
-  // shell-facelift-v1 Stage 2 - inside a workspace Scout sits in the page's sticky header row, otherwise above the page.
-  const scoutInHeader=page==="business-detail"&&!!activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage);
   // scout-v2 REV3 B7 - a Scout record lands by its opener: the params go into the URL (the page reads them as it
   // mounts); a page already on screen in the same workspace hears SCOUT_OPEN instead.
   const openScoutItem=item=>{
@@ -1219,15 +1225,19 @@ export default function App({ me }) {
     if(!same) setActiveBusiness(b);
     setBusinessPage(pg); setPage("business-detail");
   };
+  // app-shell-v2 - the one shell (src/shell). A workspace with a registry entry gets its nav, the header's one field,
+  // Needs attention and + To-do from that entry; any other workspace keeps its own rows and the Scout bar, in the header.
   const scoutEl=(
     <PersistentScout
-      compact={scoutInHeader}
+      compact
       activeBusiness={page==="business-detail"?activeBusiness:null}
       businesses={myBusinesses}
       me={me}
       onOpen={openScoutItem}
     />
   );
+  const ws=useWorkspaceShell({ me, activeUser, page, setPage:p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}, businessPage, setBusinessPage, activeBusiness, businesses:myBusinesses, compact, showAdmin, showUiKit, ideasBadge:newNuggetCount, openScoutItem, onSelectBusiness:b=>selectBusiness(b), onAllWorkspaces:()=>navTo('businesses-home'), onOpenDigest:()=>setDigestOpen(true), onOpenBugReport:()=>setBugOpen(true), onOpenProfile:()=>{dismissJoinNotifs();openProfile();}, legacyScout:scoutEl });
+  const shellView=page==="business-detail"&&SHELL_VIEWS.includes(businessPage);
 
   // hkos-project-shell-v1 S2 - an hk_sales workspace on its Sales OS page renders the full-screen shell instead of the
   // Prospector shell (no Sidebar, TaskDrawer, DailyDigest, BugReporter or BadgeToast). Below every hook on purpose.
@@ -1237,11 +1247,11 @@ export default function App({ me }) {
       onOpenAdmin={()=>setPage('admin')} onOpenConnections={()=>setPage('connections')} />
   );
 
+  // Settings (the entry's WORKSPACE / ADMIN groups) frames whichever page is the open one.
+  const settingsWrap=el=>ws.inSettings&&ws.settings?<SettingsFrame groups={ws.settings.groups} active={ws.settings.active} onGo={ws.settings.onGo}>{el}</SettingsFrame>:el;
   return(
-    <div style={{ display:"flex", flexDirection:compact?"column":"row", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} showUiKit={showUiKit} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
-      <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowX:"clip", minWidth:0 }}>
-        {!scoutInHeader&&scoutEl}
+    <AppShell {...ws.shell}>
+      <div style={{ minWidth:0 }}>
         <AssayBanner unscored={accsLoaded ? unscoredCount : 0} onScore={scoreUnscored}
           canScore={!(activeBusiness && (activeBusiness.features?.goals_sales || activeBusiness.features?.hk_sales)) && !(activeBusiness && me.memberships.find(m => m.business_id === activeBusiness.id)?.role === "viewer")}/>
         {showStaleBanner && !staleDismissed && <StaleSfdcBanner onDismiss={()=>setStaleDismissed(true)} />}
@@ -1277,26 +1287,35 @@ export default function App({ me }) {
         {page==="uploads"&&<UploadsPage accounts={accounts} onSave={saveAccounts} onSaveBatch={saveBatch} onBatchUpdate={setActiveBatch} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} activeUser={activeUser} onEnrichLog={logTerritoryEvent}/>}
         {page==="analytics"&&<AnalyticsPage accounts={accounts} tasks={tasks} stealthList={stealthList} frontier={frontier} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} teamUsers={teamUsers} currentUser={user} activeRole={activeRole}/>}
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>}
-        {page==="voice-profile"&&<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>}
-        {page==="connections"&&<ConnectionsPage businesses={myBusinesses} microsoftResult={microsoftResult} me={me}/>}
+        {page==="voice-profile"&&settingsWrap(<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>)}
+        {page==="connections"&&settingsWrap(ws.entry?.feeds&&activeBusiness?<ConnectionsPage businesses={[activeBusiness]} microsoftResult={microsoftResult} me={me} feeds={ws.entry.feeds}/>:<ConnectionsPage businesses={myBusinesses} microsoftResult={microsoftResult} me={me}/>)}
+        {page==="business-detail"&&businessPage==="scout"&&activeBusiness&&(
+          <div style={{ maxWidth:1100, display:"flex", flexDirection:"column", gap:16 }} data-scout-page>
+            <h1 className="sh-h1">Scout</h1>
+            <PersistentScout page hotkey={false} seed={ws.scoutSeed} activeBusiness={activeBusiness} businesses={myBusinesses} me={me} onOpen={openScoutItem}/>
+            <p className="sh-note" style={{ margin:0 }}>Ask about this workspace's companies, people, to-dos and email, or give a command - a list, a confirm card or a follow-up opens here.</p>
+          </div>
+        )}
+        {page==="business-detail"&&businessPage==="marketing"&&activeBusiness&&<ComingSoon title="Marketing" note={`Coming soon. Campaigns, content and site work for ${activeBusiness.name} will live here.`}/>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="business-detail"&&businessPage==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool}/>}
         {page==="ui-kit"&&showUiKit&&<UiKitGallery/>}
-        {page==="admin"&&showAdmin&&<AdminPage isPlatformOwner={!!me.profile.is_platform_owner} businesses={myBusinesses} onBusinessFeaturesChanged={onBusinessFeaturesChanged} teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
+        {page==="admin"&&showAdmin&&settingsWrap(<AdminPage section={ws.adminSection} isPlatformOwner={!!me.profile.is_platform_owner} businesses={myBusinesses} onBusinessFeaturesChanged={onBusinessFeaturesChanged} teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>)}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
-        {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} fullListAccess={!!me.profile.is_platform_owner||me.memberships.some(m=>m.business_id===activeBusiness.id&&(m.role==="owner"||m.role==="admin"))} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} scout={scoutEl} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined} onSaveNuggets={setNuggets}/>}
+        {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&!shellView&&settingsWrap(<BusinessDetailPage key={activeBusiness.id} chrome={!ws.entry} business={activeBusiness} userEmail={user.email} fullListAccess={!!me.profile.is_platform_owner||me.memberships.some(m=>m.business_id===activeBusiness.id&&(m.role==="owner"||m.role==="admin"))} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} scout={null} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined} onSaveNuggets={setNuggets}/>)}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>
-      {showTasks&&<TaskDrawer key={activeBusiness.id} businessId={activeBusiness.id} compact={compact} onOpenGoals={()=>setBusinessPage('sales-analytics')}/>}
+      {ws.entry&&activeBusiness&&ws.mayAdd&&<QuickCapture key={`capture-${activeBusiness.id}`} hideTrigger businessId={activeBusiness.id} features={activeBusiness.features} activeUser={activeUser} onSaveNuggets={setNuggets} compact={compact}/>}
+      {showTasks&&<TaskDrawer key={activeBusiness.id} businessId={activeBusiness.id} compact={compact} hideToggle={compact} onOpenGoals={()=>setBusinessPage('sales-analytics')}/>}
       {taskModal!==null&&<TaskModal task={taskModal} accounts={accounts} onSave={handleSaveTask} onClose={()=>setTaskModal(null)}/>}
       {profileOpen&&<ProfilePanel user={user} accounts={accounts} tasks={tasks} snapshots={snapshots} stats={stats} earnedBadges={earnedBadges} score={appBreakdown?.score||0} grade={appBreakdown?.grade||"—"} gradeColor={appBreakdown?.c||C.dim} diamonds={diamonds} winsLog={winsLog} onClose={()=>setProfileOpen(false)}/>}
       <BadgeToast badge={badgeToast} onDismiss={()=>setBadgeToast(null)}/>
 
       <DailyDigest open={digestOpen} setOpen={setDigestOpen} hideTrigger accounts={accounts} tasks={tasks} firstName={firstName} onNav={navTo} onUpdateTask={handleUpdateTask} onCreateTask={task=>setTasks(ts=>[task,...ts])}/>
       <BugReporter open={bugOpen} setOpen={setBugOpen} hideTrigger page={page} reporterName={user?.name||"AE"}/>
-    </div>
+    </AppShell>
   );
 }

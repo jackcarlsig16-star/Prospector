@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { announceOpen } from '../scout/scoutOpen';
 import SalesAnalyticsTab from './SalesAnalyticsTab';
 import { goalsApi } from './goals/goalsApi';
 
@@ -55,9 +56,16 @@ test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; pi
   fireEvent.keyDown(within(pipe).getByRole('tab', { name: 'Map' }), { key: 'ArrowRight' });
   expect(new URLSearchParams(window.location.search).get('view')).toBe('people');
 
-  fireEvent.click(screen.getByRole('button', { name: 'Dashboard' }));
+  // app-shell-v2 D11 / Q3: no tab strip here - the shell's nav moves the page (the same event a Scout open sends);
+  // Home is its own nav item, so the Dashboard's sub-tabs are the views beside it and Home shows none.
+  expect(document.querySelector('[data-sales-tabrow]')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Dashboard' })).toBeNull();
+  act(() => announceOpen({ page: 'sales', params: { tab: 'dashboard', view: 'overview' } }));
+  expect(screen.queryByRole('tablist', { name: 'Dashboard views' })).toBeNull();
+  expect(new URLSearchParams(window.location.search).get('view')).toBe('overview');
+  act(() => announceOpen({ page: 'sales', params: { tab: 'dashboard', view: 'analytics' } }));
   const dash = screen.getByRole('tablist', { name: 'Dashboard views' });
-  expect(within(dash).getAllByRole('tab').map(t => t.textContent)).toEqual(['Home', 'Email', 'Scorecard', 'Sources']);
+  expect(within(dash).getAllByRole('tab').map(t => t.textContent)).toEqual(['Email', 'Scorecard', 'Sources']);
   expect(within(dash).getAllByRole('tab').every(t => t.querySelector('svg'))).toBe(true);
   fireEvent.click(within(dash).getByRole('tab', { name: 'Sources' }));
   const q = new URLSearchParams(window.location.search);

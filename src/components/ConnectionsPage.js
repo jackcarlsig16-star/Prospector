@@ -38,7 +38,8 @@ export function describeRun(f) {
   return `${FOLDER_LABEL[f.folder]}: ${n(f.seen)} seen · ${n(f.stored)} kept · ${n(skipped)} skipped (${n(f.skipped_internal)} internal, ${n(f.skipped_personal)} personal, ${n(f.skipped_draft)} drafts)${f.capped ? ' · capped, continues next run' : ''}${f.error ? ` · error: ${f.error}` : ''}`;
 }
 
-function MicrosoftCard({ result }) {
+// plain (app-shell-v2 S1) = no address on the card: who connected reads as "your account", never the mailbox.
+function MicrosoftCard({ result, plain = false }) {
   const [status, setStatus] = useState(null);
   const [summary, setSummary] = useState(null);
   const [busy, setBusy] = useState('');
@@ -56,7 +57,7 @@ function MicrosoftCard({ result }) {
     const r = await fetch('/api/microsoft/check', { method: 'POST' });
     const d = await r.json().catch(() => ({}));
     const folderLine = f => `${FOLDER_LABEL[f.folder]} ${f.total ?? f.total_error ?? '?'} total · ${f.window ?? f.window_error ?? '?'} in the 90-day window`;
-    setNote(r.ok ? `Checked just now - reading ${d.email}${d.folders ? ' · ' + d.folders.map(folderLine).join(' · ') : ''}` : d.error || `Check failed (${r.status})`);
+    setNote(r.ok ? `Checked just now${plain ? '' : ` - reading ${d.email}`}${d.folders ? ' · ' + d.folders.map(folderLine).join(' · ') : ''}` : d.error || `Check failed (${r.status})`);
     setBusy(''); load();
   };
   const disconnect = async () => {
@@ -75,7 +76,7 @@ function MicrosoftCard({ result }) {
 
   const pill = status === null ? ['off', '…'] : healthy ? ['ok', 'Connected'] : connected ? ['bad', 'Needs attention'] : ['off', 'Not connected'];
   return (
-    <Card title="Microsoft 365" subtitle={status === null ? '…' : connected ? status.email : 'Not connected'}
+    <Card title={plain ? 'Microsoft' : 'Microsoft 365'} subtitle={status === null ? '…' : plain ? 'Outlook mail, calendar and sent items for the team' : connected ? status.email : 'Not connected'}
       actions={<StatusPill status={pill[0]}>{pill[1]}</StatusPill>}
       footer={healthy && (
         <div data-testid="outlook-sync" style={{ display: 'grid', gap: KIT_SPACE[1] }}>
@@ -144,7 +145,7 @@ function MicrosoftCard({ result }) {
 // Apollo is connected per sales workspace, not per user: one block per
 // workspace the person is in that has the sales module. Reads the latest
 // mailbox snapshot + the last sync run - 0 Apollo calls.
-function ApolloCard({ businesses }) {
+function ApolloCard({ businesses, plain = false }) {
   const sales = businesses.filter(b => b.features?.goals_sales);
   const key = sales.map(b => b.id).join(',');
   const [data, setData] = useState({});
@@ -163,7 +164,7 @@ function ApolloCard({ businesses }) {
   const loaded = sales.length > 0 && sales.every(b => data[b.id]);
   const pill = !sales.length || (loaded && !all.length) ? ['off', 'Not connected'] : !loaded ? ['off', '…'] : all.some(m => mailboxConnectionProblem(m)) ? ['warn', 'Needs attention'] : ['ok', 'Connected'];
   return (
-    <Card title="Apollo" subtitle={sales.length ? 'Workspace mailboxes · read-only' : 'No workspace with the sales module'}
+    <Card title="Apollo" subtitle={plain ? 'People, sequences, opens and replies' : sales.length ? 'Workspace mailboxes · read-only' : 'No workspace with the sales module'}
       actions={<StatusPill status={pill[0]}>{pill[1]}</StatusPill>}>
       <div style={{ display: 'grid', gap: KIT_SPACE[2] }}>
         <div style={fine}>MANAGED IN APOLLO. PROSPECTOR READS SEQUENCES AND MAILBOX HEALTH ON SYNC NOW</div>
@@ -175,13 +176,13 @@ function ApolloCard({ businesses }) {
               {!d ? <span style={small}>…</span> : d.error ? <span style={{ ...small, color: ui.dangerInk }}>{d.error}</span> : <>
                 <span style={small}>Last sync {d.run?.finished_at ? when(d.run.finished_at) : 'never'}{d.run?.counts?.apollo_calls != null ? ` · ${n(d.run.counts.apollo_calls)} Apollo calls` : ''}</span>
                 {!d.mailboxes.length && <span style={small}>No mailboxes in the last snapshot.</span>}
-                {d.mailboxes.map(m => {
+                {d.mailboxes.map((m, mi) => {
                   const problem = mailboxConnectionProblem(m);
                   // Only the code: inactive_reason / unlink_error_message are free text from Apollo and can carry addresses.
                   const code = m.unlink_error_code;
                   return (
                     <div key={m.id || m.email} style={{ ...row, padding: '6px 10px', background: ui.inset, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.inner }}>
-                      <span style={{ ...KIT_TYPE.small, color: ui.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.email}</span>
+                      <span style={{ ...KIT_TYPE.small, color: ui.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{plain ? `Mailbox ${mi + 1}` : m.email}</span>
                       <span style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400 }}>{m.last_synced_at ? when(m.last_synced_at) : '—'}</span>
                       {code && (problem
                         ? <span style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400 }}>{code}</span>
@@ -199,9 +200,48 @@ function ApolloCard({ businesses }) {
   );
 }
 
-export default function ConnectionsPage({ businesses, microsoftResult, me = null }) {
+// app-shell-v2 S1: the last pull of the website-visitor feed, from the same read the Needs attention drawer uses.
+function VisitorsCard({ businessId, feed }) {
+  const [src, setSrc] = useState(undefined);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/sales/${businessId}/goals/attention`).then(r => (r.ok ? r.json() : Promise.reject(new Error(`attention ${r.status}`)))).then(d => { if (live) setSrc((d.sources || []).find(x => x.id === 'visitors') || null); }).catch(() => { if (live) setSrc(null); });
+    return () => { live = false; };
+  }, [businessId]);
+  const pill = src === undefined ? ['off', '…'] : !src || src.status === 'not_connected' ? ['off', 'Not connected'] : src.status === 'failed' ? ['bad', 'Needs attention'] : ['ok', 'Connected'];
+  return (
+    <Card title={feed.label} subtitle={feed.note} actions={<StatusPill status={pill[0]}>{pill[1]}</StatusPill>}>
+      <span style={small}>{src?.last_at ? `Last pull ${when(src.last_at)}` : src === undefined ? '…' : 'No pull yet'} · run it from Needs attention in the header</span>
+    </Card>
+  );
+}
+
+// feeds (app-shell-v2 S1) = the workspace's registry entry lists its Connections cards, in order: only those render,
+// for that one workspace, and no card shows an address or a key. Without feeds (a workspace with no entry) the page is
+// the one it was: every mailbox the person connected and the workspace it works for.
+export default function ConnectionsPage({ businesses, microsoftResult, me = null, feeds = null }) {
   const sales = businesses.filter(b => b.features?.goals_sales);
   const canEdit = b => !!me && (!!me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === b.id)?.role, 'member'));
+  if (feeds) {
+    const b = businesses[0];
+    const card = f => (f.id === 'microsoft' ? <MicrosoftCard result={microsoftResult} plain />
+      : f.id === 'apollo' ? <ApolloCard businesses={[b]} plain />
+      : f.id === 'fathom' ? <div className={`${SA_THEME_CLASS} ui-theme-dark`}><FathomCard businessId={b.id} canEdit={canEdit(b)} /></div>
+      : f.id === 'visitors' ? <VisitorsCard businessId={b.id} feed={f} /> : null);
+    return (
+      <div style={{ maxWidth: KIT_MAX_WIDTH, minWidth: 0, ...KIT_TYPE.body, color: ui.text }} data-connections="feeds">
+        <style>{SA_THEME_CSS}</style>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: KIT_SPACE[2] }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: ui.text }}>Connections</h2>
+          <span style={small}>What {b.name} reads from, and when it last did</span>
+        </div>
+        <div data-connections-grid style={{ display: 'grid', gap: KIT_SPACE[3] }}>
+          {feeds.map(f => <div key={f.id} data-provider={f.id}>{card(f)}</div>)}
+        </div>
+        <p style={{ ...small, marginTop: KIT_SPACE[3] }}>A connection never shows an address or a key. A failed run turns its status red here and raises “Needs attention” in the header.</p>
+      </div>
+    );
+  }
   return (
     <div style={{ maxWidth: KIT_MAX_WIDTH, margin: '0 auto', padding: `${KIT_SPACE[4]}px 0`, minWidth: 0, ...KIT_TYPE.body, color: ui.text }}>
       {sales.length > 0 && <style>{SA_THEME_CSS}</style>}

@@ -115,7 +115,8 @@ const COUNT_LINES = [
   ['held_outlook', 'Held Outlook moves', 'partners'],
 ];
 
-export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, compact, pageLoadFailures, onNav }) {
+// app-shell-v2 Q8: mounted in the shell's header. icon = a glyph before the words; short = the count alone (phone top bar).
+export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, compact, pageLoadFailures, onNav, icon = null, short = false }) {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
@@ -179,10 +180,10 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
   const sources = data ? feedsFirst(withPageLoad(data.sources, pageLoadFailures)) : [];
   const n = data ? attentionN(sources, data.counts) + fixN : 0;
   const button = !data
-    ? <Button variant="tertiary" disabled disabledReason="Checking…">Checking…</Button>
+    ? <Button variant="tertiary" disabled disabledReason="Checking…">{short ? '…' : 'Checking…'}</Button>
     : n
-      ? <Button aria-haspopup="dialog" aria-expanded={open} onClick={show}>Needs attention <b style={numStyle}>{n}</b></Button>
-      : <Button variant="tertiary" aria-haspopup="dialog" aria-expanded={open} onClick={show}>All clear</Button>;
+      ? <Button aria-haspopup="dialog" aria-expanded={open} aria-label={short ? `Needs attention, ${n}` : undefined} onClick={show} style={short ? { height: 44, minWidth: 44 } : undefined}>{icon}{!short && 'Needs attention '}<b style={numStyle}>{n}</b></Button>
+      : <Button variant="tertiary" aria-haspopup="dialog" aria-expanded={open} aria-label={short ? "Needs attention: all clear" : undefined} onClick={show} style={short ? { height: 44, minWidth: 44 } : undefined}>{short ? icon || '✓' : 'All clear'}</Button>;
   const root = document.getElementById(SA_THEME_ROOT_ID) || document.body;
 
   return (

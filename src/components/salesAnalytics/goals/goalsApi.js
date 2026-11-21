@@ -16,6 +16,7 @@ const MIGRATION_PATTERN = /does not exist|schema cache|violates check constraint
 // task-drawer-v1 - the Tasks drawer and Goals -> This week show the same
 // to-dos at once; any to-do/step write tells the other to reload.
 export const TODOS_CHANGED = 'prospector:todos-changed';
+export const PAGE_LOAD_FAILURES = 'prospector:page-load-failures';
 // "Open in Sales" from the drawer when Sales & Marketing is already on screen.
 export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
 // Opens the drawer filtered to one link; detail = { link: { type, id }, filter, view? }.

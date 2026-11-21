@@ -404,8 +404,10 @@ function OutreachIntelligenceTab({ currentUser }) {
 }
 
 
-function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesChanged, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
-  const [tab, setTab] = useState("users");
+// app-shell-v2: section = the tab Settings > Admin opened this page on (Team = users, Switches = settings).
+function AdminPage({ section=null, isPlatformOwner=false, businesses=[], onBusinessFeaturesChanged, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
+  const [tab, setTab] = useState(section||"users");
+  useEffect(()=>{ if(section) setTab(section); },[section]);
   const [showNotSetUp, setShowNotSetUp] = useState(false); // visual-nav-cleanup-v1 C4
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);

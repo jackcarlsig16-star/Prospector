@@ -15,8 +15,6 @@ import PipelineView from './PipelineView';
 import PrioritiesView from './priorities/PrioritiesView';
 import { writePeopleCompany } from '../salesNav';
 import TodayList from './today/TodayList';
-import { SCOUT_CAPTURE } from '../../scout/scoutActions';
-import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
 import ClientsView from './ClientsView';
@@ -67,7 +65,8 @@ export function homeOf(target) {
 
 // initialTarget: a link from the Huddle or Analytics ({ target }, new object
 // per click) - same targets as go() below.
-export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddle, initialTarget, pipelineTarget = null, analytics, pageLoadFailures }) {
+// app-shell-v2 Q8: "Needs attention" and "+ To-do" live once, in the shell's header (they were this page's two buttons).
+export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddle, initialTarget, pipelineTarget = null, analytics }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   // null until the first choice: actions-v2 REV2 A1 defaults it to the signed-in Member (Team for a Viewer).
@@ -209,8 +208,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
       )}
       {overview && <Segmented label="Period" items={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />}
       {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{!overview && <span className="ui-group-label" aria-hidden="true">Who</span>}<Segmented label="Filter by person" items={people} value={ownerSlug} onChange={setOwnerSlug} /></div>}
-      {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
-      {section === 'actions' && canEdit && <Btn primary onClick={() => window.dispatchEvent(new CustomEvent(SCOUT_CAPTURE, { detail: { businessId, text: '' } }))}>+ To-do</Btn>}
       {section === 'dashboard' && view === 'overview' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>
   );

@@ -1,20 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
 import Tabs from '../../ui/Tabs';
 import { IconTarget, IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconSource, IconMail, IconHome, IconScorecard } from '../../ui/icons';
-import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import PeopleTable from './people/PeopleTable';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
-import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET, OPEN_PIPELINE_RECORD } from './goals/goalsApi';
+import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET, OPEN_PIPELINE_RECORD, PAGE_LOAD_FAILURES } from './goals/goalsApi';
 import { laDateString } from './periods';
 import { roleAtLeast } from '../../constants/roles';
-import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { pageloadSync } from './salesApi';
 import { fetchMe } from '../../utils/authSession';
-import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav, readOpenParam } from './salesNav';
+import { TABS, DEFAULT_VIEW, readNav, writeNav, normalizeNav, readOpenParam, subViewsFor } from './salesNav';
 import { onScoutOpen } from '../scout/scoutOpen';
 import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID, FRAME_CSS } from './salesFrame';
 import useMediaQuery from '../../utils/useMediaQuery';
@@ -63,10 +60,10 @@ const PRINT_STYLES = `
   }
 `;
 
-// sales-ia-v2 N1/N2 - Sales & Marketing: Sales = Dashboard · Pipeline ·
-// Actions, Marketing shown disabled. This owns the tab + sub-view selection
+// sales-ia-v2 N1/N2 - the sales pages: Dashboard · Pipeline · Actions · Settings. app-shell-v2 D11: the shell's left
+// nav picks the page (there is no tab strip here any more); this still owns the tab + sub-view selection
 // (URL ?tab= / ?view=, salesNav.js) and the one page frame every tab shares:
-// full width, the tab row in the workspace header, then a fixed-height frame
+// full width, then a fixed-height frame
 // row (sub-view switch on the left, the screen's own tools portaled into
 // #sales-frame-tools on the right) so switching tabs or toggling filters
 // never moves what sits above. GoalsTab stays the data hub for Actions /
@@ -80,13 +77,10 @@ export default function SalesAnalyticsTab({ businessId }) {
   const phone = useMediaQuery('(max-width: 760px)');
   const [views, setViews] = useState(() => { const n = readNav(); return { ...DEFAULT_VIEW, ...(n.view ? { [n.tab]: n.view } : {}) }; });
   const view = views[tab] || null;
-  const [tabsSlot, setTabsSlot] = useState(null);
-  useEffect(() => { setTabsSlot(document.getElementById('workspace-header-tabs')); }, []);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [goalsTarget, setGoalsTarget] = useState(null); // { target } a Huddle / Analytics number opens in Goals
   const [pipelineTarget, setPipelineTarget] = useState(null); // { key, section, n } a record the header "+" added (one-plus-button-v1)
   const [me, setMe] = useState(null);
-  const [myFlagCount, setMyFlagCount] = useState(0);
   // dashboard-v3 A7 (REVISABLE): Pipeline › Campaigns stays hidden until sales_outreach_* holds a row; when it first shows,
   // a dot marks it until it is opened once. localStorage key (per browser): prospector_campaigns_seen_<businessId> = '1'.
   const [campaignCount, setCampaignCount] = useState(null);
@@ -104,16 +98,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   }, []);
   useEffect(() => { writeNav(tab, view); }, [tab, view]);
 
-  // Badge on the Huddle tab: open flags handed to the viewer.
-  useEffect(() => {
-    let live = true;
-    const count = () => Promise.all([fetchMe(), fetchFlags(businessId)])
-      .then(([who, flags]) => { if (live) { setMe(who); setMyFlagCount(flags.filter(f => f.owner_user_id === who?.profile?.id).length); } })
-      .catch(() => {});
-    count();
-    window.addEventListener(FLAGS_CHANGED, count);
-    return () => { live = false; window.removeEventListener(FLAGS_CHANGED, count); };
-  }, [businessId]);
+  useEffect(() => { let live = true; Promise.resolve().then(() => fetchMe()).then(who => { if (live) setMe(who); }).catch(() => {}); return () => { live = false; }; }, [businessId]);
 
   useEffect(() => {
     const open = () => { setGoalsTarget(null); nav('actions'); };
@@ -154,6 +139,8 @@ export default function SalesAnalyticsTab({ businessId }) {
   // FIX loop-quickfixes Q5: a failed page-load pull / Tidy / Apollo sync never blocks the page; it shows in the Needs
   // attention drawer (actions-home-attention-v1) as Failed "on page load" ({ visits?, tidy?, apollo? } = the error text).
   const [pageLoadFailures, setPageLoadFailures] = useState({});
+  // app-shell-v2 Q8: the Needs attention drawer lives in the shell's header now - it hears the failures from here.
+  useEffect(() => { window.dispatchEvent(new CustomEvent(PAGE_LOAD_FAILURES, { detail: { businessId, failures: pageLoadFailures } })); }, [businessId, pageLoadFailures]);
   useEffect(() => {
     if (!canEdit) return;
     const today = laDateString();
@@ -166,33 +153,7 @@ export default function SalesAnalyticsTab({ businessId }) {
     pull.then(() => goalsApi.runTidy(businessId, { trigger: 'pageload' })).then(() => mark(tidyKey)).catch(e => setPageLoadFailures(f => ({ ...f, tidy: e.message })));
   }, [businessId, canEdit]);
 
-  // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
-  // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.
-  // ui-clarity-v1 R1: text tabs with the kit's 3 px underline (.ui-tab, keyed on aria-current so the tabs stay
-  // buttons for every verify script that clicks them), the "Sales" group label beside them (R7), Marketing
-  // disabled with its dashed edge and "Coming soon". The row keeps its 38 px height (N2).
-  // The flag badge sits on Actions (flags handed to you are actions) and
-  // always keeps its slot so a new flag never shifts the tab labels.
-  const tabBtn = (id, label, extra, more) => (
-    <button key={id} type="button" className="ui-tab" aria-current={tab === id ? 'page' : undefined} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }} {...more}>
-      {label}{extra}
-    </button>
-  );
-  const flagBadge = (
-    <span aria-label={myFlagCount ? `${myFlagCount} flagged for you` : undefined} aria-hidden={myFlagCount ? undefined : true}
-      style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: myFlagCount ? ui.warn : 'transparent', color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums', visibility: myFlagCount ? 'visible' : 'hidden' }}>{myFlagCount || 0}</span>
-  );
-  const tabRow = (
-    <div className="no-print" data-sales-tabrow style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 38, marginBottom: tabsSlot ? 0 : 20 }}>
-      <span className="ui-group-label" aria-hidden="true">Sales</span>
-      <div role="navigation" aria-label="Sales" className="ui-tabs" style={{ height: 38, alignItems: 'center', overflow: 'visible' }}>
-        {TABS.filter(([id]) => id !== 'settings').map(([id, label]) => tabBtn(id, label, id === 'actions' ? flagBadge : null))}
-        {tabBtn('marketing', 'Marketing', <Tag color={ui.off}>Coming soon</Tag>, { disabled: true, 'aria-disabled': 'true', title: 'Marketing is coming soon', 'data-sales-marketing': true })}
-        {tabBtn('settings', 'Settings')}
-      </div>
-    </div>
-  );
-  const subViews = SUB_VIEWS[tab]?.filter(([id]) => id !== 'campaigns' || campaignCount > 0) || null;
+  const subViews = subViewsFor(tab, view)?.filter(([id]) => id !== 'campaigns' || campaignCount > 0) || null;
   const campaignsNew = campaignCount > 0 && !campaignsSeen;
   const subLabel = (id, label) => (id === 'campaigns' && campaignsNew ? <>{label}<span aria-label="new" title="New: the first campaign is in" style={{ width: 7, height: 7, borderRadius: 999, background: ui.accent, display: 'inline-block', marginLeft: 6 }} /></> : label);
   // companies-v2 C1: the sub-views are second-level underline tabs; the row's own rule runs under the tools too, and the
@@ -218,12 +179,11 @@ export default function SalesAnalyticsTab({ businessId }) {
       <style>{FRAME_CSS}</style>
       <div data-sales-tab={tab} style={{ maxWidth: 'none', margin: '0 auto' }}>
 
-      {tabsSlot ? createPortal(tabRow, tabsSlot) : tabRow}
       {frameRow}
 
       {people
         ? <PeopleTable businessId={businessId} canEdit={canEdit} me={me} initialTarget={huddleTarget} />
-        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pipelineTarget={pipelineTarget} pageLoadFailures={pageLoadFailures}
+        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pipelineTarget={pipelineTarget}
             onOpenHuddle={(contactId, target) => { setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
             analytics={<AnalyticsView businessId={businessId} canEdit={canEdit} />} />}
       </div>

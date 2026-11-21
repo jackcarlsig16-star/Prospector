@@ -29,7 +29,8 @@ const Z = 4001; // the Tasks drawer's tier, so the panel sits above the sticky h
 
 export const inTextField = el => !!el && (el.isContentEditable || !!el.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]'));
 
-export default function QuickCapture({ businessId, features, activeUser, onSaveNuggets, compact }) {
+// app-shell-v2 Q8: hideTrigger = no "+" of its own - the shell's "+ To-do" opens this panel (SCOUT_CAPTURE), C still does.
+export default function QuickCapture({ businessId, features, activeUser, onSaveNuggets, compact, hideTrigger = false }) {
   const [me, setMe] = useState(null);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('task');
@@ -130,8 +131,8 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   return (
     <>
       <style>{SA_THEME_CSS}</style>
-      <AddMenu phone={!!compact} groups={HEADER_GROUPS} label="Capture or add" onPick={pick} buttonLabel="+"
-        buttonProps={{ 'aria-label': 'Quick capture', title: 'Capture (C) or add a company / person', 'data-capture-button': true, style: { width: 32, padding: 0, fontSize: 20, lineHeight: 1, flexShrink: 0 } }} />
+      {!hideTrigger && <AddMenu phone={!!compact} groups={HEADER_GROUPS} label="Capture or add" onPick={pick} buttonLabel="+"
+        buttonProps={{ 'aria-label': 'Quick capture', title: 'Capture (C) or add a company / person', 'data-capture-button': true, style: { width: 32, padding: 0, fontSize: 20, lineHeight: 1, flexShrink: 0 } }} />}
       {adding && <span className={`${SA_THEME_CLASS} ui-theme-dark no-print`}><AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} onAdded={added} /></span>}
       {addNote && <span role="status" data-add-note style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: Z + 2, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14 }}>{addNote}</span>}
       {open && (

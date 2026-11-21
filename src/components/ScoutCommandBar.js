@@ -17,7 +17,9 @@ import { MIN_CHARS, DEBOUNCE_MS, THREAD_MAX, isQuestion, readThread, saveThread,
 // POST /api/scout/ask - the server builds the context and makes the Claude call (never /proxy from here). The answer
 // panel keeps the day's last 6 turns (D12). mode: 'compact' (the workspace header: 300 -> 560 px focused), 'plain'
 // (a page's content width) or 'sheet' (the phone's bottom sheet, both mounts).
-export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, allText, onScope, me, businesses, onOpen, viewer = false, autoFocus = false, onDone }) {
+// app-shell-v2: hotkey={false} leaves Cmd/Ctrl+K to the shell's header field; seed = what the header carried over -
+// { openLast: true } shows the thread's last answer, { q } types that line here and runs it (a command plans, a question asks).
+export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, allText, onScope, me, businesses, onOpen, viewer = false, autoFocus = false, onDone, hotkey = true, seed = null }) {
   const listId = useId();
   const rootRef = useRef(null);
   const inputRef = useRef(null);
@@ -51,11 +53,11 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
 
   // ⌘K / Ctrl+K focuses the bar (the phone's star opens the sheet instead - PersistentScout).
   useEffect(() => {
-    if (sheet) return undefined;
+    if (sheet || !hotkey) return undefined;
     const onKey = e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); inputRef.current?.focus(); setOpen(true); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sheet]);
+  }, [sheet, hotkey]);
 
   useEffect(() => {
     if (!open || sheet) return undefined;
@@ -155,6 +157,14 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   // "Which one?": a command runs again on the row picked; a question is asked again about that one row
   // ("Did you mean": the candidate carries the question to ask instead)
   const choose = c => (c.ask ? ask(c.ask) : actions.act?.ask ? ask(actions.act.text, { rows: planRows(current).filter(r => keyOf(r) === c.key) }) : actions.choose(c));
+
+  const seeded = useRef(null);
+  useEffect(() => {
+    if (!seed || seeded.current === seed.at) return;
+    if (seed.openLast) { seeded.current = seed.at; const last = readThread(meId).slice(-1)[0]; if (last) { setTurns(readThread(meId)); reopen(last); setOpen(true); } inputRef.current?.focus(); return; }
+    if (seed.q && text !== seed.q) { setQ(seed.q); setOpen(true); inputRef.current?.focus(); return; }
+    if (seed.q) { seeded.current = seed.at; submit(); }
+  }, [seed, text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Typing a command over an answer keeps the answer (its rows are what "those" means); anything else searches.
   const onChange = e => { const v = e.target.value; setQ(v); setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };

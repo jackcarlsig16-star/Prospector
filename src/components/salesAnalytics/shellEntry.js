@@ -8,6 +8,8 @@ export const SALES_SHELL = {
   appliesTo: b => !!b?.features?.goals_sales,
   home: 'today',
   search: true,
+  // Three asks Scout answers from this workspace's own reads (its intents' examples), shown under the empty field.
+  tryAsking: ['who visited this week', 'my overdue to-dos', 'my top targets'],
   items: [
     { id: 'home', label: 'Home', icon: 'home', to: { page: 'sales-analytics', tab: 'dashboard', view: 'overview' } },
     { id: 'today', label: 'Today', icon: 'today', badge: 'today', to: { page: 'sales-analytics', tab: 'actions' } },

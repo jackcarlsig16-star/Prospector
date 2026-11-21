@@ -13,6 +13,9 @@ export const SUB_VIEWS = {
   settings: [['team-emails', 'Team emails']],
 };
 export const DEFAULT_TAB = 'actions';
+export const SALES_NAV = 'prospector:sales-nav';
+// app-shell-v2 Q3: Home is its own nav item, so the Dashboard's sub-tabs are the views beside it and Home shows none.
+export const subViewsFor = (tab, view) => (tab === 'dashboard' ? (view === 'overview' ? null : SUB_VIEWS.dashboard.filter(([id]) => id !== 'overview')) : SUB_VIEWS[tab] || null);
 export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview', settings: 'team-emails' };
 // The Website visitors report moved into Pipeline as a channel (?channel=).
 export const VISITOR_CHANNEL = 'website_visit';
@@ -84,6 +87,8 @@ export function writeNav(tab, view) {
   if (view) url.searchParams.set('view', view); else url.searchParams.delete('view');
   url.searchParams.delete('gview');
   window.history.replaceState(window.history.state, '', url);
+  // app-shell-v2: the shell's nav marks its active item from this (the page owns the selection, the shell follows).
+  window.dispatchEvent(new CustomEvent(SALES_NAV, { detail: { tab, view: view || null } }));
 }
 
 // company-panel-v3 D2 "Copy link": Pipeline > Companies with that company's window open (?open=<type>-<id>).

@@ -36,7 +36,8 @@ function Badge({ n }) {
   return <span aria-label={`${n} open`} style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: SA.warn, color: SA.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>;
 }
 
-export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
+// app-shell-v2: hideToggle = no floating Tasks button (the phone's top bar has no room for one; the Today tab is the list).
+export default function TaskDrawer({ businessId, compact, onOpenGoals, hideToggle = false }) {
   const [open, setOpen] = useState(readOpen);
   const [week] = useState(() => laWeekStart());
   const [me, setMe] = useState(null);
@@ -232,7 +233,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   return (
     <>
       <style>{SA_THEME_CSS}</style>
-      {!open && <span className={SA_THEME_CLASS}>{toggleButton}</span>}
+      {!open && !hideToggle && <span className={SA_THEME_CLASS}>{toggleButton}</span>}
       {open && compact && <div onClick={() => setOpen(false)} className="no-print" style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 4001 }} />}
       {open && (
         <aside className={`${SA_THEME_CLASS} no-print`} role="dialog" aria-modal={compact ? true : undefined} aria-labelledby="task-drawer-title"

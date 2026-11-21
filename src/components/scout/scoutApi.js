@@ -16,6 +16,8 @@ const post = (url, body) => call(url, { method: 'POST', headers: { 'Content-Type
 
 export const scoutApi = {
   search: (q, scope, { signal } = {}) => call(`/api/scout/search?${new URLSearchParams({ q, scope })}`, { signal }),
+  // app-shell-v2: the header field's search (GET /api/search) - companies, people and to-dos of ONE workspace.
+  quick: (q, business, { signal } = {}) => call(`/api/search?${new URLSearchParams({ q, business })}`, { signal }),
   ask: body => call('/api/scout/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   // scout-v3 S1: plan writes nothing (the card, an "open" or the can't-do state); act runs it; undo reverses it; pack = Copy for Claude.
   plan: body => post('/api/scout/plan', body), act: body => post('/api/scout/act', body), undo: body => post('/api/scout/undo', body), pack: body => post('/api/scout/pack', body),
