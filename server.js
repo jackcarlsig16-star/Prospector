@@ -422,6 +422,8 @@ const scoutRoute = (file, name) => async (req, res) => {
   } catch (err) { console.error(`[scout/${name}] handler error:`, err); if (!res.headersSent) res.status(500).json({ error: err.message }); }
 };
 app.get('/api/scout/search',           scoutRoute('./api/scout/search.js', 'searchRoute'));
+// app-shell-v2 S2 - the header field's search: the same registry, each module's `quick` reader, no model call.
+app.get('/api/search',                 scoutRoute('./api/search.js', 'searchRoute'));
 app.post('/api/scout/ask',    aiLimit, scoutRoute('./api/scout/ask.js', 'askRoute'));
 // scout-v3 S1 - plan (no write) -> the confirm card -> act (each row through its existing route) -> undo; pack = Copy for Claude. No model call.
 app.post('/api/scout/plan',            scoutRoute('./api/scout/actions.js', 'planRoute'));

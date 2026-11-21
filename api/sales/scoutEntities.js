@@ -9,6 +9,8 @@ import { memberColors } from './memberColors.js';
 import { salesIntents, salesStanding, UNREVIEWED } from './scoutIntents.js';
 import { isSnoozed } from '../../src/constants/todoSnooze.js';
 import { nameIndex } from './scoutNames.js';
+import { quickSearch } from './quickSearch.js';
+import { SALES_SHELL } from '../../src/components/salesAnalytics/shellEntry.js';
 
 // scout-v2 REV2 Stage 1 - what the sales module registers with Scout (api/scout/registry.js): its searchable entities
 // (D1 search: names, titles and text only - never an address or a phone; Outlook subjects only on a query of 3+ words),
@@ -161,6 +163,6 @@ export async function glossary(sb, { businessId }) {
 }
 
 export async function register(registry) {
-  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, openers: OPENERS, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY, verbs: salesVerbs, members: salesMembers, pack: salesPack, nameIndex });
+  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, openers: OPENERS, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY, verbs: salesVerbs, members: salesMembers, pack: salesPack, nameIndex, quick: quickSearch, shell: SALES_SHELL });
 }
 export { words };
