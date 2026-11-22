@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, within, act, waitFor } from '@testing-library/react';
 import AppShell, { SettingsFrame, ComingSoon } from './AppShell';
-import ShellSearch, { readRecent, markOf, RECENT_KEY } from './ShellSearch';
+import ShellSearch, { readRecent, markOf, RECENT_KEY, FOCUS_FIELD } from './ShellSearch';
 import ShellNav from './ShellNav';
 import { createShellRegistry, settingsFor, canAdd } from './shellRegistry';
 import { SHELL_RAIL_KEY, SHELL_CSS } from './shellStyles';
@@ -220,7 +220,7 @@ test('field: a question puts Ask Scout first so Enter asks; a short answer stays
   expect(p.onOpenScout).toHaveBeenCalledTimes(1);
 });
 
-test('field: a longer answer hands over to the Scout page (the panel closes); no match shows one line and Ask Scout alone; a viewer-only search has no ask row', async () => {
+test('field: a longer answer hands over to the Scout window (the panel closes); no match shows one line and Ask Scout alone; a viewer-only search has no ask row', async () => {
   const p = search({ onAsk: jest.fn(async () => ({ page: true })) });
   fireEvent.focus(field());
   await type('my top 5 companies this week');
@@ -233,6 +233,40 @@ test('field: a longer answer hands over to the Scout page (the panel closes); no
   expect(options()).toHaveLength(1);
   expect(options()[0].hasAttribute('data-ask-row')).toBe(true);
   expect(selected()).toBe(options()[0]);
+});
+
+test('field (D24, D25, W1): Esc clears what was typed, then closes and returns focus; the result count is announced politely; the star opens the Scout window', async () => {
+  const p = search();
+  const elsewhere = screen.getByRole('button', { name: 'elsewhere' });
+  elsewhere.focus();
+  fireEvent.keyDown(elsewhere, { key: '/' });
+  const count = document.querySelector('[data-shell-count]');
+  expect([count.getAttribute('role'), count.getAttribute('aria-live'), count.textContent]).toEqual(['status', 'polite', '']);
+  await type('met');
+  expect(count.textContent).toBe('4 results');
+  fireEvent.keyDown(field(), { key: 'Escape' });
+  expect(field().value).toBe('');
+  expect(document.activeElement).toBe(field());
+  expect(document.querySelector('[data-shell-panel]')).toBeTruthy();
+  fireEvent.keyDown(field(), { key: 'Escape' });
+  expect(document.querySelector('[data-shell-panel]')).toBeNull();
+  expect(document.activeElement).toBe(elsewhere);
+  fireEvent.focus(field());
+  await type('zzyx');
+  expect(count.textContent).toBe('No results');
+  const star = screen.getByRole('button', { name: 'Open Scout' });
+  fireEvent.mouseDown(star); fireEvent.click(star);
+  expect(p.onOpenScout).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[data-shell-panel]')).toBeNull();
+  expect(p.onAsk).not.toHaveBeenCalled();
+  // the Scout window closing: focus comes back to the field with its ring, the panel (and its dimmer) stays shut
+  act(() => { window.dispatchEvent(new Event(FOCUS_FIELD)); });
+  expect(document.activeElement).toBe(field());
+  expect(document.querySelector('.sh-sf').className).toContain('is-focus');
+  expect(document.querySelector('[data-shell-panel]')).toBeNull();
+  expect(document.querySelector('.sh-scrim')).toBeNull();
+  fireEvent.keyDown(field(), { key: 'ArrowDown' });
+  expect(document.querySelector('[data-shell-panel]')).toBeTruthy();
 });
 
 test('field without asking (canAsk off): rows only, Enter opens, nothing is asked', async () => {

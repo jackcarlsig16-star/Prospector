@@ -121,7 +121,7 @@ function PhoneCard({ item, kind, actions, members }) {
   );
 }
 
-export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted, canAct, onOpen, menu, onMenu, members, onPick }) {
+export function Section({ n, section, numbered, phone, cards = false, scopeAll, colorOf, sorted, canAct, onOpen, menu, onMenu, members, onPick }) {
   const [all, setAll] = useState(false);
   const kinds = new Set(section.rows.map(rowKind));
   const kind = kinds.size === 1 ? [...kinds][0] : 'other';
@@ -140,7 +140,7 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
         </header>
       )}
       {!section.rows.length && <p className="scout-empty" data-scout-empty>{section.line || 'Nothing matched.'}</p>}
-      {shown.length > 0 && !phone && (
+      {shown.length > 0 && !phone && !cards && (
         <div className="scout-tablewrap">
           <table className="scout-table" data-scout-table={kind}>
             <thead><tr>{cols.map((c, i) => <th key={i} scope="col" style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th scope="col" style={{ width: 118 }}><span className="scout-sr">Actions</span></th></tr></thead>
@@ -155,7 +155,7 @@ export function Section({ n, section, numbered, phone, scopeAll, colorOf, sorted
           </table>
         </div>
       )}
-      {shown.length > 0 && phone && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} members={members} />)}</div>}
+      {shown.length > 0 && (phone || cards) && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} members={members} />)}</div>}
       {hidden > 0 && <button type="button" className="scout-btn scout-more" onClick={() => setAll(true)}>{hidden} more <CaretGlyph /></button>}
       {foot.length > 0 && section.rows.length > 0 && <footer className="scout-rule" data-scout-rule>{foot.map((f, i) => <span key={i}>{f}</span>)}</footer>}
     </section>

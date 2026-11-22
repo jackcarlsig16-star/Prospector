@@ -194,6 +194,21 @@ const SCOUT_CSS = `
 .scout-actline { font-size:12px; color:var(--ui-muted); }
 .scout-sheet .scout-undo { min-height:36px; }
 .scout-sheet .scout-confirm__foot .scout-btn { min-height:36px; }
+/* app-shell-v2 W1 / W2 - the Scout window (a right drawer, a full sheet on a phone) and the Scout page: the thread laid
+   out in place. No neon edge here: in the shell, neon is the focused field's only. */
+.scout-win { position:fixed; top:0; right:0; bottom:0; z-index:4002; width:640px; max-width:100vw; box-sizing:border-box; display:flex; flex-direction:column; background:var(--ui-ground); color:var(--ui-text); border-left:1px solid ${edge(70)}; box-shadow:-12px 0 32px rgba(0,0,0,.35); font-family:'Geist', ui-sans-serif, system-ui, sans-serif; }
+.scout-win[hidden] { display:none; }
+.scout-win[data-scout-window="sheet"] { left:0; width:100vw; border-left:0; z-index:4600; }
+.scout-win__top { display:flex; align-items:center; gap:8px; height:56px; flex:none; padding:0 10px 0 18px; border-bottom:1px solid ${edge(45)}; }
+.scout-win__top h2 { margin:0; font-size:16px; font-weight:600; }
+.scout-win__top .scout-btn { width:36px; height:36px; justify-content:center; }
+.scout-win[data-scout-window="sheet"] .scout-win__top .scout-btn { width:44px; height:44px; }
+.scout--window { display:flex; flex-direction:column; justify-content:flex-start; flex:1; min-height:0; }
+.scout--page { display:block; max-width:960px; }
+.scout--window .scout-pop, .scout--page .scout-pop { position:static; width:auto; max-width:none; max-height:none; box-shadow:none; }
+.scout--window .scout-pop { flex:1; min-height:0; overflow-y:auto; border:0; border-radius:0; background:transparent; }
+.scout--page .scout-pop { overflow:visible; border-color:${edge(45)}; }
+.scout--window .scout-bar { flex:none; width:auto; max-width:none; height:44px; margin:10px 14px 14px; }
 `;
 
 if (typeof document !== 'undefined' && !document.getElementById('scout-css')) {

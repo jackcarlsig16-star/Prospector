@@ -4,6 +4,7 @@ import { staleDays } from './utils/staleness';
 import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
 import ToolsPage from './components/ToolsPage';
 import PersistentScout from './components/PersistentScout';
+import ScoutWindow, { ScoutPage } from './components/scout/ScoutWindow';
 import AssayBanner from './components/AssayBanner';
 import { startBulkAssay } from './utils/bulkAssay';
 import StaleSfdcBanner from './components/StaleSfdcBanner';
@@ -1289,13 +1290,7 @@ export default function App({ me }) {
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>}
         {page==="voice-profile"&&settingsWrap(<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>)}
         {page==="connections"&&settingsWrap(ws.entry?.feeds&&activeBusiness?<ConnectionsPage businesses={[activeBusiness]} microsoftResult={microsoftResult} me={me} feeds={ws.entry.feeds}/>:<ConnectionsPage businesses={myBusinesses} microsoftResult={microsoftResult} me={me}/>)}
-        {page==="business-detail"&&businessPage==="scout"&&activeBusiness&&(
-          <div style={{ maxWidth:1100, display:"flex", flexDirection:"column", gap:16 }} data-scout-page>
-            <h1 className="sh-h1">Scout</h1>
-            <PersistentScout page hotkey={false} seed={ws.scoutSeed} activeBusiness={activeBusiness} businesses={myBusinesses} me={me} onOpen={openScoutItem}/>
-            <p className="sh-note" style={{ margin:0 }}>Ask about this workspace's companies, people, to-dos and email, or give a command - a list, a confirm card or a follow-up opens here.</p>
-          </div>
-        )}
+        {page==="business-detail"&&businessPage==="scout"&&activeBusiness&&<ScoutPage key={`scout-page-${activeBusiness.id}`} seed={ws.scout.pageSeed} compact={compact} workspace={activeBusiness} me={me} businesses={myBusinesses} onOpen={openScoutItem}/>}
         {page==="business-detail"&&businessPage==="marketing"&&activeBusiness&&<ComingSoon title="Marketing" note={`Coming soon. Campaigns, content and site work for ${activeBusiness.name} will live here.`}/>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
@@ -1309,7 +1304,8 @@ export default function App({ me }) {
         </Suspense>
       </div>
       {ws.entry&&activeBusiness&&ws.mayAdd&&<QuickCapture key={`capture-${activeBusiness.id}`} hideTrigger businessId={activeBusiness.id} features={activeBusiness.features} activeUser={activeUser} onSaveNuggets={setNuggets} compact={compact}/>}
-      {showTasks&&<TaskDrawer key={activeBusiness.id} businessId={activeBusiness.id} compact={compact} hideToggle={compact} onOpenGoals={()=>setBusinessPage('sales-analytics')}/>}
+      {ws.entry&&activeBusiness&&ws.scout.seed&&<ScoutWindow key={`scout-window-${activeBusiness.id}`} open={ws.scout.open} seed={ws.scout.seed} compact={compact} workspace={activeBusiness} me={me} businesses={myBusinesses} onOpen={openScoutItem} onClose={ws.scout.close}/>}
+      {showTasks&&<TaskDrawer key={activeBusiness.id} businessId={activeBusiness.id} compact={compact} onOpenGoals={()=>setBusinessPage('sales-analytics')}/>}
       {taskModal!==null&&<TaskModal task={taskModal} accounts={accounts} onSave={handleSaveTask} onClose={()=>setTaskModal(null)}/>}
       {profileOpen&&<ProfilePanel user={user} accounts={accounts} tasks={tasks} snapshots={snapshots} stats={stats} earnedBadges={earnedBadges} score={appBreakdown?.score||0} grade={appBreakdown?.grade||"—"} gradeColor={appBreakdown?.c||C.dim} diamonds={diamonds} winsLog={winsLog} onClose={()=>setProfileOpen(false)}/>}
       <BadgeToast badge={badgeToast} onDismiss={()=>setBadgeToast(null)}/>

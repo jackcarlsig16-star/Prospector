@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createShellRegistry, settingsFor, canAdd } from '../shell/shellRegistry';
 import { staysInPanel } from '../shell/askRules';
-import ShellSearch from '../shell/ShellSearch';
+import ShellSearch, { FOCUS_FIELD } from '../shell/ShellSearch';
 import Icon from '../shell/icons';
 import { SALES_SHELL } from './salesAnalytics/shellEntry';
 import { workspaceNav } from '../constants/businessNav';
@@ -40,7 +40,8 @@ export function useWorkspaceShell({ me, activeUser, page, setPage, businessPage,
   const [todayBadge, setTodayBadge] = useState(0);
   const [members, setMembers] = useState([]);
   const [failures, setFailures] = useState({});
-  const [scoutSeed, setScoutSeed] = useState(null);
+  const [pageSeed, setPageSeed] = useState(null);
+  const [scoutWin, setScoutWin] = useState({ open: false, seed: null }); // seed stays once set: the window is mounted from its first open
   const openRef = useRef(openScoutItem);
   openRef.current = openScoutItem;
 
@@ -98,12 +99,21 @@ export function useWorkspaceShell({ me, activeUser, page, setPage, businessPage,
     return { groups: [{ label: 'Workspace', items: s.workspace }, { label: 'Admin', tag: 'Owner', items: s.admin }], active: picked ? picked.id : here, onGo: p => { setSettingsPick(p.id); go(p.to); } };
   }, [inSettings, entry, role, isPlatformOwner, page, adminSection, settingsPick, onSales, go]);
 
-  // The one field: search is a plain read; an ask is one Scout ask - short answers stay in the panel (Q7), the rest
-  // opens the Scout page with the thread carried (the turn is saved to the day's thread either way).
+  // The one field: search is a plain read; an ask is one Scout ask - a short answer stays in the panel (Q7); a list, a
+  // card, a draft or a command opens the Scout WINDOW over the page (W1), never the Scout page. On the Scout page the
+  // field is that page's composer: every ask lands in its thread (W2). The turn is saved to the day's thread either way.
+  const onScoutPage = !!entry && page === 'business-detail' && businessPage === 'scout';
+  useEffect(() => { setScoutWin({ open: false, seed: null }); setPageSeed(null); }, [businessId]);
+  useEffect(() => { if (onScoutPage) setScoutWin(w => (w.open ? { ...w, open: false } : w)); else setPageSeed(null); }, [onScoutPage]);
   const onSearch = useCallback((q, signal) => scoutApi.quick(q, businessId, { signal }).then(r => r.groups || []), [businessId]);
-  const openScout = useCallback(seed => { setScoutSeed({ ...seed, at: Date.now() }); setBusinessPage('scout'); setPage('business-detail'); }, [setBusinessPage, setPage]);
+  const openScout = useCallback(seed => { const s = { ...seed, at: Date.now() }; if (onScoutPage) setPageSeed(s); else setScoutWin({ open: true, seed: s }); }, [onScoutPage]);
+  const closeScout = useCallback(refocus => {
+    setScoutWin(w => ({ ...w, open: false }));
+    // back to the field (quietly - see FOCUS_FIELD); on a phone, where the field is behind its button, to that button
+    if (refocus) setTimeout(() => { const centre = document.querySelector('[data-shell-centre]'); if (centre) centre.focus(); else window.dispatchEvent(new Event(FOCUS_FIELD)); }, 0);
+  }, []);
   const onAsk = useCallback(async q => {
-    if (looksLikeCommand(q)) { openScout({ q }); return { page: true }; }
+    if (onScoutPage || looksLikeCommand(q)) { openScout({ q }); return { page: true }; }
     const at = Date.now(), turns = readThread(meId);
     const r = await scoutApi.ask({ q, scope: businessId, thread: threadMessages(turns) });
     if (r.withheld) return { summary: 'Answer withheld: it held an address or a phone number.' };
@@ -114,7 +124,7 @@ export function useWorkspaceShell({ me, activeUser, page, setPage, businessPage,
     const row = r.sections?.[0]?.rows?.[0] || (r.items?.length === 1 ? r.items[0] : null);
     const reads = Object.keys(r.context_stats?.rows_by_entity || {}).map(e => entityLabel(e).toLowerCase()).join(' · ');
     return { summary: r.summary || r.answer_md, row: row?.open ? row : null, reads: reads || null, cap: r.cap };
-  }, [businessId, meId, openScout]);
+  }, [businessId, meId, openScout, onScoutPage]);
   const onOpen = useCallback(row => openRef.current({ ...row, workspace_id: businessId }), [businessId]);
   const colorOf = useCallback(id => members.find(m => m.user_id === id)?.color || null, [members]);
   const mayAdd = !!entry && canAdd({ role: memberRole, isPlatformOwner });
@@ -143,7 +153,8 @@ export function useWorkspaceShell({ me, activeUser, page, setPage, businessPage,
   ];
 
   return {
-    entry, role, inSettings, settings, adminSection, scoutSeed, mayAdd, go,
+    entry, role, inSettings, settings, adminSection, mayAdd, go,
+    scout: { pageSeed, open: scoutWin.open, seed: scoutWin.seed, close: closeScout },
     shell: { compact, userId: meId, workspace, role: cap(role) || null, workspaces: businesses, nav, search, legacySearch: search ? null : legacyScout, attention, onAddTodo, user, menu, onGo: goItem, onPickWorkspace: onSelectBusiness, onAllWorkspaces },
   };
 }

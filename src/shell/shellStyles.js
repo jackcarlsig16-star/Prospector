@@ -52,6 +52,9 @@ export const SHELL_CSS = `
 .sh-sf.is-focus{border-color:var(--sh-neon);box-shadow:0 0 0 3px rgba(57,255,20,.14),0 0 24px rgba(57,255,20,.12);color:var(--sh-text)}
 .sh-sf.is-focus .sh-sfglyph{color:var(--sh-neon)}
 .sh-sfglyph{display:inline-flex;color:var(--sh-dim)}
+button.sh-sfglyph{background:none;border:0;padding:4px;margin:-4px;border-radius:6px;cursor:pointer}
+button.sh-sfglyph:focus-visible{outline:2px solid var(--sh-line2);outline-offset:1px}
+.sh-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .sh-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;border:1px solid var(--sh-line2);background:var(--sh-card);font:500 11px 'Geist Mono',monospace;color:var(--sh-mut)}
 .sh-scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:55}
 .sh-nav{position:relative;z-index:58}

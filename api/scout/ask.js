@@ -32,6 +32,8 @@ export const SYSTEM = [
   'Name each record once. Never write "---". Do not add a "Records" list: the cited records are shown as rows.',
   // scout-v3.1 C6: the label IS the name on screen.
   'A label like [r3] is shown to the user as that record\'s name. So never write a record\'s name next to its label: write the label alone, where the name would go.',
+  // app-shell-v2 W3: a to-do's label is shown as the to-do's whole text.
+  'A to-do\'s label is shown to the user as the to-do\'s full text. After a to-do\'s label write only what that text does not already say (its due date, its owner, its steps): never repeat, quote or rephrase the to-do\'s text.',
   // fathom-notes-v1 F-10: call notes no member has accepted yet are marked in the context.
   'A context line marked "unreviewed" comes from call notes nobody has accepted yet: write "(unreviewed)" next to anything you take from it.',
 ].join('\n');
@@ -66,7 +68,31 @@ export function resolveRefs(text, items) {
     if (!used.has(label)) used.set(label, it);
     return it.title;
   }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ');
-  return { answer_md: onceEach(answer, [...used.values()].map(it => it.title)).trim(), items: withMore(more, items, used) };
+  const once = onceEach(answer, [...used.values()].map(it => it.title));
+  return { answer_md: onceText(once, [...used.values()].filter(it => it.row?.text)).trim(), items: withMore(more, items, used) };
+}
+// app-shell-v2 W3 post-pass: a record whose title IS its text (a to-do) was cited and then said again in other words
+// ("<the to-do> Ask Brad for 15 minutes, due Oct 8") - the clauses after the title that only repeat the record's own
+// words go; what the title does not say (due, owner, steps) stays.
+const WORDS = /[a-z0-9']+/g, CLAUSE = /(?=[,;:.]\s|\s[-·]\s)/, FACT = /^\W*(due|overdue|no date|mine|unassigned|another owner|open|\d+\s*\/\s*\d+)\b/i;
+export function onceText(text, records) {
+  let out = text;
+  for (const rec of records) {
+    const own = new Set(String(rec.row.text).toLowerCase().match(WORDS) || []);
+    if (!rec.title || own.size < 3) continue;
+    out = out.split('\n').map(line => {
+      const at = line.indexOf(rec.title);
+      if (at < 0) return line;
+      const wrap = /^(\*\*|__)?/.exec(line.slice(at + rec.title.length))[0];
+      const cut = at + rec.title.length + wrap.length;
+      const clauses = line.slice(cut).split(CLAUSE);
+      const echo = c => { const w = c.toLowerCase().match(WORDS) || []; return w.length > 0 && !FACT.test(c) && w.filter(x => own.has(x)).length >= Math.ceil(w.length * 0.8); };
+      let i = 0;
+      while (i < clauses.length && echo(clauses[i])) i += 1;
+      return i ? `${line.slice(0, cut)}${clauses.slice(i).join('')}` : line;
+    }).join('\n');
+  }
+  return out;
 }
 const withMore = (more, items, used) => { for (const [, label] of (more?.[2] || '').matchAll(TOKEN)) { const it = items.get(label); if (it && !used.has(label)) used.set(label, it); } return [...used.values()]; };
 // C6 post-pass: the model wrote the name and then cited it ("Dana Mayer [r1]" -> "Dana Mayer Dana Mayer") - the name
@@ -80,6 +106,17 @@ export function onceEach(text, titles) {
   return out;
 }
 
+// app-shell-v2 W3 (scout-v3 S3, enforced): a list of records whose title IS their text (to-dos) is shown as its rows,
+// so the summary keeps what the model said about the list and drops the lines that only say a row again (and the
+// "+ n more" line - the rows carry the count). answer_md keeps them: it is the thread's memory, not the screen.
+export function withoutRowLines(text, rows) {
+  const titles = rows.filter(r => r.row?.text).map(r => r.title);
+  if (titles.length < 2) return text;
+  const said = line => { const l = line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^(\*\*|__)/, ''); return titles.some(t => l.startsWith(t)); };
+  const out = text.split('\n').filter(line => !said(line) && !/^\s*\+\s*\d+\s+more\s*\(in the table\)/i.test(line)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return out || 'Listed below.';
+}
+
 // scout-v3 D2: the model's text + the context's parts -> { summary, sections: [{ title, count, rule, read, rows, line,
 // brief }] } and the flat answer_md / items the thread keeps. One part: the answer is the summary and its cited records
 // are the one section's rows. Several: each "@@ n" block's labels are that section's rows (labels of another part are
@@ -89,7 +126,7 @@ export function sectioned(text, ctx) {
   const meta = p => ({ title: p.title || cleanText(p.q, 80), count: p.count, rule: p.rule, read: p.read, brief: p.brief, ...(p.fill ? { fill: p.fill } : {}) });
   if (ctx.parts.length < 2) {
     const r = resolveRefs(text, ctx.items), p = ctx.parts[0];
-    return { ...r, summary: r.answer_md, sections: [{ ...meta(p), count: r.items.length, total: Math.max(p.count, r.items.length), rows: r.items, line: null }] };
+    return { ...r, summary: withoutRowLines(r.answer_md, r.items), sections: [{ ...meta(p), count: r.items.length, total: Math.max(p.count, r.items.length), rows: r.items, line: null }] };
   }
   const chunks = text.split(new RegExp(BLOCK.source, 'gm'));
   const summary = resolveRefs(chunks[0], new Map()).answer_md;

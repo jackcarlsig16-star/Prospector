@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { createRegistry } from '../scout/registry.js';
 import { parseAsk, mergeVocab, buildContext, publicRead } from '../scout/retrieve.js';
-import { ask, askDeps, resolveRefs, onceEach, followUpOf, SYSTEM } from '../scout/ask.js';
+import { ask, askDeps, resolveRefs, onceEach, onceText, withoutRowLines, followUpOf, SYSTEM } from '../scout/ask.js';
 import { plan, act, undo, actDeps, resolveTargets } from '../scout/actions.js';
 import { resolveFollowUp, resolvedLine } from '../scout/followUp.js';
 import { VOCABULARY, register } from './scoutEntities.js';
@@ -335,6 +335,41 @@ test('C6: a cited name appears once (the prompt says so and a post-pass enforces
   assert.deepEqual(r.body.sections[0].brief.grid.map(g => [g.label, g.value]), [['Record', 'employer'], ['Owner', 'Unassigned'], ['Visits', 'Visited pricing twice'], ['Last touch', '—'], ['Notes', '—'], ['People', '—']]);
   assert.ok(r.body.context_stats.reads.every(x => !UUID.test(x) && !/prospect:|person:/.test(x)), JSON.stringify(r.body.context_stats.reads));
   assert.ok(!/Records \(/.test(r.body.answer_md)); assert.ok(!JSON.stringify(r.body).includes('@'));
+});
+
+test('W3: a to-do in an answer prints its text once - the prompt says so and the post-pass drops the echo after the label, keeping the due date', async () => {
+  assert.match(SYSTEM, /never repeat, quote or rephrase the to-do's text/);
+  const long = 'After Upside call Thursday, ask Brad for 15 minutes on the pilot scope';
+  const rec = text => ({ entity: 'todos', id: 't1', title: text, row: { kind: 'task', text } });
+  const items = new Map([['r1', rec(long)], ['r2', rec('Send Hilton the two-pager')]]);
+  assert.equal(resolveRefs('- [r1] Ask Brad for 15 minutes on the pilot scope, due Oct 8\n- **[r2]**: send the two-pager to Hilton. Due Oct 9, mine', items).answer_md,
+    `- ${long}, due Oct 8\n- **Send Hilton the two-pager**. Due Oct 9, mine`);
+  // what the text does not say stays, and a line that never echoed is untouched
+  assert.equal(onceText(`- ${long}, due Oct 8 (overdue), mine, 1/3 steps`, [rec(long)]), `- ${long}, due Oct 8 (overdue), mine, 1/3 steps`);
+  assert.equal(onceText(`- ${long}: Brad is out until Monday`, [rec(long)]), `- ${long}: Brad is out until Monday`);
+  // a record with no text of its own (a company, a person) is never cut
+  assert.equal(resolveRefs('[r1] Cloudflare visited twice', new Map([['r1', { entity: 'employers', id: 'e1', title: 'Cloudflare' }]])).answer_md, 'Cloudflare visited twice');
+  // through the ask: "my overdue to-dos" with a model that echoes
+  const sb = seed(), registry = await reg();
+  const todo = { id: u('6'), text: long, due_date: '2026-10-08', owner_user_id: u('a'), created_at: '2026-10-01T00:00:00Z', link_type: null, link_id: null, steps: [] };
+  salesReads.openTodosFor = async () => ({ rows: [todo], total: 1 });
+  salesReads.loadToday = async () => ({ view: { groups: [] } });
+  model('You have one overdue to-do.\n- [r1] Ask Brad for 15 minutes on the pilot scope, due Oct 8');
+  const r = await ask(sb, registry, { auth: ana, body: { q: 'my overdue to-dos', scope: A } });
+  assert.equal(r.body.answer_md.split(long).length - 1, 1, r.body.answer_md);
+  assert.ok(!/Ask Brad for 15 minutes on the pilot scope, due/.test(r.body.answer_md) && /due Oct 8/.test(r.body.answer_md), r.body.answer_md);
+  assert.equal(r.body.sections[0].rows[0].row.text, long);
+  // a LIST of to-dos is its rows: the summary keeps the lead and drops the lines that say a row again (the shape the
+  // model wrote on the real ask, Nov 21); answer_md - the thread's memory - keeps them
+  const more = [todo, { ...todo, id: u('7'), text: 'Email Steve this week', due_date: '2026-10-09' }, { ...todo, id: u('8'), text: 'Research the fitness franchise', due_date: '2026-10-18' }];
+  salesReads.openTodosFor = async () => ({ rows: more, total: 3 });
+  model('Here are your overdue to-dos, oldest first:\n\n- [r1] due 2026-10-08\n- [r2] due 2026-10-09, 0/2 steps done\n\n+ 1 more (in the table): [r3]');
+  const l = await ask(sb, registry, { auth: ana, body: { q: 'my overdue to-dos', scope: A } });
+  assert.equal(l.body.summary, 'Here are your overdue to-dos, oldest first:');
+  assert.equal(l.body.sections[0].rows.length, 3);
+  assert.ok(l.body.answer_md.includes('Email Steve this week due 2026-10-09') && l.body.answer_md.includes('+ 1 more (in the table)'), l.body.answer_md);
+  assert.equal(withoutRowLines('- Email Steve this week\n- Research the fitness franchise', more.slice(1).map(t => ({ title: t.text, row: { text: t.text } }))), 'Listed below.');
+  assert.equal(withoutRowLines('Cloudflare and Hilton visited.\n- Cloudflare\n- Hilton', [{ title: 'Cloudflare' }, { title: 'Hilton' }]), 'Cloudflare and Hilton visited.\n- Cloudflare\n- Hilton');
 });
 
 test('C4 through the REAL writers (no fakes): done -> the row and its event (origin scout, the card\'s batch id) -> Undo by the event; a typed add creates one linked to-do due on the day said, and Undo drops it', async () => {

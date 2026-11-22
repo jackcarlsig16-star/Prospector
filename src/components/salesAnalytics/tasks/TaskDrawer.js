@@ -36,8 +36,9 @@ function Badge({ n }) {
   return <span aria-label={`${n} open`} style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: SA.warn, color: SA.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>;
 }
 
-// app-shell-v2: hideToggle = no floating Tasks button (the phone's top bar has no room for one; the Today tab is the list).
-export default function TaskDrawer({ businessId, compact, onOpenGoals, hideToggle = false }) {
+// app-shell-v2 W4: the drawer has no button of its own - it opens from a page's "open tasks" link (OPEN_TASKS); the
+// shell's Today badge and header are the way in to the list.
+export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [open, setOpen] = useState(readOpen);
   const [week] = useState(() => laWeekStart());
   const [me, setMe] = useState(null);
@@ -217,23 +218,9 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals, hideToggl
       can={{ edit: canEdit, remove: removeMode(t) }} act={act} />
   );
 
-  const toggleButton = compact ? (
-    <button type="button" onClick={() => setOpen(true)} aria-label={`Tasks${badge ? `, ${badge} open` : ''}`} className="no-print"
-      style={{ ...saSans, position: 'fixed', top: 4, right: 8, zIndex: 4001, height: 44, padding: '0 12px', borderRadius: 10, border: 'none', background: 'transparent', color: SA.text, fontSize: 14, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-      ✓ Tasks <Badge n={badge} />
-    </button>
-  ) : (
-    <button type="button" onClick={() => setOpen(true)} aria-label={`Open tasks${badge ? `, ${badge} open` : ''}`} className="no-print"
-      style={{ ...saSans, position: 'fixed', top: 140, right: 0, zIndex: 3000, width: 36, padding: '14px 0', borderRadius: '10px 0 0 10px', border: `1px solid ${SA.border}`, borderRight: 'none', background: SA.surface, color: SA.text, fontSize: 13, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-      <span style={{ writingMode: 'vertical-rl', letterSpacing: '0.04em' }}>Tasks</span>
-      <Badge n={badge} />
-    </button>
-  );
-
   return (
     <>
       <style>{SA_THEME_CSS}</style>
-      {!open && !hideToggle && <span className={SA_THEME_CLASS}>{toggleButton}</span>}
       {open && compact && <div onClick={() => setOpen(false)} className="no-print" style={{ position: 'fixed', inset: 0, background: '#000a', zIndex: 4001 }} />}
       {open && (
         <aside className={`${SA_THEME_CLASS} no-print`} role="dialog" aria-modal={compact ? true : undefined} aria-labelledby="task-drawer-title"

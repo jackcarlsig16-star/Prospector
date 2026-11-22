@@ -27,7 +27,7 @@ export function AccountMenu({ name, sub, items, onClose, style }) {
   );
 }
 
-export const SHORTCUTS = [['/', 'Search or ask Scout'], ['⌘K / Ctrl K', 'Search or ask Scout'], ['↑ ↓', 'Move through the results'], ['Tab', 'Next group of results'], ['↵', 'Open the selected row'], ['⌘↵ / Ctrl ↵', 'Ask Scout'], ['Esc', 'Close and go back to where you were']];
+export const SHORTCUTS = [['/', 'Search or ask Scout'], ['⌘K / Ctrl K', 'Search or ask Scout'], ['↑ ↓', 'Move through the results'], ['Tab', 'Next group of results'], ['↵', 'Open the selected row'], ['⌘↵ / Ctrl ↵', 'Ask Scout'], ['Esc', 'Clear, then close and go back to where you were']];
 export function ShortcutsDialog({ onClose }) {
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); }, []);

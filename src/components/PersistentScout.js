@@ -10,7 +10,7 @@ import { pickScope, saveScope, allLabel, isViewerIn } from './scout/scoutModel';
 // content width on a plain page, and on a phone (both mounts) only the neon star, which opens the full-height sheet
 // (drag handle · Scout · scope pill · ✕, then the bar). The scope is one of the caller's workspaces or all of them
 // ("All workspaces" for the platform owner), remembered per user (prospector_scout_scope) - no confirm step.
-export default function PersistentScout({ compact = false, businesses = [], activeBusiness = null, me = null, onOpen, hotkey = true, seed = null, page = false }) {
+export default function PersistentScout({ compact = false, businesses = [], activeBusiness = null, me = null, onOpen }) {
   const phone = useMediaQuery('(max-width: 899px)');
   const userId = me?.profile?.id || 'anon';
   const isOwner = !!me?.profile?.is_platform_owner;
@@ -19,22 +19,21 @@ export default function PersistentScout({ compact = false, businesses = [], acti
   const [sheetOpen, setSheetOpen] = useState(false);
   useEffect(() => { setScope(pickScope({ userId, options, activeId: activeBusiness?.id })); }, [userId, options, activeBusiness?.id]);
   useEffect(() => {
-    if (!phone || !hotkey || page) return undefined;
+    if (!phone) return undefined;
     const onKey = e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSheetOpen(true); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [phone, hotkey, page]);
+  }, [phone]);
   useEffect(() => { if (!phone) setSheetOpen(false); }, [phone]);
 
   const changeScope = s => { setScope(s); saveScope(userId, s); };
   const allText = allLabel(isOwner);
   const bar = mode => (
     <ScoutCommandBar mode={mode} scope={scope} scopeOptions={options} allText={allText} onScope={changeScope} me={me} businesses={businesses}
-      onOpen={onOpen} viewer={isViewerIn(me, scope, options)} autoFocus={mode === 'sheet'} onDone={mode === 'sheet' ? () => setSheetOpen(false) : undefined} hotkey={hotkey} seed={seed} />
+      onOpen={onOpen} viewer={isViewerIn(me, scope, options)} autoFocus={mode === 'sheet'} onDone={mode === 'sheet' ? () => setSheetOpen(false) : undefined} />
   );
 
-  // page = Scout's own page (app-shell-v2 D15): the bar at the content width on every screen size.
-  if (!phone || page) return bar(compact && !page ? 'compact' : 'plain');
+  if (!phone) return bar(compact ? 'compact' : 'plain');
   return (
     <div className="scout scout--star" data-scout-bar={compact ? 'compact' : 'full'}>
       <button type="button" className="scout-star-btn" aria-label="Search or ask Scout" aria-haspopup="dialog" onClick={() => setSheetOpen(true)}><StarGlyph /></button>

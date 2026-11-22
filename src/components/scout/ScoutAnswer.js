@@ -35,7 +35,8 @@ export function WorkingPanel({ q, elapsed }) {
 
 // scout-v3 Stage 2: the answer = the summary, then one numbered section per part (ScoutSections), the action block
 // for this answer (the confirm card, working, done + Undo, can't-do) and its action sub-lines (D11). No Records block.
-export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null, focus = null }) {
+// cards (app-shell-v2 W1): the rows as stacked cards at any width - the 640 px Scout window has no room for the table.
+export function AnswerPanel({ turn, scopeChip, phone, cards = false, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null, focus = null }) {
   const sections = useMemo(() => sectionsOf(turn), [turn]);
   const foot = footerParts(turn);
   const numbered = sections.length > 1;
@@ -60,7 +61,7 @@ export function AnswerPanel({ turn, scopeChip, phone, scopeAll, colorOf, viewer,
             <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
               {b && <BriefHead item={b} grid={s.brief.grid} onOpen={onOpen} onCopy={onCopy} />}
               {b && briefFirst && <Prose text={turn.summary || turn.answer_md} />}
-              <Section n={i + 1} section={numbered ? s : { ...s, title: s.rows.length >= 2 ? s.title : null }} numbered={numbered} phone={phone} scopeAll={scopeAll} colorOf={colorOf} sorted={turn.ask?.sort === 'score' || turn.ask?.sort === 'heat'}
+              <Section n={i + 1} section={numbered ? s : { ...s, title: s.rows.length >= 2 ? s.title : null }} numbered={numbered} phone={phone} cards={cards} scopeAll={scopeAll} colorOf={colorOf} sorted={turn.ask?.sort === 'score' || turn.ask?.sort === 'heat'}
                 canAct={canAct} onOpen={onOpen} menu={menu} onMenu={onMenu} members={members} onPick={onPick} />
             </div>
           );

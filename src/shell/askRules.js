@@ -17,7 +17,7 @@ export function isQuestion(input) {
 
 // Q7: an answer stays in the panel when it is a brief of one record or one sentence / number with no rows - the ask
 // route came back with 0 sections, or 1 section holding at most 1 row. A list, a confirm card, a draft or a follow-up
-// opens the Scout page with the thread carried.
+// opens the Scout window (app-shell-v2 W1) on the day's thread.
 export function staysInPanel(answer) {
   if (!answer || answer.offer || answer.plan || answer.draft || answer.resolved) return false;
   const sections = answer.sections || [];

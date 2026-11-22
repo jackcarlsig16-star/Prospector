@@ -7,13 +7,19 @@ import { isQuestion } from './askRules';
 //   a search                grouped rows (<= 3 a group, the group's count beside its name), Ask Scout last (Cmd/Ctrl+Enter)
 //   a question (Q6)         Ask Scout is the first, selected row, so Enter asks; the records it mentions sit under it
 //   no match                one line, then Ask Scout as the only row
-//   the answer (Q7)         a short answer stays in this panel; anything longer opens the Scout page (the caller decides)
-// Keys: "/" and Cmd/Ctrl+K focus the field from anywhere; Up / Down move; Tab / Shift+Tab jump to the next / previous
-// group; Enter opens the selected row; Cmd/Ctrl+Enter asks; Esc closes and returns focus to where it was.
-// ARIA: the input is the combobox (aria-expanded, aria-controls, aria-activedescendant); the panel is the listbox, each
-// group a role=group named by its label, each row a role=option. Neon is this field's focus colour and nothing else's.
+//   the answer (Q7)         a short answer stays in this panel; anything longer opens the Scout window (the caller decides)
+// The star at the field's left is a button: it opens the Scout window on the day's thread.
+// Keys (D24): "/" and Cmd/Ctrl+K focus the field from anywhere; Up / Down move; Tab / Shift+Tab jump to the next /
+// previous group; Enter opens the selected row; Cmd/Ctrl+Enter asks; Esc clears what was typed, then closes and returns
+// focus to where it was.
+// ARIA (D25): the input is the combobox (aria-expanded, aria-controls, aria-activedescendant); the panel is the listbox,
+// each group a role=group named by its label, each row a role=option; the number of results is announced politely.
+// Neon is this field's focus colour and nothing else's.
 export const RECENT_KEY = 'prospector_shell_recent'; // localStorage, per user: { [userId]: [{ kind, title, sub?, open?, q?, at }] } (max 5)
 export const RECENT_MAX = 5, DEBOUNCE_MS = 150, MIN_CHARS = 2;
+// W1: the Scout window closing hands focus back to the field WITHOUT opening the panel - its dimmer would swallow the
+// next click on the page. The field shows its focus ring; typing, Down or a click opens the panel as usual.
+export const FOCUS_FIELD = 'prospector:shell-focus-field';
 const ICON_OF = { companies: 'company', people: 'person', todos: 'today' };
 const PILL = { P1: '#FF9F57', P2: '#F2C94C', P3: '#8FA8FF', P4: '#A8B2C0', Hot: '#FF9F57', Warm: '#F2C94C', Cool: '#8FA8FF' };
 
@@ -36,6 +42,8 @@ export default function ShellSearch({ userId, onSearch, onAsk, onOpen, onOpenSco
   const inputRef = useRef(null), rootRef = useRef(null), backRef = useRef(null), seq = useRef(0);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(fullScreen);
+  const [focused, setFocused] = useState(false);
+  const quiet = useRef(false);
   const [groups, setGroups] = useState(null); // for `found.q`
   const [found, setFound] = useState('');
   const [active, setActive] = useState(0);
@@ -65,6 +73,12 @@ export default function ShellSearch({ userId, onSearch, onAsk, onOpen, onOpenSco
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [fullScreen, focusField]);
+  useEffect(() => {
+    if (fullScreen) return undefined;
+    const onFocusField = () => { quiet.current = true; inputRef.current?.focus(); quiet.current = false; };
+    window.addEventListener(FOCUS_FIELD, onFocusField);
+    return () => window.removeEventListener(FOCUS_FIELD, onFocusField);
+  }, [fullScreen]);
   useEffect(() => {
     if (!open || fullScreen) return undefined;
     const out = e => { if (!rootRef.current?.contains(e.target)) { setOpen(false); setAnswer(null); } };
@@ -120,7 +134,7 @@ export default function ShellSearch({ userId, onSearch, onAsk, onOpen, onOpenSco
     setActive(starts[(at + dir + starts.length) % starts.length]);
   };
   const onKeyDown = e => {
-    if (e.key === 'Escape') { e.preventDefault(); if (answer) { setAnswer(null); return; } close(); }
+    if (e.key === 'Escape') { e.preventDefault(); if (answer) { setAnswer(null); return; } if (q && !fullScreen) { setQ(''); return; } close(); }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); if (shown.length) setActive(a => (a + 1) % shown.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); if (shown.length) setActive(a => (a - 1 + shown.length) % shown.length); }
     else if (e.key === 'Tab' && open && shown.length > 1 && !answer) { e.preventDefault(); jumpGroup(e.shiftKey ? -1 : 1); }
@@ -198,13 +212,16 @@ export default function ShellSearch({ userId, onSearch, onAsk, onOpen, onOpenSco
 
   return (
     <div ref={rootRef} className="sh-search" data-shell-search>
-      <div className={`sh-sf${open ? ' is-focus' : ''}`} onMouseDown={e => { if (e.target !== inputRef.current) { e.preventDefault(); focusField(); } }}>
-        <span className="sh-sfglyph"><Icon name="star" size={15} /></span>
-        <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setOpen(true); setAnswer(null); }} onKeyDown={onKeyDown} onFocus={() => setOpen(true)}
+      <div className={`sh-sf${open || focused ? ' is-focus' : ''}`} onMouseDown={e => { if (e.target !== inputRef.current) { e.preventDefault(); focusField(); } }}>
+        {onOpenScout
+          ? <button type="button" className="sh-sfglyph" aria-label="Open Scout" onMouseDown={e => e.stopPropagation()} onClick={() => { setOpen(false); setAnswer(null); inputRef.current?.blur(); onOpenScout(); onClose?.(); }} data-shell-star><Icon name="star" size={15} /></button>
+          : <span className="sh-sfglyph"><Icon name="star" size={15} /></span>}
+        <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setOpen(true); setAnswer(null); }} onKeyDown={onKeyDown} onFocus={() => { setFocused(true); if (!quiet.current) setOpen(true); }} onBlur={() => setFocused(false)} onMouseDown={() => setOpen(true)}
           role="combobox" aria-label="Search or ask Scout" aria-autocomplete="list" aria-haspopup="listbox" aria-expanded={listed} aria-controls={listed ? listId : undefined}
           aria-activedescendant={listed ? optId(active) : undefined} placeholder={canAsk ? 'Search companies, people and to-dos, or ask Scout' : 'Search companies, people and to-dos'} autoComplete="off" spellCheck={false} enterKeyHint="search" />
         {!fullScreen && <span className="sh-kbd" aria-hidden="true">{open ? 'Esc' : '⌘K'}</span>}
       </div>
+      <span className="sh-sr" role="status" aria-live="polite" data-shell-count>{open && !answer && ready ? (recordRows.length ? `${recordRows.length} result${recordRows.length === 1 ? '' : 's'}` : 'No results') : ''}</span>
       {open && !fullScreen && <div className="sh-scrim" aria-hidden="true" />}
       {open && (
         <div className="sh-pan" data-shell-panel>

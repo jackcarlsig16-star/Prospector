@@ -17,9 +17,11 @@ import { MIN_CHARS, DEBOUNCE_MS, THREAD_MAX, isQuestion, readThread, saveThread,
 // POST /api/scout/ask - the server builds the context and makes the Claude call (never /proxy from here). The answer
 // panel keeps the day's last 6 turns (D12). mode: 'compact' (the workspace header: 300 -> 560 px focused), 'plain'
 // (a page's content width) or 'sheet' (the phone's bottom sheet, both mounts).
-// app-shell-v2: hotkey={false} leaves Cmd/Ctrl+K to the shell's header field; seed = what the header carried over -
-// { openLast: true } shows the thread's last answer, { q } types that line here and runs it (a command plans, a question asks).
-export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, allText, onScope, me, businesses, onOpen, viewer = false, autoFocus = false, onDone, hotkey = true, seed = null }) {
+// app-shell-v2 W1 / W2 - the thread laid out in place, under the shell's one field (no search here, no Cmd/Ctrl+K):
+// 'window' (the Scout window: the thread, then a follow-up input at the bottom) and 'page' (the Scout page: the thread
+// only - the header's field is its composer). seed = what the header sent: { openLast: true } shows the thread's last
+// answer, { q } runs that line here (a command plans, a question asks). onDone(why): 'esc' | 'open' (a record opened).
+export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, allText, onScope, me, businesses, onOpen, viewer = false, autoFocus = false, onDone, seed = null, stacked = false }) {
   const listId = useId();
   const rootRef = useRef(null);
   const inputRef = useRef(null);
@@ -44,6 +46,8 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   // scout-v3.1 C8: the record(s) a follow-up narrowed the conversation to - what "her" / "it" mean until cleared
   const [focus, setFocus] = useState(null);
   const sheet = mode === 'sheet';
+  const thread = mode === 'window' || mode === 'page';
+  const fixed = sheet || thread;
   const empty = scopeOptions.length === 0;
   const colorOf = useCallback(id => scopeOptions.find(o => o.id === id)?.color || null, [scopeOptions]);
   const canAct = scope !== 'all' && !viewer && canActIn(scope, me, businesses);
@@ -53,23 +57,23 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
 
   // ⌘K / Ctrl+K focuses the bar (the phone's star opens the sheet instead - PersistentScout).
   useEffect(() => {
-    if (sheet || !hotkey) return undefined;
+    if (fixed) return undefined;
     const onKey = e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); inputRef.current?.focus(); setOpen(true); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sheet, hotkey]);
+  }, [fixed]);
 
   useEffect(() => {
-    if (!open || sheet) return undefined;
+    if (!open || fixed) return undefined;
     const close = e => { if (!rootRef.current?.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
-  }, [open, sheet]);
+  }, [open, fixed]);
 
   // Search: 2+ chars after 250 ms quiet; a stale reply never replaces a newer one.
   const text = q.trim();
   useEffect(() => {
-    if (empty || view !== 'search' || text.length < MIN_CHARS) { setResults(null); return undefined; }
+    if (empty || thread || view !== 'search' || text.length < MIN_CHARS) { setResults(null); return undefined; }
     const my = ++seq.current;
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const t = setTimeout(() => {
@@ -78,7 +82,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
         .catch(e => { if (e?.name !== 'AbortError' && seq.current === my) { setResults(null); setEdge(e.offline || e.status >= 500 ? { kind: 'offline', retry: 'search' } : { kind: 'error', message: e.message }); } });
     }, DEBOUNCE_MS);
     return () => { clearTimeout(t); ctl?.abort(); };
-  }, [text, scope, view, empty, retry]);
+  }, [text, scope, view, empty, thread, retry]);
 
   const groups = useMemo(() => (results?.q === text ? results.groups : null), [results, text]);
   const flat = useMemo(() => (groups || []).flatMap(g => g.items), [groups]);
@@ -116,6 +120,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     if (!question || question.length < MIN_CHARS) return;
     const at = Date.now();
     setAsked({ q: question, at }); setTick(0); setView('working'); setOpen(true); setEdge(null); setInlineKey(null); setMenu(null); actions.onNewAsk();
+    if (thread) setQ('');
     try {
       const rows = opts.rows || (current && current.scope === scope ? planRows(current) : []);
       const r = await scoutApi.ask({ q: question, scope, thread: threadMessages(turns), ...(rows.length ? { rows } : {}), ...(focus && !opts.rows ? { focus: focus.rows } : {}) });
@@ -139,7 +144,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     onOpen(item);
     if (item.open.inline) { setInlineKey(`${item.entity}:${item.id}`); return; }
     if (stay) return;
-    setOpen(false); inputRef.current?.blur(); onDone?.();
+    setOpen(false); inputRef.current?.blur(); onDone?.('open');
   }, [onOpen, onDone]);
   openRef.current = openItem;
 
@@ -158,16 +163,18 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   // ("Did you mean": the candidate carries the question to ask instead)
   const choose = c => (c.ask ? ask(c.ask) : actions.act?.ask ? ask(actions.act.text, { rows: planRows(current).filter(r => keyOf(r) === c.key) }) : actions.choose(c));
 
+  // The thread opens on its last answer. A seed re-reads the day's thread first: the header's panel asks save to it too.
+  useEffect(() => { const last = thread ? turns.slice(-1)[0] : null; if (last) reopen(last); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const seeded = useRef(null);
   useEffect(() => {
     if (!seed || seeded.current === seed.at) return;
-    if (seed.openLast) { seeded.current = seed.at; const last = readThread(meId).slice(-1)[0]; if (last) { setTurns(readThread(meId)); reopen(last); setOpen(true); } inputRef.current?.focus(); return; }
-    if (seed.q && text !== seed.q) { setQ(seed.q); setOpen(true); inputRef.current?.focus(); return; }
+    if (seed.openLast) { seeded.current = seed.at; const saved = readThread(meId), last = saved.slice(-1)[0]; setTurns(saved); if (last) reopen(last); return; }
+    if (seed.q && text !== seed.q) { setTurns(readThread(meId)); setQ(seed.q); return; }
     if (seed.q) { seeded.current = seed.at; submit(); }
   }, [seed, text]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Typing a command over an answer keeps the answer (its rows are what "those" means); anything else searches.
-  const onChange = e => { const v = e.target.value; setQ(v); setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };
+  const onChange = e => { const v = e.target.value; setQ(v); if (thread) return; setOpen(true); setEdge(null); const keep = current && looksLikeCommand(v); if (keep) setView('answer'); else if (view !== 'search' && v.trim()) setView('search'); };
   const onKeyDown = e => {
     const n = flat.length;
     if (e.key === 'ArrowDown' && groups) { e.preventDefault(); setActive(a => (a >= n ? 0 : a + 1)); }
@@ -181,11 +188,12 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
     } else if (e.key === 'Escape') {
       e.preventDefault();
       if (actions.act?.kind === 'card') actions.cancel();
-      else if (open) setOpen(false); else { inputRef.current?.blur(); onDone?.(); }
+      else if (thread) onDone?.('esc');
+      else if (open) setOpen(false); else { inputRef.current?.blur(); onDone?.('esc'); }
     }
   };
 
-  const showPanel = open || sheet;
+  const showPanel = open || fixed;
   const a = actions.act;
   const actBody = !a ? null
     : a.kind === 'card' ? <ConfirmCard card={a.card} onConfirm={actions.confirm} onCancel={actions.cancel} onEdit={actions.editTask} />
@@ -202,7 +210,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
   else if (showPanel && view === 'answer' && current) {
     const opt = scopeOptions.find(o => o.id === current.scope);
     panel = (
-      <AnswerPanel key={current.at} turn={current} phone={sheet} scopeAll={current.scope === 'all'} colorOf={colorOf} viewer={viewer} canAct={canAct && current.scope === scope}
+      <AnswerPanel key={current.at} turn={current} phone={sheet || stacked} cards={mode === 'window'} scopeAll={current.scope === 'all'} colorOf={colorOf} viewer={viewer} canAct={canAct && current.scope === scope}
         scopeChip={<StaticScope name={opt?.name || allText} color={opt?.color} />}
         onOpen={openItem} inlineKey={inlineKey} members={members} menu={menu} onMenu={setMenu} onPick={(item, id, args) => { setMenu(null); actions.pick(item, id, args); }}
         onCopy={actions.copy} act={actBlock}
@@ -219,23 +227,30 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       ? <ScoutResults listId={listId} groups={groups} q={text} active={active} onActive={setActive} onOpen={openItem} onAsk={() => ask()} scopeAll={scope === 'all'} colorOf={colorOf} phone={sheet} />
       : <EdgePanel kind="nohits" q={text} onAsk={() => ask()} />;
   }
+  if (thread && !panel) panel = <div className="scout-panel" data-scout-empty><span className="scout-note">{mode === 'page' ? 'Nothing asked yet today. Type in the field at the top: a question, or a command.' : 'Ask about this workspace’s companies, people, to-dos and email, or give a command. Lists, confirm cards and follow-ups stay in this window.'}</span></div>;
   const answerish = view === 'answer' || view === 'working' || view === 'act';
-  const focusRing = open || sheet;
+  const focusRing = thread ? open : open || sheet;
+  const bar = (
+    <div className={`scout-bar ui-theme-dark${focusRing ? ' is-focus' : ''}`}>
+      <span className="scout-glyph"><StarGlyph /></span>
+      {thread
+        ? <input ref={inputRef} value={q} onChange={onChange} onKeyDown={onKeyDown} onFocus={() => setOpen(true)} onBlur={() => setOpen(false)} aria-label="Ask a follow-up or give a command" placeholder="Ask a follow-up, or give a command…" autoComplete="off" spellCheck={false} enterKeyHint="send" />
+        : <input ref={inputRef} value={q} onChange={onChange} onKeyDown={onKeyDown} onFocus={() => setOpen(true)}
+            role="combobox" aria-label="Search or ask Scout" aria-expanded={listShown} aria-controls={listShown ? listId : undefined}
+            aria-activedescendant={listShown ? optionId(listId, active) : undefined} aria-autocomplete="list"
+            placeholder={focusRing ? 'Search, or ask a question…' : 'Search or ask Scout'} autoComplete="off" spellCheck={false} />}
+      {!fixed && (focusRing
+        ? (!empty && <ScopePill value={scope} options={scopeOptions} allText={allText} onChange={onScope} />)
+        : <kbd aria-hidden="true">⌘K</kbd>)}
+      {view === 'working' && <span className="scout-think" aria-hidden="true" />}
+    </div>
+  );
 
   return (
-    <div ref={rootRef} className={`scout scout--${mode}${open ? ' is-open' : ''}`} data-scout-bar={mode === 'compact' ? 'compact' : 'full'}>
-      <div className={`scout-bar ui-theme-dark${focusRing ? ' is-focus' : ''}`}>
-        <span className="scout-glyph"><StarGlyph /></span>
-        <input ref={inputRef} value={q} onChange={onChange} onKeyDown={onKeyDown} onFocus={() => setOpen(true)}
-          role="combobox" aria-label="Search or ask Scout" aria-expanded={listShown} aria-controls={listShown ? listId : undefined}
-          aria-activedescendant={listShown ? optionId(listId, active) : undefined} aria-autocomplete="list"
-          placeholder={focusRing ? 'Search, or ask a question…' : 'Search or ask Scout'} autoComplete="off" spellCheck={false} />
-        {!sheet && (focusRing
-          ? (!empty && <ScopePill value={scope} options={scopeOptions} allText={allText} onChange={onScope} />)
-          : <kbd aria-hidden="true">⌘K</kbd>)}
-        {view === 'working' && <span className="scout-think" aria-hidden="true" />}
-      </div>
+    <div ref={rootRef} className={`scout scout--${mode}${open ? ' is-open' : ''}`} data-scout-bar={mode === 'compact' ? 'compact' : 'full'} data-scout-thread={thread ? mode : undefined}>
+      {!thread && bar}
       {panel && <div className={`scout-pop ui-theme-dark${answerish ? ' scout-pop--answer' : ''}`} data-scout-pop>{panel}</div>}
+      {mode === 'window' && bar}
       {/* the panel's colours are the sales page's variables: outside that page they come from the theme class */}
       {compose && <span className={`${SA_THEME_CLASS} ui-theme-dark`} data-scout-compose><style>{SA_THEME_CSS}</style><ComposePanel businessId={scope} row={compose} onClose={() => setCompose(null)} onToast={t => setComposeToast(t.text)} /></span>}
       {composeToast && <div className="scout-toast ui-theme-dark" role="status" data-scout-toast>{composeToast}</div>}
