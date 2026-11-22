@@ -132,7 +132,7 @@ try {
   await page.locator('[data-nav-item=today]').click(); await page.waitForSelector('[data-nav-item=today][aria-current=page]'); await page.waitForTimeout(1500);
   await page.locator('[data-shell-star]').click(); await page.waitForSelector('[data-scout-window]:not([hidden])');
   let w = await win(page);
-  ok('W1: the star in the field opens the Scout window - a 640 px drawer on the right, full height, over Today (no navigation), a follow-up input, no scope pill', w && w.kind === 'drawer' && w.w === 640 && w.right === 0 && w.top === 0 && w.h === 900 && w.input && w.scope === 0 && await page.evaluate(() => document.querySelector('[data-nav-item=today]').getAttribute('aria-current') === 'page'), JSON.stringify(w));
+  ok('W1: the star in the field opens the Scout window - a 640 px drawer on the right, under the header (C4), over Today (no navigation), a follow-up input, no scope pill', w && w.kind === 'drawer' && w.w === 640 && w.right === 0 && w.top === 56 && w.h === 844 && w.input && w.scope === 0 && await page.evaluate(() => document.querySelector('[data-nav-item=today]').getAttribute('aria-current') === 'page'), JSON.stringify(w));
   ok('W1: focus is in the window\'s follow-up input', await focused(page) === 'Ask a follow-up or give a command');
   await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   ok('W1: Esc closes the window and returns focus to the field - its ring on, the panel and its dimmer shut, so the page takes the next click', await win(page) === null && await focused(page) === 'Search or ask Scout' && await page.evaluate(() => !document.querySelector('[data-shell-panel]') && !document.querySelector('.sh-scrim') && document.querySelector('.sh-sf').classList.contains('is-focus')));

@@ -1,5 +1,6 @@
 import '../../ui/kitTheme';
 import { T, KIT_MAX_WIDTH } from '../../ui/tokens';
+import { HEADER_H } from '../../shell/shellStyles';
 
 // scout-v2 REV3 Stage 2 - the bar's look, from specs/design/scout-v2 (ScoutBar / ScoutAsk / ScoutPhone). Neon (D8) only
 // on Scout's own parts: the star, the focus ring + glow, the sweep, matched text, the sort Scout chose, the keyboard
@@ -196,9 +197,9 @@ const SCOUT_CSS = `
 .scout-sheet .scout-confirm__foot .scout-btn { min-height:36px; }
 /* app-shell-v2 W1 / W2 - the Scout window (a right drawer, a full sheet on a phone) and the Scout page: the thread laid
    out in place. No neon edge here: in the shell, neon is the focused field's only. */
-.scout-win { position:fixed; top:0; right:0; bottom:0; z-index:4002; width:640px; max-width:100vw; box-sizing:border-box; display:flex; flex-direction:column; background:var(--ui-ground); color:var(--ui-text); border-left:1px solid ${edge(70)}; box-shadow:-12px 0 32px rgba(0,0,0,.35); font-family:'Geist', ui-sans-serif, system-ui, sans-serif; }
+.scout-win { position:fixed; top:${HEADER_H}px; right:0; bottom:0; z-index:4002; width:640px; max-width:100vw; box-sizing:border-box; display:flex; flex-direction:column; background:var(--ui-ground); color:var(--ui-text); border-left:1px solid ${edge(70)}; box-shadow:-12px 0 32px rgba(0,0,0,.35); font-family:'Geist', ui-sans-serif, system-ui, sans-serif; }
 .scout-win[hidden] { display:none; }
-.scout-win[data-scout-window="sheet"] { left:0; width:100vw; border-left:0; z-index:4600; }
+.scout-win[data-scout-window="sheet"] { top:0; left:0; width:100vw; border-left:0; z-index:4600; }
 .scout-win__top { display:flex; align-items:center; gap:8px; height:56px; flex:none; padding:0 10px 0 18px; border-bottom:1px solid ${edge(45)}; }
 .scout-win__top h2 { margin:0; font-size:16px; font-weight:600; }
 .scout-win__top .scout-btn { width:36px; height:36px; justify-content:center; }
