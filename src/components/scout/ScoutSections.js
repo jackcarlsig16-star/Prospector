@@ -116,6 +116,7 @@ function PhoneCard({ item, kind, actions, members }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span style={{ flex: 1, minWidth: 0 }}>{kind === 'task' ? r.text : item.title}</span>{kind === 'person' && <HeatPill heat={r.heat} band={r.heat_band} size="sm" />}</span>
       {kind === 'person' && <small className="scout-dim">{[r.title, r.company?.name].filter(Boolean).join(' · ')}</small>}
       <div><span>{kind === 'person' ? (r.last_visit ? `visit ${fmt(r.last_visit)}${r.last_path ? ` · ${r.last_path}` : ''}` : r.last_email ? `${r.last_email.what} ${fmt(r.last_email.at)}` : 'no visit yet') : kind === 'task' ? <>{[r.link?.name, ownerName(r, members).name].filter(Boolean).join(' · ')} · {due(r)}</> : [entityLabel(item.entity), item.subtitle, item.date ? fmt(item.date) : item.score].filter(Boolean).join(' · ')}</span>{actions}</div>
+      {kind === 'task' && r.steps && <small className="scout-dim" data-scout-steps>{r.steps.done}/{r.steps.total} steps done</small>}
       <Result r={item.result} />
     </div>
   );

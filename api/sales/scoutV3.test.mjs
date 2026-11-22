@@ -71,7 +71,7 @@ test('the exact Nov 10 ask -> ① five people ② five tasks: per-part reads, th
   const people = Array.from({ length: 8 }, (_, i) => person(`prospect:p${i}`, `Person ${i}`, 'Cloudflare', 90 - i, i < 7 ? 'hot' : 'warm'));
   people.push(person('prospect:zz', 'Snoozed Sam', 'Cloudflare', 99, 'hot', { snooze_until: '2026-12-01' }));
   salesReads.peopleActivity = async () => ({ status: 200, body: { rows: people } });
-  const todos = [todo(1, null, u('b')), todo(2, '2026-11-20'), todo(3, '2026-11-01'), todo(4, '2026-11-12', u('b')), todo(5, '2026-10-20'), todo(6, null), todo(7, '2026-11-12'), todo(8, '2026-11-30')];
+  const todos = [todo(1, null, u('b')), todo(2, '2026-11-20'), todo(3, '2026-11-01'), todo(4, '2026-11-12', u('b')), { ...todo(5, '2026-10-20'), steps: [{ done: true }, { done: false }, { done: false }] }, todo(6, null), todo(7, '2026-11-12'), todo(8, '2026-11-30')];
   salesReads.openTodosFor = async () => ({ rows: todos, total: todos.length });
   const calls = [];
   askDeps.now = () => NOW;
@@ -94,6 +94,8 @@ test('the exact Nov 10 ask -> ① five people ② five tasks: per-part reads, th
   assert.deepEqual(s2.rows.map(x => x.row.due), ['2026-10-20', '2026-11-01', '2026-11-12', '2026-11-12', '2026-11-20']);
   assert.deepEqual(s2.rows.slice(2, 4).map(x => x.row.owner), ['mine', 'another owner'], 'yours first on a tie');
   assert.equal(s2.rule, TODO_RULE);
+  // app-shell-v2 C2: a to-do's steps ride on its row (the card says "1/3 steps done"); a to-do with none carries null
+  assert.deepEqual(s2.rows.map(x => x.row.steps), [{ done: 1, total: 3 }, null, null, null, null]);
   assert.equal(r.body.summary, 'Two parts: five people on the site and five tasks.');
   assert.ok(!JSON.stringify(r.body).includes('@'));
   assert.ok(!/Records \(/.test(r.body.answer_md));
