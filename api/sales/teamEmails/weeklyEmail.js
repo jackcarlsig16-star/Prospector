@@ -8,6 +8,8 @@ import { SETTINGS_URL, FOOTER_WORDS } from './visitorEmail.js';
 // cells in a table (% widths, a pixel height each, this week's bar hollow, a week with no number a hairline) - no SVG,
 // no image, no external CSS. The pace rule is stated once, under the title. A LinkedIn row says who typed it and when,
 // or "not entered". The text part carries the same rows in aligned columns. Names are first names only; no address.
+// email-by-member-v1 M5: when the body carries member rows (goals/weekly?member=all), one "By member" table under
+// Outbound - last week against the week before, the route's own weekly digits per member.
 export const SCORECARD_URL = `${ORIGIN}/?tab=dashboard&view=scorecard`;
 export const GROUP_HUE = { Outbound: LAYERS.sent.color, Site: LAYERS.visitors.color, Pipeline: LAYERS.first_touched.color, LinkedIn: LAYERS.reply_rate.color };
 const STRIP_PX = 18;
@@ -36,6 +38,10 @@ const enteredWords = m => {
   const one = (label, e) => (e ? `${label} entered by ${e.by} ${mdIso(e.at)}` : null);
   return [one('last week', m.entered?.last_week), one('this week', m.entered?.this_week)].filter(Boolean).join(' · ') || 'not entered';
 };
+export const MEMBER_COLS = [['delivered', 'Delivered'], ['human_open_rate', 'Open rate'], ['replies', 'Replies'], ['meetings_set', 'Meetings']];
+const MEMBER_WIDTHS = [28, 18, 18, 18, 18];
+// A member's last full week and the week before it, from the row's own series.
+const weeksOf = m => { const s = m.series; return { last: s[s.length - 2]?.value ?? null, before: s[s.length - 3]?.value ?? null }; };
 const maxOf = m => Math.max(0, ...m.series.map(s => s.value ?? 0));
 
 function stripHtml(m, hue) {
@@ -82,9 +88,13 @@ export function buildWeeklyEmail(weekly) {
       tw.goal != null ? `${big(val(m, tw.goal))}${tw.progress != null ? small(`${Math.round(tw.progress * 100)}% of goal`) : ''}` : dash,
     ];
   };
+  const memberRows = (weekly.rows || []).length > 1 ? weekly.rows : [];
+  const memberCell = (r, key) => { const m = r.metrics.find(x => x.key === key), w = weeksOf(m); return { now: val(m, w.last), was: val(m, w.before) }; };
+  const memberHtml = memberRows.length ? `<div style="font:600 12px ${SANS};color:${DARK.text};margin-top:22px">By member <span style="font-weight:400;color:${DARK.muted}">· last week vs the week before</span></div>
+${dataTable(['Member', ...MEMBER_COLS.map(c => c[1])], MEMBER_WIDTHS, memberRows.map(r => [`<div style="font:600 13px ${SANS};color:${DARK.text};line-height:1.3">${esc(r.name)}</div>`, ...MEMBER_COLS.map(([key]) => { const c = memberCell(r, key); return `${big(c.now)}${small(`vs ${esc(c.was)}`)}`; })]))}` : '';
   const groupHtml = ([g, list]) => `<tr><td style="padding:24px 0 0">
 <div style="font:600 11px ${MONO};letter-spacing:.1em;text-transform:uppercase;color:${GROUP_HUE[g]}">${esc(g)}${g === 'LinkedIn' ? `<span style="color:${DARK.faint};letter-spacing:.04em;text-transform:none;font-weight:400"> · typed by a member</span>` : ''}</div>
-${dataTable(HEADS, WIDTHS, list.map(row))}</td></tr>`;
+${dataTable(HEADS, WIDTHS, list.map(row))}${g === 'Outbound' ? memberHtml : ''}</td></tr>`;
   const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
 ${groups.map(groupHtml).join('\n')}
 <tr><td style="padding:26px 0 0"><div style="border-top:1px solid ${DARK.rule};padding-top:20px">
@@ -110,16 +120,19 @@ ${groups.map(groupHtml).join('\n')}
       ...(manual ? [`  ${enteredWords(m)}`] : []),
     ].join('\n');
   };
+  const MCOLS = [22, 20, 20, 20];
+  const memberText = memberRows.length ? ['', 'By member · last week (the week before)', ['Member', ...MEMBER_COLS.map(c => c[1])].map((c, i) => (i < MCOLS.length ? c.padEnd(MCOLS[i]) : c)).join(' ').trimEnd(),
+    ...memberRows.map(r => [r.name, ...MEMBER_COLS.map(([key]) => { const c = memberCell(r, key); return `${c.now} (${c.was})`; })].map((c, i) => (i < MCOLS.length ? String(c).padEnd(MCOLS[i]) : c)).join(' ').trimEnd())] : [];
   const text = [
     eyebrow.toUpperCase(), title, `${dayWords} ${rule}`, `Open the Scorecard → ${SCORECARD_URL}`,
-    ...groups.flatMap(([g, list]) => ['', `${g.toUpperCase()}${g === 'LinkedIn' ? ' · typed by a member' : ''}`, line(['Metric', 'Last week', 'This week', 'Change', 'Goal', `${weekly.weeks.length} weeks`]), ...list.map(textRow)]),
+    ...groups.flatMap(([g, list]) => ['', `${g.toUpperCase()}${g === 'LinkedIn' ? ' · typed by a member' : ''}`, line(['Metric', 'Last week', 'This week', 'Change', 'Goal', `${weekly.weeks.length} weeks`]), ...list.map(textRow), ...(g === 'Outbound' ? memberText : [])]),
     '', `Each strip is the last ${weekly.weeks.length} weeks, oldest first; · is a week with no number. ▲ moved the good way · ▼ the bad way, against the same point last week.`,
     '', '—', FOOTER_WORDS,
   ].join('\n');
 
   const manual = weekly.metrics.filter(m => m.kind === 'manual');
   return {
-    subject, html, text, rows: weekly.metrics.length, groups: groups.length,
+    subject, html, text, rows: weekly.metrics.length, groups: groups.length, member_rows: memberRows.length,
     strips: weekly.metrics.filter(m => m.series.some(s => s.value != null)).length,
     goals: weekly.metrics.filter(m => m.this_week.goal != null).length,
     entered: manual.filter(m => m.entered?.last_week || m.entered?.this_week).length, not_entered: manual.filter(m => !m.entered?.last_week && !m.entered?.this_week).length,

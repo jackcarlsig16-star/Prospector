@@ -20,6 +20,7 @@ import SourcesView from './SourcesView';
 import ClientsView from './ClientsView';
 import TopTargetsView from './topTargets/TopTargetsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
+import MailboxMapSettings from './MailboxMapSettings';
 import HomeView, { PERIODS, DEFAULT_PERIOD } from './HomeView';
 import { dayTitle } from './todayModel';
 import { linkedTo } from '../tasks/LinkedTasks';
@@ -286,7 +287,10 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
         {section === 'pipeline' && view === 'clients' && <ClientsView businessId={businessId} />}
         {section === 'pipeline' && view === 'top-targets' && me && <TopTargetsView businessId={businessId} canEdit={canEdit} meId={meId} members={members} />}
         {section === 'settings' && view === 'team-emails' && me && (
-          <TeamEmailsSettings businessId={businessId} meId={meId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <TeamEmailsSettings businessId={businessId} meId={meId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
+            <MailboxMapSettings businessId={businessId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
+          </div>
         )}
         {section === 'pipeline' && view === 'campaigns' && me && (
           <CampaignsView businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} meId={meId} />

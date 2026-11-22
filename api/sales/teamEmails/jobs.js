@@ -95,10 +95,10 @@ export async function weeklyEmailJob(supabase, businessId, { now = Date.now(), d
   if (!settings) return { status: 'skipped', reason: 'no team email settings' };
   if (settings.weekly_pending) return { status: 'skipped', reason: WEEKLY_PENDING_ERROR };
   if (!settings.weekly_on && !test) return { status: 'skipped', reason: 'weekly funnel email is off' };
-  const weekly = (await loadWeekly(supabase, businessId, { now })).body;
+  const weekly = (await loadWeekly(supabase, businessId, { now, member: 'all' })).body;
   const mail = buildWeeklyEmail(weekly);
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'weekly', subject: mail.subject, html: mail.html, text: mail.text, slot: laClock(now).date, test }, deps);
-  return { ...sent, rows: mail.rows, strips: mail.strips, goals: mail.goals, entered: mail.entered, subject: mail.subject };
+  return { ...sent, rows: mail.rows, member_rows: mail.member_rows, strips: mail.strips, goals: mail.goals, entered: mail.entered, subject: mail.subject };
 }
 // The days the weekly email runs for a workspace: Friday while its switch is on, never otherwise (so an OFF switch
 // claims no slot and is never "missed").

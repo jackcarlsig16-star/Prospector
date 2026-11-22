@@ -10,6 +10,8 @@ import { addDays } from './goalsShared.js';
 import { hasPii } from './scrubText.js';
 import { MEMBER_KEYS, UNASSIGNED, WORDING, memberRows } from './weeklyMetrics.js';
 import { loadWeekly } from './weeklyRoutes.js';
+import { buildWeeklyEmail, MEMBER_COLS } from './teamEmails/weeklyEmail.js';
+import { GROUPS, METRICS } from './weeklyMetrics.js';
 import { windowValues } from './pulseMath.js';
 import { listMailboxes, saveMailbox, mailboxKey } from './mailboxMap.js';
 import { parseAsk, mergeVocab } from '../scout/retrieve.js';
@@ -191,4 +193,25 @@ test('M6: the three asks route to the member intent alone; the lines carry the m
   assert.equal(mine.items[mine.items.length - 1].text, `${WORDING.member} ${WORDING.week} ${WORDING.pace}`);
   for (const it of [...cy.items, ...most.items, ...mine.items, ...dee.items]) { assert.ok(!hasPii(it.text), it.text); assert.ok(!it.text.includes(AT)); }
   assert.equal(addDays(MON, -7), LAST);
+});
+
+test("M5: member=all carries the team's whole read too, and the Friday email built from it gains one By member table under Outbound - last week vs the week before, names only", async () => {
+  const all = (await weekly(seed(), 'all')).body, team = (await weekly(seed(), 'team')).body;
+  assert.deepEqual(all.metrics, team.metrics);
+  assert.deepEqual(all.groups, GROUPS);
+  assert.equal(all.metrics.length, METRICS.length);
+  const mail = buildWeeklyEmail(all), plain = buildWeeklyEmail(team);
+  assert.equal(mail.member_rows, 4);
+  assert.equal(mail.rows, plain.rows);
+  assert.equal(plain.member_rows, 0);
+  assert.ok(!plain.html.includes('By member') && !plain.text.includes('By member'));
+  assert.equal(mail.html.split('By member').length, 2);
+  assert.ok(mail.html.indexOf('By member') < mail.html.indexOf('>Site<') && mail.html.indexOf('By member') > mail.html.indexOf('>Outbound<'), 'the table sits under Outbound, above Site');
+  for (const name of ['Ana', 'Cy', UNASSIGNED.name, 'Team']) assert.ok(mail.html.includes(`>${name}</div>`) && mail.text.includes(name), name);
+  for (const [, label] of MEMBER_COLS) assert.ok(mail.html.includes(`>${label}</th>`), label);
+  // Ana's last full week (Nov 9-15) and the week before, the row's own digits
+  const ana = of(all.rows[0].metrics, 'delivered').series;
+  assert.ok(mail.text.includes(`Ana`.padEnd(22) + ` ${`${ana[ana.length - 2].value ?? '—'} (${ana[ana.length - 3].value ?? '—'})`}`));
+  const strip = t => t.replace(/https?:\/\/\S+/g, '');
+  assert.ok(!strip(mail.html).includes(AT) && !mail.text.includes(AT) && !mail.html.includes('.test') && !mail.text.includes('.test'), 'no address or mailbox domain in the email');
 });

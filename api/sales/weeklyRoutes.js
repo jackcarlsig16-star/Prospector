@@ -18,7 +18,8 @@ export const NOTE_MAX = 140;
 
 // email-by-member-v1 M2 - ?member=team (default) | <user id> | unassigned | all. A member's read is the SAME registry
 // over the rows of the mailboxes sales_mailbox_owners gives that member (MEMBER_KEYS only, goals stay the team's);
-// "all" = one row set per sending member, the unassigned mailboxes when there are any, and the team, off one load.
+// "all" = the team's whole read plus `rows`: one MEMBER_KEYS set per sending member, the unassigned mailboxes when
+// there are any, and the team - off one load (the Scorecard, the Email page and the Friday email read this one).
 // No mailbox address is in any response - a member is a name, an unmapped mailbox is "Unassigned mailbox".
 export async function loadWeekly(supabase, businessId, { weeks, member = 'team', now = Date.now() } = {}) {
   const n = clampWeeks(weeks);
@@ -56,9 +57,9 @@ export async function loadWeekly(supabase, businessId, { weeks, member = 'team',
   const frame = { members: senders, unassigned_mailboxes: unassigned };
   if (member === 'team' || member == null || member === '') return reply(200, { ...team(), member: { id: 'team', name: 'Team' }, ...frame });
   if (member === 'all') {
-    const t = team(), { metrics, groups, ...head } = t;
+    const t = team();
     const whos = [...senders, ...(unassigned ? [UNASSIGNED] : [])];
-    return reply(200, { ...head, ...frame, rows: [...whos.map(w => ({ ...w, metrics: one(w).metrics })), { id: 'team', name: 'Team', metrics: metrics.filter(x => MEMBER_KEYS.includes(x.key)) }] });
+    return reply(200, { ...t, ...frame, rows: [...whos.map(w => ({ ...w, metrics: one(w).metrics })), { id: 'team', name: 'Team', metrics: t.metrics.filter(x => MEMBER_KEYS.includes(x.key)) }] });
   }
   const found = members.find(x => x.userId === member);
   if (member !== UNASSIGNED.id && !found) return reply(400, { error: 'member must be team, all, unassigned or a member of this workspace' });

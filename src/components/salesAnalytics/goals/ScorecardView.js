@@ -8,6 +8,7 @@ import { laWeekStart } from '../periods';
 import { Sparkline } from './PulseTiles';
 import WeeklyChart from './WeeklyChart';
 import { GROUP_COLOR, md, isRate, valueText, fullName, statusOf, changeOf, paceText, sparkLabel } from './scorecardWeekly';
+import { memberMetricRows, memberSpark, ChangeMark } from './EmailByMember';
 import { cardStyle, labelStyle, subStyle, numStyle, EditableNumber, ErrorNote, NeedsMigration, Btn, fmt, pct, monthName, monthOf, weeksOfMonth } from './goalsUi';
 
 // weekly-funnel-v1 Stage 2 - Dashboard › Scorecard, the weekly funnel. The rows are the registry's (GET goals/weekly:
@@ -17,6 +18,8 @@ import { cardStyle, labelStyle, subStyle, numStyle, EditableNumber, ErrorNote, N
 // week hollow) that opens the full chart · the Month column (dashboard-v3: to date / goal + a ring, from GET
 // goals/scorecard, for the rows that have a month). A LinkedIn cell is typed by a Member for this week or last week; an
 // empty one is "—". Print = this table alone, white ground. Under 760 px: one tile per metric with its line, no table.
+// email-by-member-v1 M4: the read is goals/weekly?member=all (the same team rows + each member's); an Outbound row that
+// has member rows opens them above its chart - the same cells, no goal (goals are team numbers), no Month.
 // ROWS = the rows the month route knows (the Month column, the no-goals banner, Copy last month's goals).
 export const ROWS = [
   { key: 'total_in_sequence', name: 'In sequence' },
@@ -101,7 +104,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
   // and the rows on screen stay up while it reloads.
   useEffect(() => {
     let live = true;
-    goalsApi.weekly(businessId).then(d => { if (live) setWeekly(d); }).catch(e => { if (live) setError(e); });
+    goalsApi.weeklyByMember(businessId).then(d => { if (live) setWeekly(d); }).catch(e => { if (live) setError(e); });
     return () => { live = false; };
   }, [businessId, tick]);
   const monthData = data?.month === month ? data : null;
@@ -246,6 +249,11 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
           </div>
           {p != null ? <Bar p={p} status={statusOf(p)} width="100%" /> : pick === 'month' ? monthGoalCell(mr, mc) : pick === 'this' ? weekGoalCell(m) : null}
           {pick === 'this' && nextGoalLine(m)}
+          {pick !== 'month' && memberMetricRows(weekly, m.key).length > 0 && (
+            <span data-member-line style={{ ...small, borderTop: `1px solid ${SA.track}`, paddingTop: 8 }}>
+              {memberMetricRows(weekly, m.key).map(r => `${r.name} ${valueText(r.metric, pick === 'last' ? r.metric.last_week?.value : r.metric.this_week.to_date)}`).join(' · ')}
+            </span>
+          )}
         </div>
       );
     };
@@ -282,7 +290,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
       <tr key={m.key} id={`score-row-${m.key}`} data-row={m.key}>
         <td style={{ ...td, textAlign: 'left', whiteSpace: 'normal' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
-            <button type="button" data-expand aria-expanded={open} aria-controls={`score-chart-${m.key}`} title={`${open ? 'Hide' : 'Show'} the ${m.series.length}-week chart`} onClick={toggle}
+            <button type="button" data-expand aria-expanded={open} aria-controls={`score-chart-${m.key}`} title={`${open ? 'Hide' : 'Show'} ${memberMetricRows(weekly, m.key).length ? 'the member rows and ' : ''}the ${m.series.length}-week chart`} onClick={toggle}
               style={{ background: 'none', border: 0, padding: 0, font: 'inherit', fontWeight: 500, color: SA.text, cursor: 'pointer', textAlign: 'left' }}>
               <span aria-hidden="true" className="no-print" style={{ display: 'inline-block', width: 12, color: SA.muted, fontSize: 10 }}>{open ? '▾' : '▸'}</span>{m.name}
             </button>
@@ -316,6 +324,17 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
           )}
         </td>
       </tr>,
+      ...(open ? memberMetricRows(weekly, m.key).map(r => (
+        <tr key={`${m.key}-${r.id}`} data-member-of={m.key} data-member-row={r.id} className="no-print">
+          <th scope="row" style={{ ...td, height: 44, textAlign: 'left', fontWeight: 400, paddingLeft: 34, color: SA.text, background: SA.inset }}>{r.name}</th>
+          <td style={{ ...td, height: 44, background: SA.inset }}><span data-value style={{ ...big, fontSize: 13.5 }}>{valueText(r.metric, r.metric.last_week?.value)}</span></td>
+          <td style={{ ...td, height: 44, background: SA.inset }}><span style={stack}><span data-value style={{ ...big, fontSize: 13.5 }}>{valueText(r.metric, r.metric.this_week.to_date)}</span>{paceLine(r.metric)}</span></td>
+          <td style={{ ...td, height: 44, background: SA.inset }}>{r.metric.this_week.delta == null ? faint : <span style={stack}><ChangeMark m={r.metric} /><span style={small}>vs {valueText(r.metric, r.metric.this_week.same_point_last_week)}</span></span>}</td>
+          <td data-member-goal style={{ ...td, height: 44, background: SA.inset }}><span style={small}>team goal</span></td>
+          <td style={{ ...td, height: 44, background: SA.inset }}>{memberSpark(r.name, r.metric)}</td>
+          <td style={{ ...td, height: 44, background: SA.inset }}>{faint}</td>
+        </tr>
+      )) : []),
       open && (
         <tr key={`${m.key}-chart`} id={`score-chart-${m.key}`} data-expanded={m.key} className="no-print">
           <td colSpan={COLS} style={{ padding: '12px 14px 14px', background: SA.inset, borderBottom: `1px solid ${SA.track}`, textAlign: 'left' }}><WeeklyChart metric={m} wording={weekly.wording} /></td>
@@ -355,7 +374,7 @@ export default function ScorecardView({ businessId, isOwner, canEdit = false, to
       )}
       {saveBlock}
       <div className="no-print" style={{ display: 'flex', gap: 14, alignItems: 'center', fontSize: 12, color: SA.muted, flexWrap: 'wrap' }}>
-        <span>{isOwner ? 'Click a goal to edit it in place.' : 'Read-only on this account.'}{canEdit && !isOwner ? ' The LinkedIn cells are yours to type.' : ''} Click a metric for its chart.</span>
+        <span>{isOwner ? 'Click a goal to edit it in place.' : 'Read-only on this account.'}{canEdit && !isOwner ? ' The LinkedIn cells are yours to type.' : ''} Click a metric for its chart{weekly?.rows?.length > 1 ? ' - an Outbound row also opens its member rows' : ''}.</span>
         <span aria-hidden="true" style={{ width: 1, height: 20, background: SA.border }} />
         <span style={{ display: 'inline-flex', gap: 14, flexWrap: 'wrap' }}>{[['ok', '≥ 90%'], ['warn', '50–89%'], ['bad', '< 50%']].map(([s, l]) => <span key={s} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><i style={{ width: 8, height: 8, borderRadius: 999, background: tone(s), display: 'inline-block' }} />{l}</span>)}</span>
         <span aria-hidden="true" style={{ width: 1, height: 20, background: SA.border }} />

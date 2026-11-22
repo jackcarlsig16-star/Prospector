@@ -10,6 +10,7 @@ import Segmented from '../../ui/Segmented';
 import { PERIODS, DEFAULT_PERIOD } from './goals/HomeView';
 import { PulseGrid, md, agoOf } from './goals/PulseTiles';
 import ExplorerView from './goals/ExplorerView';
+import { ByMemberTable, MemberStrip, memberItems, memberRow } from './goals/EmailByMember';
 import InsightsPanel from './InsightsPanel';
 import MailboxHealth from './MailboxHealth';
 import SequenceLeaderboard from './SequenceLeaderboard';
@@ -22,6 +23,9 @@ import { flashTo, ErrorNote, Btn } from './goals/goalsUi';
 // the email defaults (six delivery layers, 9 weeks, split Mailbox, tall; the band draws because hard bounce / spam are
 // on). WHY (1.6fr) = every live insight as a compact row + Dismissed ▾; MAILBOXES (1fr) = the pulse's tiles; SEQUENCES =
 // the DataTable with per-step rows. Stage 5 dropped the widget registry: HomeLover is the only Sales workspace.
+// email-by-member-v1 M3: WHO (Team · each member with a mapped mailbox) above the strip - Team keeps the pulse tiles and
+// the period; a member's strip is that member's registry rows (GET goals/weekly?member=all), always this week to date -
+// and the By member table under it.
 const EMAIL_LAYERS = ['sent', 'delivered_rate', 'hard_bounce_rate', 'spam_rate', 'human_open_rate', 'reply_rate'];
 const EXPLORER_DEFAULTS = { layers: EMAIL_LAYERS, show: 'lines', by: 'week', split: 'mailbox', height: 'tall' };
 const fmt = n => (n == null ? '—' : Number(n).toLocaleString('en-US'));
@@ -43,6 +47,9 @@ export default function AnalyticsView({ businessId, canEdit }) {
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
   const [pulse, setPulse] = useState(null);
   const [pulseError, setPulseError] = useState('');
+  const [member, setMember] = useState('team');
+  const [byMember, setByMember] = useState(null);
+  const [byMemberError, setByMemberError] = useState('');
   const [insights, setInsights] = useState(null);
   const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
   const [allRows, setAllRows] = useState([]);
@@ -61,6 +68,11 @@ export default function AnalyticsView({ businessId, canEdit }) {
     return goalsApi.pulse(businessId, { period, scope: 'email' }).then(setPulse).catch(e => setPulseError(e.message));
   }, [businessId, period]);
   useEffect(() => { loadPulse(); }, [loadPulse]);
+  const loadByMember = useCallback(() => {
+    setByMemberError('');
+    return goalsApi.weeklyByMember(businessId).then(setByMember).catch(e => setByMemberError(e.message));
+  }, [businessId]);
+  useEffect(() => { loadByMember(); }, [loadByMember]);
   const load = useCallback(async () => {
     setError('');
     try {
@@ -89,7 +101,7 @@ export default function AnalyticsView({ businessId, canEdit }) {
     try {
       const run = await triggerSync(businessId);
       setSyncMessage(run.status === 'success' ? 'Sync complete.' : `Sync finished: ${run.status}${run.error_text ? ` (${run.error_text})` : ''}`);
-      await Promise.all([load(), loadPulse()]);
+      await Promise.all([load(), loadPulse(), loadByMember()]);
     } catch (e) { setSyncMessage(e.message); } finally { setSyncing(false); }
   };
   const handlePrint = () => { setExportMenuOpen(false); window.print(); };
@@ -100,6 +112,8 @@ export default function AnalyticsView({ businessId, canEdit }) {
   const syncedAt = pulse?.synced_at || lastRun?.finished_at || lastRun?.started_at;
   const periodLabel = PERIODS.find(([id]) => id === period)?.[1] || 'This week';
   const title = pulse ? `${md(pulse.from)} – ${md(pulse.to)} vs ${md(pulse.prev.from)} – ${md(pulse.prev.to)} · Apollo sequences, opens, replies · synced ${relativeTime(syncedAt)}${pulse.apollo_calls != null ? ` · ${fmt(pulse.apollo_calls)} Apollo calls` : ''}` : pulseError ? '' : 'Loading…';
+  const who = memberItems(byMember);
+  const picked = member === 'team' ? null : memberRow(byMember, member);
   const tools = toolsSlot && createPortal(
     <>
       <Segmented label="Period" items={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />
@@ -122,7 +136,14 @@ export default function AnalyticsView({ businessId, canEdit }) {
       </div>
       {syncMessage && <span role="status" style={{ fontSize: 12, color: SA.warn }}>{syncMessage}</span>}
       {(error || pulseError) && <ErrorNote message={error || pulseError} />}
-      {pulse && <PulseGrid tiles={EMAIL_TILES} metrics={pulse.metrics} period={period} />}
+      {who.length > 1 && (
+        <div data-member-control style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <Segmented label="Whose email numbers" items={who} value={member} onChange={setMember} />
+          {picked && <span data-member-note style={{ fontSize: 12, color: SA.muted }}>{picked.name} · this week to date vs the same point last week (the period above is the team's)</span>}
+        </div>
+      )}
+      {picked ? <MemberStrip row={picked} /> : pulse && <PulseGrid tiles={EMAIL_TILES} metrics={pulse.metrics} period={period} />}
+      <ByMemberTable all={byMember} error={byMemberError} selected={picked ? member : 'team'} onSelect={setMember} />
       <div id="sales-analytics-print-area" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
         <div className="print-only" style={{ fontSize: 14, fontWeight: 600, color: SA.text }}>HomeLover · Email · {title}</div>
         <ExplorerView businessId={businessId} canEdit={canEdit} context="email" defaults={EXPLORER_DEFAULTS} sub="email delivery efficiency and engagement on one chart · 9 weeks" />

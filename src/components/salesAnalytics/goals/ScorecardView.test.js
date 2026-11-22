@@ -3,7 +3,7 @@ import ScorecardView, { cellOf, prevGoalsLine, hasGoals, ROWS } from './Scorecar
 import { changeOf, paceText, chartData, valueText, sparkLabel } from './scorecardWeekly';
 import { goalsApi } from './goalsApi';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { scorecard: jest.fn(), saveTarget: jest.fn(), weekly: jest.fn(), saveManual: jest.fn(), explorer: jest.fn(), explorerViews: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { scorecard: jest.fn(), saveTarget: jest.fn(), weeklyByMember: jest.fn(), saveManual: jest.fn(), explorer: jest.fn(), explorerViews: jest.fn() } }));
 jest.mock('../exportCsv', () => ({ exportWidgetCsv: jest.fn() }));
 const mq = { phone: false };
 jest.mock('../../../utils/useMediaQuery', () => () => mq.phone);
@@ -65,7 +65,7 @@ const OCT = {
 beforeEach(() => {
   mq.phone = false;
   goalsApi.scorecard.mockImplementation((b, month) => Promise.resolve(month === '2026-11-01' ? NOV : month === '2026-10-01' ? OCT : { ...NOV, month, weeks: [], month_total: {} }));
-  goalsApi.weekly.mockResolvedValue(WEEKLY);
+  goalsApi.weeklyByMember.mockResolvedValue(WEEKLY);
   goalsApi.saveTarget.mockResolvedValue({});
   goalsApi.saveManual.mockResolvedValue({});
 });
@@ -104,7 +104,7 @@ test('1440: the rows are the route\'s, in its four groups, to the digit - Last w
   const s = slot();
   render(<ScorecardView businessId="b1" isOwner canEdit toolsSlot={s} />);
   await screen.findByRole('table');
-  expect(goalsApi.weekly).toHaveBeenCalledTimes(1); expect(goalsApi.weekly).toHaveBeenCalledWith('b1');
+  expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(1); expect(goalsApi.weeklyByMember).toHaveBeenCalledWith('b1');
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Scorecard');
   expect(screen.getByText(/November · week 1 of 5/)).toBeInTheDocument();
   expect([...document.querySelectorAll('[data-group], [data-row]')].map(r => r.getAttribute('data-group') || r.getAttribute('data-row'))).toEqual(
@@ -159,7 +159,7 @@ test('the no-goals banner and Copy October\'s goals stay: one PUT per October go
   expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'week', period_start: '2026-11-02', metric_key: 'total_in_sequence', goal: 3500 });
   expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'month', period_start: '2026-11-01', metric_key: 'partners_first_touched', goal: 100 });
   await waitFor(() => expect(goalsApi.scorecard).toHaveBeenCalledTimes(4));
-  expect(goalsApi.weekly).toHaveBeenCalledTimes(2);
+  expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(2);
 });
 
 test('a goal typed in place: this week\'s goal through PUT goals/targets with the row\'s goal key (a rate as a share, first-touched as the partners row in people); a week that has ended shows the route\'s words', async () => {
@@ -173,7 +173,7 @@ test('a goal typed in place: this week\'s goal through PUT goals/targets with th
   };
   type('Human open rate goal, Nov 2', '18.5');
   await waitFor(() => expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'week', period_start: '2026-11-02', metric_key: 'human_open_rate', goal: 0.185 }));
-  await waitFor(() => expect(goalsApi.weekly).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Human open rate goal, Nov 2' })).toBeNull());
   type('People first-touched goal, Nov 2', '60');
   await waitFor(() => expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'week', period_start: '2026-11-02', metric_key: 'partners_first_touched', goal: 60, unit: 'people' }));
@@ -202,7 +202,7 @@ test('LinkedIn: a Member (not the owner) types this week\'s and last week\'s cel
   fireEvent.change(screen.getByRole('textbox', { name: thisWeek }), { target: { value: '12' } });
   fireEvent.keyDown(screen.getByRole('textbox', { name: thisWeek }), { key: 'Enter' });
   await waitFor(() => expect(goalsApi.saveManual).toHaveBeenCalledWith('b1', { metric_key: 'linkedin_requests', week_start: '2026-11-02', value: 12 }));
-  await waitFor(() => expect(goalsApi.weekly).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByRole('textbox', { name: thisWeek })).toBeNull());
   // leaving the field saves a changed number...
   fireEvent.click(screen.getByRole('button', { name: lastWeek }));
@@ -323,10 +323,69 @@ test('next week\'s goal can be typed ahead: the Goal cell carries a "next wk" li
   fireEvent.change(input, { target: { value: '500' } });
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => expect(goalsApi.saveTarget).toHaveBeenCalledWith('b1', { period: 'week', period_start: '2026-11-09', metric_key: 'delivered', goal: 500 }));
-  await waitFor(() => expect(goalsApi.weekly).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(2));
   first.unmount();
   render(<ScorecardView businessId="b1" isOwner={false} canEdit={false} toolsSlot={null} />);
   await screen.findByRole('table');
   expect([...document.querySelectorAll('[data-next-goal]')].map(e => e.textContent)).toEqual(['next wk 18.0%', 'next wk 100 · carried']);
   expect(screen.queryByRole('button', { name: /goal, Nov 9$/ })).toBeNull();
+});
+
+// email-by-member-v1 M4 - the same read with member rows (goals/weekly?member=all).
+const memberOf = (id, name, delivered, open) => ({ id, name, metrics: [
+  wm('delivered', 'Delivered', 'Outbound', 'count', 'flow', [...none, delivered[0], delivered[1]], { same: delivered[2], pace: delivered[3] }),
+  wm('human_open_rate', 'Human open rate', 'Outbound', 'rate', 'flow', [...none, open[0], open[1]], { same: open[2] }),
+] });
+const WITH_MEMBERS = { ...WEEKLY, members: [{ id: 'u1', name: 'Jack' }, { id: 'u2', name: 'Cyrus' }], unassigned_mailboxes: 1, rows: [
+  memberOf('u1', 'Jack', [300, 180, 190, 315], [0.14, 0.15, 0.13]),
+  memberOf('u2', 'Cyrus', [110, 44, 50, 77], [0.11, 0.12, 0.1]),
+  memberOf('unassigned', 'Unassigned mailbox', [10, 5, 0, 9], [null, 0.2, null]),
+  { id: 'team', name: 'Team', metrics: WEEKLY.metrics.filter(m => ['delivered', 'human_open_rate'].includes(m.key)) },
+] };
+
+test('email-by-member-v1 M4: an Outbound row opens its member rows above the chart - the same cells to the digit, pace on a count and never on a rate, the goal column read-only; a row without member rows opens its chart alone', async () => {
+  goalsApi.weeklyByMember.mockResolvedValue(WITH_MEMBERS);
+  goalsApi.explorer.mockResolvedValue({}); goalsApi.explorerViews.mockResolvedValue([]);
+  render(<ScorecardView businessId="b1" isOwner canEdit toolsSlot={slot()} />);
+  await screen.findByRole('table');
+  expect(document.querySelectorAll('[data-member-of]')).toHaveLength(0);
+  const toggle = document.querySelector('[data-row="delivered"] [data-expand]');
+  expect(toggle).toHaveAttribute('title', 'Show the member rows and the 12-week chart');
+  fireEvent.click(toggle);
+  const rows = [...document.querySelectorAll('[data-member-of="delivered"]')];
+  expect(rows.map(r => r.getAttribute('data-member-row'))).toEqual(['u1', 'u2', 'unassigned']);
+  expect(rows.map(r => [...r.querySelectorAll('[data-value]')].map(v => v.textContent))).toEqual([['300', '180'], ['110', '44'], ['10', '5']]);
+  expect(rows[0]).toHaveTextContent('on pace for ~315');
+  expect(rows[0]).toHaveTextContent('▼ −10');
+  expect(rows[0].querySelector('[data-member-goal]')).toHaveTextContent('team goal');
+  expect(rows.flatMap(r => [...r.querySelectorAll('button, input')])).toHaveLength(0);
+  expect(within(rows[1]).getByRole('img', { name: /^Cyrus: Delivered, last 12 weeks/ })).toBeInTheDocument();
+  expect(rows[0].nextElementSibling).toBe(rows[1]);
+  expect(rows[2].nextElementSibling).toHaveAttribute('data-expanded', 'delivered');
+  fireEvent.click(document.querySelector('[data-row="human_open_rate"] [data-expand]'));
+  const rates = [...document.querySelectorAll('[data-member-of="human_open_rate"]')];
+  expect(rates.map(r => r.querySelectorAll('[data-value]')[1].textContent)).toEqual(['15.0%', '12.0%', '20.0%']);
+  expect(rates.flatMap(r => [...r.querySelectorAll('[data-pace="pace"]')])).toHaveLength(0);
+  expect(document.querySelectorAll('[data-member-of="delivered"]')).toHaveLength(0);
+  const site = document.querySelector('[data-row="companies_visited"] [data-expand]');
+  expect(site).toHaveAttribute('title', 'Show the 12-week chart');
+  fireEvent.click(site);
+  expect(document.querySelectorAll('[data-member-of]')).toHaveLength(0);
+  expect(document.querySelector('[data-expanded="companies_visited"]')).toBeInTheDocument();
+  expect(document.querySelector('[data-scorecard-table]').textContent).not.toMatch(/@/);
+});
+
+test('email-by-member-v1 M4 at 390: an Outbound tile carries one line of member numbers for the week picked; Month has none', async () => {
+  mq.phone = true;
+  goalsApi.weeklyByMember.mockResolvedValue(WITH_MEMBERS);
+  render(<ScorecardView businessId="b1" isOwner={false} toolsSlot={slot()} />);
+  await waitFor(() => expect(document.querySelectorAll('[data-tile]').length).toBeGreaterThan(0));
+  const line = k => document.querySelector(`[data-tile="${k}"] [data-member-line]`);
+  expect(line('delivered')).toHaveTextContent('Jack 180 · Cyrus 44 · Unassigned mailbox 5');
+  expect(line('human_open_rate')).toHaveTextContent('Jack 15.0% · Cyrus 12.0% · Unassigned mailbox 20.0%');
+  expect(line('companies_visited')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Last wk' }));
+  expect(line('delivered')).toHaveTextContent('Jack 300 · Cyrus 110 · Unassigned mailbox 10');
+  fireEvent.click(screen.getByRole('button', { name: 'Month' }));
+  expect(document.querySelectorAll('[data-member-line]')).toHaveLength(0);
 });

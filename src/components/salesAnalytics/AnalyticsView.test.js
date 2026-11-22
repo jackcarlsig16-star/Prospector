@@ -1,10 +1,11 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import AnalyticsView, { EMAIL_TILES } from './AnalyticsView';
 import { goalsApi } from './goals/goalsApi';
+import { BY_MEMBER } from './goals/byMemberFixture';
 import { fetchInsights, fetchEntities, fetchMetrics, fetchSequenceSteps, fetchRuns, triggerSync } from './salesApi';
 
 jest.mock('./salesApi', () => ({ fetchInsights: jest.fn(), fetchEntities: jest.fn(), fetchMetrics: jest.fn(), fetchSequenceSteps: jest.fn(), fetchRuns: jest.fn(), triggerSync: jest.fn(), dismissInsight: jest.fn(), setSequenceAudience: jest.fn() }));
-jest.mock('./goals/goalsApi', () => ({ goalsApi: { pulse: jest.fn() } }));
+jest.mock('./goals/goalsApi', () => ({ goalsApi: { pulse: jest.fn(), weeklyByMember: jest.fn() } }));
 jest.mock('./goals/ExplorerView', () => ({ __esModule: true, default: ({ context, defaults }) => <section aria-label="Explorer" data-explorer={context} data-defaults={JSON.stringify(defaults)} /> }));
 jest.mock('../../utils/useMediaQuery', () => () => false);
 
@@ -27,6 +28,8 @@ const PULSE = {
 };
 beforeEach(() => {
   goalsApi.pulse.mockResolvedValue(PULSE);
+  // By default nobody has a mapped mailbox: the page reads as before, with the team's row under the strip.
+  goalsApi.weeklyByMember.mockResolvedValue({ ...BY_MEMBER, members: [], unassigned_mailboxes: 0, rows: BY_MEMBER.rows.slice(3) });
   fetchInsights.mockResolvedValue({ insights: [{ id: 'R5', scope_key: 'week:2026-10-26', severity: 'bad', title: 'Sends may have stalled', evidence: 'e', cause: 'c', action: 'a', affected: [] }], not_enough_data: [], dismissed: [], computed_at: 'now' });
   fetchEntities.mockResolvedValue({ sequences: [{ id: 's1', name: 'HomeLover 5-Step · Fitness', active: true, cohort: 'Fitness', archived: false, num_steps: 5, is_performing_poorly: false, audience: 'employer', sender_email: 'jack@x' }], mailboxes: [] });
   fetchMetrics.mockResolvedValue([{ metric_key: 'unique_delivered', dim_type: 'sequence', dim_value: 's1', value: 316, metric_date: '2026-11-05' }]);
@@ -75,4 +78,37 @@ test('a Viewer gets Period and Export but no Sync now', async () => {
   const slot = document.getElementById('sales-frame-tools');
   expect(within(slot).queryByRole('button', { name: 'Sync now' })).toBeNull();
   expect(within(slot).getByRole('button', { name: 'Export' })).toBeInTheDocument();
+});
+
+test('email-by-member-v1 M3: Team · Jack · Cyrus above the strip; a member swaps the pulse tiles for that member\'s rows; the By member table sits under it and its names switch too', async () => {
+  goalsApi.weeklyByMember.mockResolvedValue(BY_MEMBER);
+  render(<AnalyticsView businessId="b1" canEdit />);
+  const who = await screen.findByRole('group', { name: 'Whose email numbers' });
+  expect(goalsApi.weeklyByMember).toHaveBeenCalledWith('b1');
+  expect(within(who).getAllByRole('button').map(b => b.textContent)).toEqual(['Team', 'Jack', 'Cyrus']);
+  expect(within(who).getByRole('button', { name: 'Team' })).toHaveAttribute('aria-pressed', 'true');
+  await screen.findByText('229');
+  expect(document.querySelectorAll('[data-pulse-tile]')).toHaveLength(7);
+  expect(document.querySelector('[data-member-strip]')).toBeNull();
+  const order = [...document.querySelectorAll('[data-member-control], [data-pulse], [data-by-member], [data-explorer]')].map(n => Object.keys(n.dataset)[0]);
+  expect(order).toEqual(['memberControl', 'pulse', 'byMember', 'explorer']);
+  fireEvent.click(within(who).getByRole('button', { name: 'Cyrus' }));
+  expect(document.querySelector('[data-member-strip]')).toHaveAttribute('data-member-strip', 'u2');
+  expect(document.querySelectorAll('[data-pulse-tile]')).toHaveLength(0);
+  expect(document.querySelector('[data-member-tile="meetings_set"] [data-value]')).toHaveTextContent('1');
+  expect(document.querySelector('[data-member-note]')).toHaveTextContent('Cyrus · this week to date vs the same point last week');
+  fireEvent.click(within(document.querySelector('[data-by-member]')).getByRole('button', { name: 'Jack' }));
+  expect(document.querySelector('[data-member-strip]')).toHaveAttribute('data-member-strip', 'u1');
+  expect(within(who).getByRole('button', { name: 'Jack' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(within(who).getByRole('button', { name: 'Team' }));
+  expect(document.querySelectorAll('[data-pulse-tile]')).toHaveLength(7);
+  expect(goalsApi.weeklyByMember).toHaveBeenCalledTimes(1);
+});
+
+test('email-by-member-v1: with no mapped mailbox there is no control - the pulse tiles and the team\'s row only', async () => {
+  render(<AnalyticsView businessId="b1" canEdit={false} />);
+  await screen.findByText('229');
+  await waitFor(() => expect(document.querySelectorAll('[data-member-row]')).toHaveLength(1));
+  expect(screen.queryByRole('group', { name: 'Whose email numbers' })).toBeNull();
+  expect(document.querySelector('[data-member-row]')).toHaveAttribute('data-member-row', 'team');
 });
