@@ -173,7 +173,11 @@ test('S4 a name nothing carries: no default reads, no model call, no ask counted
   const sb = seed(), registry = await reg();
   salesReads.peopleActivity = async () => ({ status: 200, body: { rows: [] } });
   let standing = 0;
-  const realTodos = salesReads.openTodosFor; salesReads.openTodosFor = async (...a) => { standing += 1; return { rows: [], total: 0 }; };
+  // FIX scout-generative G2: the standing context is the agenda's read set (Today, Top targets, goals/weekly)
+  const real = { loadToday: salesReads.loadToday, topTargets: salesReads.topTargets, loadWeekly: salesReads.loadWeekly };
+  salesReads.loadToday = async () => { standing += 1; return ({ view: { groups: [], strip: [], counts: { overdue: 0 } } }); };
+  salesReads.topTargets = async () => ({ status: 200, body: { rows: [] } });
+  salesReads.loadWeekly = async () => ({ status: 200, body: { week_start: '2026-11-16', metrics: [] } });
   const calls = model('should never be asked');
   const r = await ask(sb, registry, { auth: ana, body: { q: 'tell me about nothingco', scope: A } });
   assert.equal(r.status, 200); assert.equal(calls.length, 0); assert.equal(standing, 0);
@@ -190,7 +194,7 @@ test('S4 a name nothing carries: no default reads, no model call, no ask counted
   // an ask with no name in it keeps its fallback reads
   const c = await buildContext(sb, registry, { auth: ana, scope: A, q: 'what is the weather', now: NOW });
   assert.equal(c.cant, undefined); assert.equal(c.stats.intent, 'none'); assert.ok(standing > 0);
-  salesReads.openTodosFor = realTodos;
+  Object.assign(salesReads, real);
 });
 
 test('the index is read once per client and business for 5 minutes', async () => {

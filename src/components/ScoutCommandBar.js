@@ -128,7 +128,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       if (r.withheld) { setEdge({ kind: 'withheld', q: question }); setView('edge'); return; }
       // nothing to point at, or several candidates ("Which one?"): said under the answer on screen - no turn, no ask spent
       if (r.cant) { actions.askCant(r.cant, question); setView(current ? 'answer' : 'act'); return; }
-      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, ...(r.resolved ? { resolved: r.resolved } : {}), ...(r.offer ? { offer: r.offer } : {}), context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
+      const turn = { at, q: question, scope, elapsed, answer_md: r.answer_md, summary: r.summary || null, sections: r.sections || null, items: r.items || [], usage: r.usage, ask: r.ask, cap: r.cap, ...(r.resolved ? { resolved: r.resolved } : {}), ...(r.offer ? { offer: r.offer } : {}), ...(r.try?.length ? { try: r.try.slice(0, 3) } : {}), context_stats: { reads: r.context_stats?.reads || [], rows_by_entity: r.context_stats?.rows_by_entity || {} } };
       const next = [...turns, turn].slice(-THREAD_MAX);
       setFocus(r.resolved ? { rows: r.resolved.rows, label: focusLabel(r.resolved.rows) } : null);
       setTurns(next); saveThread(meId, next); setCurrent(turn); setView('answer');
@@ -213,7 +213,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       <AnswerPanel key={current.at} turn={current} phone={sheet || stacked} cards={mode === 'window'} scopeAll={current.scope === 'all'} colorOf={colorOf} viewer={viewer} canAct={canAct && current.scope === scope}
         scopeChip={<StaticScope name={opt?.name || allText} color={opt?.color} />}
         onOpen={openItem} inlineKey={inlineKey} members={members} menu={menu} onMenu={setMenu} onPick={(item, id, args) => { setMenu(null); actions.pick(item, id, args); }}
-        onCopy={actions.copy} act={actBlock} activeKey={actions.activeKey}
+        onCopy={actions.copy} act={actBlock} activeKey={actions.activeKey} onTry={example => ask(example)}
         focus={focus && <div className="scout-focus" data-scout-focus><span className="scout-pill">{focus.label}<button type="button" aria-label={`Clear the focus (${focus.label})`} title="Clear the focus" onClick={() => setFocus(null)}>×</button></span></div>}
         turns={turns} onReopen={reopen} onClear={clearThread} />
     );

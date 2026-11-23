@@ -20,13 +20,18 @@ export const Q_MAX = 500, THREAD_MAX = 6, TURN_MAX = 2000, ACTIONS_MAX = 5;
 export const ROWS_MAX = 200, CANDIDATES_MAX = 8;
 export const SYSTEM = [
   'You are Scout, the assistant inside Prospector, a sales workspace. You answer questions about the user\'s own records.',
-  'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: a label like [r1] followed by its fields.',
+  // FIX scout-generative G2: generative, grounded - the facts are the context's, the thinking is Scout's.
+  'Every FACT (a record, a number, a date, a name) comes only from the CONTEXT lines in the user message and is cited; your reasoning, grouping, ordering and recommendations are yours: say them plainly, as judgement, not as fact. Each context line is one record: a label like [r1] followed by its fields.',
+  // G3: judgement is marked
+  'A recommendation line starts with "I\'d" or "Suggestion:" so the reader can tell it from a read fact. Never state a number or a date that is not written in a context line.',
   'When the user says "show me" or asks for a list, reply with a short list, one line per record, and cite each record with its label exactly as written, like [r3]. Cite a record whenever you rely on it.',
   `List at most ${LIST_MAX} records in the prose; when more match, end with one line "+ n more (in the table): " followed by the remaining labels only, like "+ 3 more (in the table): [r16] [r17] [r18]".`,
   'Sort as asked (date, score, heat) and say which sort you used. Otherwise keep the context\'s order.',
   'Never invent a record, a number, a date or a contact detail. Email addresses and phone numbers are never in the context; never guess one.',
   'If the context does not hold what was asked, say so plainly and say what was read. Never direct the user to a screen, page, view, chip or filter: answer from the context, and when it lacks the answer, say what was read.',
-  'When the context opens with "No specific read matched", say in one sentence what was read, that nothing in it answers the question, and offer the example phrasings from that line, as "Try: ...".',
+  'When the context opens with "No specific read matched", answer the question as well as the context allows: reason over it, group it, recommend. End with one line: what was read, and up to three closer phrasings.',
+  // G1: the agenda's synthesis
+  'When a context line starts with "AGENDA", answer with a synthesis: a short ordered plan by day for the days that line names (like "Monday: ...", "Tuesday: ..."), or by theme when nothing is dated; then one line on the goals; then the three things you would push first and why, each citing its rows. If that line says there is no calendar read, say once that meetings are not included. Do not list every row: the rows are shown under the answer in their sections.',
   'Plain prose or bullets. No headings. No em dashes or en dashes: use a comma or a colon instead.',
   // scout-v3 S3: the rows are shown as a table under the answer, so the prose never restates them.
   'Name each record once. Never write "---". Do not add a "Records" list: the cited records are shown as rows.',
@@ -66,8 +71,10 @@ export function resolveRefs(text, items) {
     const it = items.get(label);
     if (!it) return '';
     if (!used.has(label)) used.set(label, it);
-    return it.title;
-  }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ');
+    // FIX scout-generative: a quiet row (the agenda's window line, a goal line) is a fact to cite, not a name to say -
+    // its label leaves the prose (seen live: "51 overdue ones carrying over Agenda window").
+    return it.quiet ? '' : it.title;
+  }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ').replace(/ +([,.;:])/g, '$1');
   const once = onceEach(answer, [...used.values()].map(it => it.title));
   return { answer_md: onceText(once, [...used.values()].filter(it => it.row?.text)).trim(), items: withMore(more, items, used) };
 }
@@ -126,6 +133,12 @@ export function sectioned(text, ctx) {
   const meta = p => ({ title: p.title || cleanText(p.q, 80), count: p.count, rule: p.rule, read: p.read, brief: p.brief, ...(p.fill ? { fill: p.fill } : {}) });
   if (ctx.parts.length < 2) {
     const r = resolveRefs(text, ctx.items), p = ctx.parts[0];
+    // G1: an intent whose rows come grouped (the agenda) shows every group as its own section, cited or not
+    if (p.groups) {
+      const sections = p.groups.map(g => { const rows = g.labels.map(l => ctx.items.get(l)).filter(Boolean); return { ...meta(p), title: g.title, brief: null, count: Math.min(rows.length, LIST_MAX), total: rows.length, rows: rows.slice(0, LIST_MAX), line: null }; });
+      const shown = new Map(sections.flatMap(x => x.rows).map(it => [`${it.entity}:${it.id}`, it]));
+      return { answer_md: r.answer_md, summary: r.answer_md, items: [...shown.values()], sections };
+    }
     return { ...r, summary: withoutRowLines(r.answer_md, r.items), sections: [{ ...meta(p), count: r.items.length, total: Math.max(p.count, r.items.length), rows: r.items, line: null }] };
   }
   const chunks = text.split(new RegExp(BLOCK.source, 'gm'));
@@ -144,6 +157,24 @@ export function sectioned(text, ctx) {
   });
   const answer_md = [summary, ...sections.map(x => `${x.title} (${x.count})\n${x.rows.length ? x.rows.map(r => `- ${r.title}`).join('\n') : x.line}`)].filter(Boolean).join('\n\n');
   return { answer_md, items: [...all.values()], summary, sections };
+}
+
+// FIX scout-generative G3 - the never-invent guard, in code: every number in the shown answer must be written in a
+// context line (or in the question). A date's parts count ("Nov 30" needs a 30 in the context, 2026-11-30 has one);
+// leading zeros and thousands commas are ignored. A small bare count (0-12, no %, no $, not a date's day) is the
+// model's own counting of the rows it cites and passes. -> the numbers that trace to nothing ([] = clean).
+const NUM = /\$?\d(?:[\d,]*\d)?(?:\.\d+)?\s?%?/g, MONTH_BEFORE = /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+$/i;
+const plainNum = n => n.replace(/[$,%\s]/g, '').replace(/^0+(?=\d)/, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+export function unsourcedNumbers(answer, sources) {
+  const known = new Set(sources.flatMap(s => String(s || '').match(NUM) || []).map(plainNum));
+  const out = [];
+  for (const m of String(answer || '').matchAll(NUM)) {
+    const raw = m[0].trim(), n = plainNum(raw);
+    if (!n || known.has(n)) continue;
+    const small = /^\d+$/.test(n) && Number(n) <= 12 && !/[$%]/.test(raw) && !MONTH_BEFORE.test(answer.slice(Math.max(0, m.index - 12), m.index));
+    if (!small && !out.includes(raw)) out.push(raw);
+  }
+  return out;
 }
 
 export function validateAsk(body = {}) {
@@ -223,10 +254,15 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
     summary = `${lead.line} ${summary.replace(lead.restated, '')}`.trim(); answer_md = `${lead.line} ${answer_md.replace(lead.restated, '')}`.trim();
     if (!items.some(i => i.entity === lead.item.entity && String(i.id) === String(lead.item.id))) { items = [lead.item, ...items]; sections[0].rows = [lead.item, ...sections[0].rows]; sections[0].count = sections[0].rows.length; sections[0].total = Math.max(sections[0].total, sections[0].count); }
   }
+  // G3: a number the context never held is named under the answer (the answer stays - the reader sees which to doubt)
+  const unverified = withheld ? [] : unsourcedNumbers(answer_md, [...ctx.lines, ...[...ctx.items.values()].map(i => i.title), v.q, laDateString(new Date(now)), lead?.line, follow?.line]);
+  if (unverified.length) { const note = `Check: ${unverified.join(', ')} ${unverified.length === 1 ? 'is' : 'are'} not in what Scout read.`; summary = `${summary}\n\n${note}`; answer_md = `${answer_md}\n\n${note}`; }
+  // G4: a weak match (the fallback, or an answer under 25 words) offers the three nearest phrasings
+  const weak = !withheld && (ctx.stats.intent === 'none' || answer_md.split(/\s+/).filter(Boolean).length < 25);
   const usage = { input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: data.usage ? estimateCostUsd(MODELS.STANDARD, data.usage) : null };
   // A6: the usage row has no json column, so the matched intent is logged beside it (the next real-ask report counts misses).
   console.log(`[scout/ask] intent=${ctx.stats.intent} reads=${ctx.stats.reads.length} lines=${ctx.lines.length} tokens=${usage.input_tokens}/${usage.output_tokens} user=${String(auth.user.id).slice(0, 8)}`);
-  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ...(lead?.offer && !withheld ? { offer: lead.offer } : {}), ...(follow && !withheld ? { resolved: { phrase: follow.phrase, line: follow.line, rows: follow.rows.map(r => ({ entity: r.entity, id: r.id, title: r.title })) } } : {}), ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
+  return { status: 200, body: { answer_md, summary, sections, items, usage, withheld, ...(lead?.offer && !withheld ? { offer: lead.offer } : {}), ...(unverified.length ? { unverified } : {}), ...(weak && ctx.stats.try?.length ? { try: ctx.stats.try } : {}), ...(follow && !withheld ? { resolved: { phrase: follow.phrase, line: follow.line, rows: follow.rows.map(r => ({ entity: r.entity, id: r.id, title: r.title })) } } : {}), ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
 }
 
 export async function askRoute(req, res) {

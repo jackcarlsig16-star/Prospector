@@ -130,7 +130,7 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   assert.ok(calls[0].messages[2].content.includes('CONTEXT (5 lines)') && /\[r\d+\] Thing 0 of a · note 0/.test(calls[0].messages[2].content) && !calls[0].messages[2].content.includes('t-a-0') && calls[0].system.includes('like [r3]'));
   assert.equal(sb.db.business_anthropic_usage.length, 1);
   assert.equal(sb.db.business_anthropic_usage[0].call_type, 'scout_ask');
-  assert.equal(r.body.answer_md, 'Your things, newest first - Thing 1 of a then Thing 0 of a and .');
+  assert.equal(r.body.answer_md, 'Your things, newest first - Thing 1 of a then Thing 0 of a and.');
   assert.deepEqual(r.body.items.map(i => i.id), ['t-a-1', 't-a-0']);
   assert.equal(r.body.items[0].open.params.open, 'thing-t-a-1');
   assert.equal(r.body.usage.input_tokens, 900); assert.equal(typeof r.body.usage.cost_usd, 'number');
@@ -150,7 +150,7 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   // Stage 3 finding: an answer citing records is NOT withheld (the check reads the shown text, labels resolved).
   askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: `Two: [${labelIn(args.messages.at(-1).content, 'Thing 1 of a')}] and [r777].` }], usage: { input_tokens: 10, output_tokens: 5 } }; };
   const ids = await ask(sb, reg, { auth: owner, body: { q: 'show me things', scope: A } });
-  assert.equal(ids.body.withheld, false); assert.equal(ids.body.answer_md, 'Two: Thing 1 of a and .'); assert.deepEqual(ids.body.items.map(i => i.id), ['t-a-1']);
+  assert.equal(ids.body.withheld, false); assert.equal(ids.body.answer_md, 'Two: Thing 1 of a and.'); assert.deepEqual(ids.body.items.map(i => i.id), ['t-a-1']);
   // Validation and a foreign scope.
   assert.equal((await ask(sb, reg, { auth: owner, body: { q: 'x' } })).status, 400);
   assert.equal((await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: B } })).status, 403);
@@ -208,7 +208,7 @@ test('A5 fallback: no intent matched -> stats.intent "none", the first context l
   const db = seed();
   const none = await buildContext(db, reg, { auth: member, scope: A, q: 'what is the weather' });
   assert.equal(none.stats.intent, 'none');
-  assert.equal(none.lines[0], "No specific read matched this question; the context below is the standing summary (standing). Try: 'second phrasing' · 'list the things' · 'third phrasing'");
+  assert.equal(none.lines[0], "No specific read matched this question; the context below is the standing summary (standing). Closer phrasings: 'second phrasing' · 'list the things' · 'third phrasing'");
   assert.ok(none.lines.length > 1 && !none.lines[0].startsWith('['), 'the line is not a record');
   const hit = await buildContext(db, reg, { auth: member, scope: A, q: 'show me the things' });
   assert.equal(hit.stats.intent, 'list'); assert.ok(!hit.lines.some(l => l.startsWith('No specific read')));

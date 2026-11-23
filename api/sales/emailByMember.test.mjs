@@ -178,13 +178,16 @@ test('M6: the three asks route to the member intent alone; the lines carry the m
   const cy = await run("how is Cy's open rate trending");
   assert.equal(cy.read, 'goals/weekly?member=Cy · week of 2026-11-16 · day 4 of 7');
   assert.deepEqual(cy.items.map(x => x.id), [`${u('c')}:human_open_rate`, 'member:how']);
-  assert.match(cy.items[0].text, /^Cy · Human open rate \(Outbound\) · this week to date \d+\.\d % · same point last week \d+\.\d % · /);
+  assert.match(cy.items[0].text, /^Cy · Human open rate \(Outbound\) · this week to date \(Nov 16–22\): \d+\.\d % · same point last week: \d+\.\d % · /);
+  // E-5: every week carries its dates, newest first; a week with no delivered email says so (never a bare, undated list)
+  assert.match(cy.items[0].text, / · last week \(Nov 9–15\): \d+\.\d % · earlier weeks, newest first: Nov 2–8: no emails delivered, Oct 26–Nov 1: no emails delivered, /);
+  assert.ok(!/oldest first/.test(cy.items[0].text));
   assert.ok(!/goal|on pace/.test(cy.items[0].text));
   const most = await run('who sent the most this week');
   assert.match(most.read, /^goals\/weekly\?member=all · week of 2026-11-16 · day 4 of 7 · 3 member rows \+ the team$/);
   const sent = most.items.filter(x => x.id.endsWith(':delivered'));
   assert.deepEqual(sent.map(x => x.title), ['Ana · Delivered', 'Cy · Delivered', `${UNASSIGNED.name} · Delivered`, 'Team · Delivered']);
-  assert.match(sent[0].text, /^Ana · Delivered \(Outbound\) · this week to date 70 · same point last week 70 · flat against the same point last week · on pace for about 123 by Sunday · last week 70 · /);
+  assert.match(sent[0].text, /^Ana · Delivered \(Outbound\) · this week to date \(Nov 16–22\): 70 · same point last week: 70 · flat against the same point last week · on pace for about 123 by Sunday · last week \(Nov 9–15\): 70 · /);
   const mine = await run('my emails this week', u('c'));
   assert.equal(mine.read, 'goals/weekly?member=Cy · week of 2026-11-16 · day 4 of 7');
   assert.equal(mine.items.length, MEMBER_KEYS.length + 1);

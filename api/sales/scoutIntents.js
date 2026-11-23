@@ -1,6 +1,6 @@
 import { cleanText, hasPii } from './scrubText.js';
 import { normName } from './normName.js';
-import { addDays } from './goalsShared.js';
+import { addDays, laMonday } from './goalsShared.js';
 import { splitSnoozed } from './snoozed.js';
 import { laDateString } from './laDate.js';
 
@@ -171,16 +171,22 @@ const WHO_SENT = /\bwho\b[^.?!]{0,40}\b(sent|emailed|delivered)\b|\b(sent|emaile
 export const isMemberEmail = ask => !ask.flags.email_site && !ask.company.length && (WHO_SENT.test(String(ask.q || '').toLowerCase()) || ((!!ask.member || !!ask.mine) && (!!ask.flags.weekly || !!ask.flags.emails || ask.entity === 'emails')));
 export const isWeekly = ask => !!ask.flags.weekly && !ask.flags.email_site && !ask.company.length && !isMemberEmail(ask);
 const wkNum = (x, v) => (v == null ? '—' : x.unit === 'rate' ? `${(100 * v).toFixed(1)} %` : String(Math.round(v * 10) / 10));
+// E-5 (email-by-member rulings): every week in the line carries its dates, newest first, and a week with nothing in it
+// says so in words - an undated oldest-first list was read backwards, an 11-week-old rate called "this week".
+const shortDay = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+export const weekRange = mon => { const sun = addDays(mon, 6); return `${shortDay(mon)}–${mon.slice(5, 7) === sun.slice(5, 7) ? Number(sun.slice(8, 10)) : shortDay(sun)}`; };
+const wkVal = (x, v) => (v == null ? (x.source === 'Apollo' ? 'no emails delivered' : 'no number') : wkNum(x, v));
 // One registry row as a line: the numbers, then the direction in words (▲ / ▼ by what is good for the row).
 export function weeklyLine(x, b, { goals = true } = {}) {
   const t = x.this_week, l = x.last_week;
   const dir = t.delta == null ? null : t.delta === 0 ? 'flat against the same point last week' : `${(t.delta > 0) === (x.direction === 'up') ? '▲ better' : '▼ worse'} than the same point last week by ${x.unit === 'rate' ? `${Math.abs(100 * t.delta).toFixed(1)} pts` : Math.abs(Math.round(t.delta * 10) / 10)}`;
-  const past = x.series.filter(s => !s.current && s.value != null);
+  const lastMon = addDays(b.week_start, -7);
+  const earlier = x.series.filter(s => !s.current && s.week_start < lastMon).sort((p, q) => String(q.week_start).localeCompare(String(p.week_start)));
   return [
-    `${x.name} (${x.group})`, `this week to date ${wkNum(x, t.to_date)}`, x.kind === 'manual' ? null : `same point last week ${wkNum(x, t.same_point_last_week)}`, dir,
+    `${x.name} (${x.group})`, `this week to date (${weekRange(b.week_start)}): ${wkVal(x, t.to_date)}`, x.kind === 'manual' ? null : `same point last week: ${wkVal(x, t.same_point_last_week)}`, dir,
     t.pace != null ? `on pace for about ${t.pace} by Sunday` : null, !goals ? null : t.goal != null ? `goal ${wkNum(x, t.goal)}${t.progress != null ? `, ${Math.round(100 * t.progress)} % of it` : ''}` : 'no goal set this week',
-    l ? `last week ${wkNum(x, l.value)}${!goals ? '' : l.goal != null ? ` against a goal of ${wkNum(x, l.goal)}: ${l.hit == null ? 'no number' : l.hit ? 'hit' : 'missed'}` : ', no goal was set'}` : null,
-    past.length ? `earlier weeks, oldest first: ${past.map(s => wkNum(x, s.value)).join(', ')}` : 'no earlier weeks on file',
+    l ? `last week (${weekRange(lastMon)}): ${wkVal(x, l.value)}${!goals ? '' : l.goal != null ? ` against a goal of ${wkNum(x, l.goal)}: ${l.hit == null ? 'no number' : l.hit ? 'hit' : 'missed'}` : ', no goal was set'}` : null,
+    earlier.length ? `earlier weeks, newest first: ${earlier.map(s => `${weekRange(s.week_start)}: ${wkVal(x, s.value)}`).join(', ')}` : 'no earlier weeks on file',
     x.kind === 'manual' ? (x.entered.last_week ? `last week entered by ${x.entered.last_week.by}` : 'last week not entered') : null,
   ].filter(Boolean).join(' · ');
 }
@@ -197,6 +203,67 @@ async function assignedOn(sb, businessId, type, id, ownerId) {
   return at ? laDateString(new Date(at)) : null;
 }
 export const briefGrid = pairs => pairs.map(([label, value]) => { const v = value ? cleanText(String(value), 240) : ''; return { label, value: v && !hasPii(v) ? v : '—' }; });
+
+// FIX scout-generative G1 - the AGENDA read set, one request over the reads the screens already use: Today's read
+// (to-dos by due day, this week's five, replies owed, calls waiting for review), Top targets (pinned + P1 with their
+// next step) and goals/weekly (this week's and next week's typed goals). No calendar read exists yet - the head line
+// says so. Every item carries its `group` (the answer's sections); nothing here writes.
+const DOW_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+const dowOf = d => { const n = DOW_NAMES[new Date(`${d}T12:00:00Z`).getUTCDay()]; return n[0].toUpperCase() + n.slice(1, 3); };
+// The window an agenda ask names: next week (Mon-Sun) · this week (today to Sunday) · today · tomorrow · a weekday
+// (the next one, never today) · else the 7 days ahead.
+export function agendaWindow(q, today) {
+  const t = String(q || '').toLowerCase(), mon = laMonday(today);
+  if (/\bnext week\b/.test(t)) return { from: addDays(mon, 7), to: addDays(mon, 13), label: 'next week' };
+  if (/\bthis week\b/.test(t)) return { from: today, to: addDays(mon, 6), label: 'the rest of this week' };
+  if (/\btoday\b/.test(t)) return { from: today, to: today, label: 'today' };
+  if (/\btomorrow\b/.test(t)) return { from: addDays(today, 1), to: addDays(today, 1), label: 'tomorrow' };
+  const named = new RegExp(`\\b(${DOW_NAMES.join('|')})\\b`).exec(t);
+  if (named) { const d = addDays(today, ((DOW_NAMES.indexOf(named[1]) - new Date(`${today}T12:00:00Z`).getUTCDay() + 7) % 7) || 7); return { from: d, to: d, label: `${dowOf(d)} ${d}` }; }
+  return { from: today, to: addDays(today, 6), label: 'the 7 days ahead' };
+}
+export const AGENDA_CAPS = { due: 40, pins: 10, calls: 10, replies: 10 };
+export const STANDING_CAPS = { due: 20, pins: 5, calls: 5, replies: 5 };
+export const AGENDA_RULE = 'Agenda: the open to-dos due in the window by day, this week\'s five, the pinned and P1 companies with their next step, the typed goals for this week and next, the calls waiting for review and the replies nobody has answered. Meetings are not read: there is no calendar read yet.';
+// overdue: true = every to-do due up to `to` (the fallback's "due in 7 days" carries what is already late).
+export async function agendaRead(sb, { businessId, auth, today, now }, { from, to, label, whose = null, caps = AGENDA_CAPS, overdue = false }) {
+  const [t, top, wk] = await Promise.all([
+    salesReads.loadToday(sb, businessId, { now, filter: whose ? { owner: whose } : {}, reviews: true }),
+    salesReads.topTargets(sb, businessId, whose ? { owner: whose, limit: 50 } : { limit: 50 }, { now, meId: auth.user.id }),
+    salesReads.loadWeekly(sb, businessId, { weeks: 12, now }),
+  ]);
+  const rows = t.view.groups.flatMap(g => g.rows);
+  const owner = r => (r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned');
+  const dueWord = r => (r.due ? `due ${dowOf(day(r.due))} ${day(r.due)}${r.overdue ? ' (overdue)' : ''}` : 'no date');
+  const todoItem = (r, group, extra = null) => ({ group, entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due),
+    row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due), overdue: !!r.overdue, owner: owner(r), owner_user_id: r.owner_user_id || null, link: r.company?.id && ENTITY_OF[r.company.type] ? { entity: ENTITY_OF[r.company.type], type: r.company.type, id: r.company.id, name: r.company.name } : null, verb: r.verb || 'next_steps', steps: null },
+    text: [cleanText(r.text, 200), 'open to-do', dueWord(r), owner(r), r.company?.name ? `company ${r.company.name}` : null, extra].filter(Boolean).join(' · ') });
+  const todos = rows.filter(r => r.kind === 'todo');
+  const inWindow = todos.filter(r => r.due && day(r.due) <= to && (overdue || day(r.due) >= from)).sort((a, b) => String(a.due).localeCompare(String(b.due)));
+  const due = inWindow.slice(0, caps.due).map(r => todoItem(r, 'Due'));
+  const five = (t.view.strip || []).map(c => ({ group: "This week's five", entity: c.todo_id ? 'todos' : 'agenda', id: c.todo_id || `five:${c.id}`, title: cleanText(c.text, 140), date: day(c.due),
+    text: [cleanText(c.text, 200), "one of this week's five", `status ${c.status}`, c.due ? `due ${dowOf(day(c.due))} ${day(c.due)}` : 'no date', c.company ? `company ${c.company}` : null].filter(Boolean).join(' · ') }));
+  const pinRows = top.status === 200 ? top.body.rows.filter(x => x.pin || x.band === 'P1') : [];
+  const pins = pinRows.slice(0, caps.pins).map(x => { const it = topItem(x); return { ...it, group: 'Pinned and P1', text: `${it.text} · ${x.next ? `next step: ${x.next.text}${x.next.due ? ` (due ${dowOf(day(x.next.due))} ${day(x.next.due)})` : ''}` : 'no next step set'}` }; });
+  const b = wk.status === 200 ? wk.body : null;
+  const goalRows = b ? b.metrics.filter(x => !x.context && (x.this_week.goal != null || x.next_week?.goal != null)) : [];
+  const goals = goalRows.map(x => ({ group: 'Goals', quiet: true, entity: 'weekly', id: `agenda:${x.key}`, title: `${x.name} · goal`,
+    text: [`${x.name} (${x.group})`, `this week (${weekRange(b.week_start)}) to date: ${wkVal(x, x.this_week.to_date)}`, x.this_week.goal != null ? `this week's goal ${wkNum(x, x.this_week.goal)}${x.this_week.progress != null ? `, ${Math.round(100 * x.this_week.progress)} % of it` : ''}` : 'no goal typed for this week',
+      x.this_week.pace != null ? `on pace for about ${x.this_week.pace} by Sunday` : null, x.next_week?.goal != null ? `next week's (${weekRange(x.next_week.week_start)}) goal ${wkNum(x, x.next_week.goal)}` : `no goal typed for next week (${weekRange(addDays(b.week_start, 7))})`].filter(Boolean).join(' · ') }));
+  if (!goals.length) goals.push({ group: 'Goals', quiet: true, entity: 'weekly', id: 'agenda:none', title: 'Goals', text: b ? `No goal is typed for this week (${weekRange(b.week_start)}) or next week (${weekRange(addDays(b.week_start, 7))}).` : 'The weekly goals could not be read.' });
+  const reviews = rows.filter(r => r.kind === 'review');
+  const calls = reviews.slice(0, caps.calls).map(r => ({ group: 'Calls to review', entity: 'call_notes', id: r.note_id, title: cleanText(r.text, 140), date: day(r.call_date), subtitle: [day(r.call_date), UNREVIEWED].filter(Boolean).join(' · '),
+    text: [cleanText(r.text, 200), `call ${day(r.call_date)}`, UNREVIEWED].join(' · ') }));
+  const owed = (t.view.groups.find(g => g.id === 'reply')?.rows || []).filter(r => r.kind === 'reply' || r.kind === 'todo');
+  const replies = owed.slice(0, caps.replies).map(r => (r.kind === 'todo' ? todoItem(r, 'Replies owed', 'a reply is owed') : { group: 'Replies owed', entity: 'people', id: r.person.key, title: r.person.name, date: day(r.replied_at),
+    text: [cleanText(r.text, 200), r.company?.name ? `company ${r.company.name}` : 'no company record', r.replied_at ? `they replied ${day(r.replied_at)}` : null, r.reply_class ? `reply read as ${String(r.reply_class).replace(/_/g, ' ')}` : null, 'no to-do answers it yet'].filter(Boolean).join(' · ') }));
+  const days = []; for (let d = from; d <= to && days.length < 14; d = addDays(d, 1)) days.push(`${dowOf(d)} ${d}`);
+  const scope = whose ? (whose === auth.user.id ? 'mine' : "one member's") : 'the whole team';
+  const head = { quiet: true, entity: 'agenda', id: 'window', title: 'Agenda window',
+    text: [`window ${label}: ${days.join(', ')}`, `today is ${dowOf(today)} ${today}`, `scope ${scope}`, `${inWindow.length} to-dos due in the window${inWindow.length > due.length ? ` (the first ${due.length} listed)` : ''}`, `${t.view.counts.overdue} overdue to-dos in all`,
+      `${pinRows.length} pinned or P1 companies`, `${reviews.length} calls waiting for review`, `${owed.length} replies owed`, 'no calendar read: meetings are not in this context'].join(' · ') };
+  return { head, items: [...due, ...five, ...pins, ...goals, ...calls, ...replies], counts: { due: inWindow.length, five: five.length, pins: pinRows.length, goals: goalRows.length, calls: reviews.length, replies: owed.length }, scope };
+}
 
 export const salesIntents = [
   { id: 'top_targets', example: 'my top targets', suggest: true, title: 'Top targets', rule: TOP_TARGETS_RULE, match: isTopTargets,
@@ -460,22 +527,36 @@ export const salesIntents = [
       const rows = must(await q.order('call_date', { ascending: false }).limit(25));
       return { read: `call notes${ask.since ? ` since ${ask.since}` : ''}${term ? ` matching "${cleanText(term, 40)}"` : ''} · ${rows.length}${unreviewedOf(rows)}`, items: rows.map(r => noteItem(r, noteChars(rows.length))) };
     } },
+  // FIX scout-generative G1: agenda / plan / goals / priorities / "catch me up" - only when no other intent reads the
+  // ask (it never takes a question an existing intent answers). G5: "our" / "the team's" = everyone; else the caller.
+  { id: 'agenda', example: "what's on the agenda for next week", suggest: true, title: 'Agenda', rule: AGENDA_RULE,
+    match: ask => !!ask.flags.agenda && !salesIntents.some(i => i.id !== 'agenda' && i.match(ask)),
+    async run(sb, { businessId, auth, ask, today, now }) {
+      const w = agendaWindow(ask.q, today);
+      const whose = ask.member ? ask.member.id : ask.flags.team && !ask.mine ? null : auth.user.id;
+      const r = await agendaRead(sb, { businessId, auth, today, now }, { ...w, whose });
+      return { read: `agenda ${w.from} to ${w.to} (${r.scope}) · goals/today · goals/top-targets · goals/weekly · no calendar read`, total: r.items.length,
+        items: [{ ...r.head, text: `AGENDA · ${r.head.text}` }, ...r.items] };
+    } },
 ];
 
-// The fallback ask's standing context: the caller's open to-dos (≤ 30), notes from 14 d (≤ 10), companies touched in
-// 14 d (≤ 20, the Map's rows).
+// FIX scout-generative G2 - the fallback ask's standing context is the agenda's read set with tighter caps (the
+// caller's to-dos due in 7 days or already late ≤ 20 · this week's five · pinned + P1 ≤ 5 · goals this and next week ·
+// calls to review ≤ 5 · replies owed ≤ 5) plus notes from 14 d (≤ 5) and companies touched in 14 d (≤ 10).
 export async function salesStanding(sb, { businessId, auth, today, now }) {
-  const since = addDays(today, -14);
-  const [todos, notes, scores] = await Promise.all([
-    salesReads.openTodosFor(sb, businessId, auth.user.id, { cap: 30 }),
-    sb.from('sales_call_notes').select(NOTE_COLS).eq('business_id', businessId).gte('call_date', since).order('call_date', { ascending: false }).limit(10).then(must),
+  const since = addDays(today, -14), to = addDays(today, 6);
+  const [agenda, notes, scores] = await Promise.all([
+    agendaRead(sb, { businessId, auth, today, now }, { from: today, to, label: 'the 7 days ahead', whose: auth.user.id, caps: STANDING_CAPS, overdue: true }),
+    sb.from('sales_call_notes').select(NOTE_COLS).eq('business_id', businessId).gte('call_date', since).order('call_date', { ascending: false }).limit(5).then(must),
     salesReads.listScores(sb, businessId, {}, { now }).catch(() => ({ body: { rows: [] } })),
   ]);
-  const touched = scores.body.rows.filter(r => r.last_touch_at && day(r.last_touch_at) >= since).sort((a, b) => String(b.last_touch_at).localeCompare(String(a.last_touch_at))).slice(0, 20);
+  const touched = scores.body.rows.filter(r => r.last_touch_at && day(r.last_touch_at) >= since).sort((a, b) => String(b.last_touch_at).localeCompare(String(a.last_touch_at))).slice(0, 10);
+  const c = agenda.counts;
   return {
-    reads: [`my open to-dos (${todos.total})`, `notes since ${since} (${notes.length}${unreviewedOf(notes)})`, `companies touched since ${since} (${touched.length})`],
+    reads: [`my to-dos due by ${to} (${c.due})`, `this week's five (${c.five})`, `pinned and P1 companies (${c.pins})`, `goals this and next week (${c.goals})`, `calls to review (${c.calls})`, `replies owed (${c.replies})`, `notes since ${since} (${notes.length}${unreviewedOf(notes)})`, `companies touched since ${since} (${touched.length})`, 'no calendar read'],
     items: [
-      ...todos.rows.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 160), 'my open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date'].join(' · ') })),
+      { ...agenda.head, id: 'standing', title: 'What was read', text: `STANDING SUMMARY · ${agenda.head.text}` },
+      ...agenda.items.map(({ group, ...it }) => it),
       ...notes.map(r => noteItem(r, noteChars(notes.length))),
       ...touched.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, text: [x.name, x.type, `score ${x.score} ${x.band}`, `${x.touches ? `${x.touches} touches · ` : ''}last touch ${day(x.last_touch_at)}${x.last_touch_channel ? ` ${x.last_touch_channel}` : ''}`, x.owner ? `owner ${x.owner}` : null].filter(Boolean).join(' · ') })),
     ],

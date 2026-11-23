@@ -410,10 +410,13 @@ test('Scout: "review the <x> call" / "what did we agree with <x>" / "ideas from 
   assert.equal(found.subtitle, '2026-11-20 · unreviewed');
   const listed = await intent('notes').run(w.supabase, { businessId: B, ask: ask('notes about Northwind', { entity: 'call_notes', company: ['Northwind'] }) });
   assert.match(listed.read, / · 1 · 1 unreviewed$/);
-  scout.salesReads.openTodosFor = async () => ({ rows: [], total: 0 });
+  // FIX scout-generative G2: the standing context reads Today, Top targets and goals/weekly before the notes
+  scout.salesReads.loadToday = async () => ({ view: { groups: [], strip: [], counts: { overdue: 0 } } });
+  scout.salesReads.topTargets = async () => ({ status: 200, body: { rows: [] } });
+  scout.salesReads.loadWeekly = async () => ({ status: 200, body: { week_start: '2026-11-16', metrics: [] } });
   scout.salesReads.listScores = async () => ({ body: { rows: [] } });
   const standing = await scout.salesStanding(w.supabase, { businessId: B, auth: { user: { id: JACK } }, today: '2026-11-20', now: NOW.getTime() });
-  assert.equal(standing.reads[1], 'notes since 2026-11-06 (1 · 1 unreviewed)');
+  assert.equal(standing.reads[6], 'notes since 2026-11-06 (1 · 1 unreviewed)');
 
   note.accepted_at = NOW.toISOString();
   const after = [await intent('call_review').run(w.supabase, ctx('what did we agree with Northwind')), await intent('call_ideas').run(w.supabase, ctx('ideas from calls')), await intent('notes').run(w.supabase, { businessId: B, ask: ask('notes', { entity: 'call_notes' }) }), await scout.salesStanding(w.supabase, { businessId: B, auth: { user: { id: JACK } }, today: '2026-11-20', now: NOW.getTime() })];

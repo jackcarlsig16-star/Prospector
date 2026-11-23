@@ -16,7 +16,10 @@ function Prose({ text }) {
     <div className="scout-prose" data-scout-prose>
       {blocks.map((lines, i) => (lines.every(l => /^\s*[-*•]\s+/.test(l))
         ? <ul key={i}>{lines.map((l, j) => <li key={j}>{inline(l.replace(/^\s*[-*•]\s+/, ''))}</li>)}</ul>
-        : <p key={i}>{inline(lines.join(' '))}</p>))}
+        // a numbered list (the agenda's "three things I'd push first") keeps its lines
+        : lines.length > 1 && lines.every(l => /^\s*\d{1,2}[.)]\s+/.test(l))
+          ? <ol key={i}>{lines.map((l, j) => <li key={j}>{inline(l.replace(/^\s*\d{1,2}[.)]\s+/, ''))}</li>)}</ol>
+          : <p key={i}>{inline(lines.join(' '))}</p>))}
     </div>
   );
 }
@@ -36,7 +39,7 @@ export function WorkingPanel({ q, elapsed }) {
 // scout-v3 Stage 2: the answer = the summary, then one numbered section per part (ScoutSections), the action block
 // for this answer (the confirm card, working, done + Undo, can't-do) and its action sub-lines (D11). No Records block.
 // cards (app-shell-v2 W1): the rows as stacked cards at any width - the 640 px Scout window has no room for the table.
-export function AnswerPanel({ turn, scopeChip, phone, cards = false, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null, focus = null, activeKey = null }) {
+export function AnswerPanel({ turn, scopeChip, phone, cards = false, scopeAll, colorOf, viewer, canAct, onOpen, inlineKey, turns, onReopen, onClear, members = [], menu = null, onMenu, onPick, onCopy, act = null, focus = null, activeKey = null, onTry = null }) {
   const sections = useMemo(() => sectionsOf(turn), [turn]);
   const foot = footerParts(turn);
   const numbered = sections.length > 1;
@@ -77,6 +80,13 @@ export function AnswerPanel({ turn, scopeChip, phone, cards = false, scopeAll, c
         {(turn.actions || []).length > 0 && <div data-scout-actions>{turn.actions.map((a, i) => <div key={i} className="scout-actline">→ {a}</div>)}</div>}
         {viewer && <span className="scout-note" data-scout-viewer>Search and ask work read-only. Open goes to the record; Scout's actions need Member access.</span>}
       </div>
+      {/* FIX scout-generative G4: a weak match offers the three nearest phrasings (the server's, by word overlap) */}
+      {turn.try?.length > 0 && onTry && (
+        <div className="scout-pills scout-try" role="group" aria-label="Closer ways to ask" data-scout-try>
+          <span className="scout-lbl">Try</span>
+          {turn.try.map(t => <button key={t} type="button" className="scout-btn scout-btn--plain" onClick={() => onTry(t)}>{t}</button>)}
+        </div>
+      )}
       <div className="scout-footer" data-scout-footer>
         <span><b>{foot.records}</b> records read · {foot.reads}</span>
         {foot.cost && <span data-scout-cost>{foot.cost}</span>}

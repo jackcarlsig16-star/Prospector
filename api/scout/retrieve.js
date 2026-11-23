@@ -14,7 +14,11 @@ const STOP = new Set(['show', 'me', 'my', 'mine', 'i', 'the', 'a', 'an', 'of', '
   'opened', 'replied', 'replies', 'reply', 'clicked', 'clicks', 'click', 'visited', 'visiting', 'visitor', 'visitors', 'companies', 'company', 'emails', 'email', 'site', 'website', 'web',
   // FIX scout-company-lookup S3: the owner words are the flag, never part of a name
   'owns', 'owned', 'owner', 'whose']);
-const CAP_STOP = new Set(['Show', 'What', 'Which', 'Who', 'Where', 'When', 'How', 'My', 'I', 'Me', 'The', 'List', 'Give', 'Find', 'Tell', 'Do', 'Does', 'Did', 'Are', 'Is', 'Scout', 'Hot', 'Warm', 'Cool', 'Cold', 'Yesterday', 'Today', 'This', 'Last', 'Prospector', 'Brad']);
+const CAP_STOP = new Set(['Show', 'What', 'Which', 'Who', 'Where', 'When', 'How', 'My', 'I', 'Me', 'The', 'List', 'Give', 'Find', 'Tell', 'Do', 'Does', 'Did', 'Are', 'Is', 'Scout', 'Hot', 'Warm', 'Cool', 'Cold', 'Yesterday', 'Today', 'This', 'Last', 'Prospector', 'Brad',
+  // FIX scout-generative: a weekday is a date word ("my plan for Monday"), never a company candidate
+  'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
+  // ... and a sentence's first word is not a name because it has a capital ("Goals for next week", "Catch me up")
+  'Next', 'Our', 'Catch', 'Goals', 'Goal', 'Agenda', 'Plan', 'Plans', 'Planning', 'Priorities', 'Priority', 'Focus', "What's", 'Whats', "Who's", "How's", "Where's"]);
 const phraseIn = (text, phrase) => new RegExp(`(^|[^a-z])${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(text);
 
 // Merged vocabulary of the modules in scope (static words + the glossary's dynamic ones).
@@ -68,6 +72,7 @@ export function sinceOf(text, today) {
 // a candidate whatever its case - the question's 1-3 word runs are looked up, the longest match wins, and a run made
 // only of stop / vocabulary words or holding a member's first name is never looked up.
 const NAME_LEAD = /\b(?:tell me about|what do we know about|notes on|intel on|brief (?:on|for)|whats up with|who owns|whose (?:is|are)|owners? of)\s+(.+)$/;
+const AGENDA_ASK = /\bagenda\b|\bplan(?:s|ning)?\b|\bnext week\b|\bthis week\b|\bgoals?\b|\bpriorit(?:y|ies)\b|\bfocus\b|\bwhat should i (?:be )?do(?:ing)?\b|\bwhere should i start\b|\bwhat matters\b|\bcatch me up\b|\bwhats going on\b/;
 const OWNER_ASK = /\bwho owns\b|\bwhose (?:is|are)\b|\bowners? of\b|(?<!\bno )\bowner\s*\??\s*$/;
 export function parseAsk(q, vocab, { today, names = null }) {
   const raw = String(q || '').trim();
@@ -139,6 +144,9 @@ export function parseAsk(q, vocab, { today, names = null }) {
     brief: /\bbrief\b|\bintel\b|\bpull\b|\bwhat do we know\b|\btell me about\b|\brecent call\b|\bnotes on\b|\bwhats up with\b/.test(text),
     // S3: "who owns <x>" / "whose is <x>" / "owner of <x>" / "<x> owner" - the answer leads with the owner
     owner: OWNER_ASK.test(text),
+    // FIX scout-generative G1: the agenda lead words (a module's agenda intent takes the ask only when no other intent
+    // of its own reads it). G5: team = "our goals" / "the team's agenda" - the member filter is off.
+    agenda: AGENDA_ASK.test(text), team: /\b(?:our|ours|we|us|teams?|everyone|everybody)\b/.test(text),
     email_site: /\bemails?\b[^.?!]{0,16}\b(to|into|vs|versus|→|->)\s+(the\s+)?(site|website|web|visits?|visitors)\b|\b(site|website|visit|visitor|conversion) rate\b|\bemail funnel\b|\bfunnel\b[^.?!]{0,12}\bemails?\b/.test(text),
   };
   // a company the site has seen but that has no record is only a candidate when the question asks about it (a brief
@@ -167,6 +175,15 @@ export function parseAsk(q, vocab, { today, names = null }) {
 }
 
 const refOf = (entity, id) => `${entity}:${id}`;
+
+// FIX scout-generative G4 - the three example phrasings nearest the question: by the words they share with it (the
+// intent's example, title and id), the `suggest` ones first on a tie. Pure; intents = [{ id, example, title?, suggest? }].
+export function nearExamples(q, intents, n = 3) {
+  const wordsOf = t => new Set(String(t || '').toLowerCase().replace(/['’]/g, '').match(/[a-z]{3,}/g) || []);
+  const asked = wordsOf(q);
+  const scored = intents.filter(i => i.example).map((i, at) => { const own = wordsOf(`${i.example} ${typeof i.title === 'string' ? i.title : ''} ${String(i.id).replace(/_/g, ' ')}`); return { example: i.example, at, suggest: !!i.suggest, hits: [...asked].filter(w => !STOP.has(w) && [...own].some(o => o === w || (w.length > 4 && o.startsWith(w.slice(0, 5))))).length }; });
+  return [...new Set(scored.sort((a, b) => b.hits - a.hits || b.suggest - a.suggest || a.at - b.at).map(x => x.example))].slice(0, n);
+}
 
 // scout-v3 D2 - the section planner's first half: a multi-part ask -> its parts. Separators: ";", "and show", "and
 // also", "then", a numbered "1. 2."; and the different-clause rule - a bare "and" splits when both sides (3+ words
@@ -294,12 +311,11 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     // A5: no intent in any module matched -> the first context line says so and offers three of the modules' own example
     // phrasings (each intent declares one; the `suggest` ones first) so the answer can say what was read and how to ask.
     if (!matched.length) {
-      const withExample = per.flatMap(({ m }) => m.intents.filter(i => i.example));
-      const examples = [...new Set([...withExample.filter(i => i.suggest), ...withExample.filter(i => !i.suggest)].map(i => i.example))].slice(0, 3);
-      push(`No specific read matched this question; the context below is the standing summary (${partReads.join(' · ') || 'nothing read'}).${examples.length ? ` Try: ${examples.map(e => `'${e}'`).join(' · ')}` : ''}`);
+      const examples = nearExamples(text, per.flatMap(({ m }) => m.intents));
+      push(`No specific read matched this question; the context below is the standing summary (${partReads.join(' · ') || 'nothing read'}).${examples.length ? ` Closer phrasings: ${examples.map(e => `'${e}'`).join(' · ')}` : ''}`);
     }
-    const start = chars, partLabels = [];
-    for (const { item, b } of found) {
+    const start = chars, partLabels = [], groups = [];
+    for (const { item, b, priority } of found) {
       const entity = item.entity, id = String(item.id);
       const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 700);
       if (hasPii(body)) { droppedPii += 1; continue; }
@@ -312,6 +328,8 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
       push(line);
       rowsByEntity[entity] = (rowsByEntity[entity] || 0) + 1;
       if (!partLabels.includes(label)) partLabels.push(label);
+      // G1: an intent's items may name their group (the agenda's Due · Pinned · Goals …) - the answer's sections
+      if (item.group && priority === 1) { const g = groups.find(x => x.title === item.group) || groups[groups.push({ title: item.group, labels: [] }) - 1]; if (!g.labels.includes(label)) g.labels.push(label); }
       if (!labels.has(refOf(entity, id))) {
         labels.set(refOf(entity, id), label);
         const open = registry.openerFor(entity);
@@ -319,14 +337,14 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
         const row = item.row && !hasPii([item.row.name, item.row.title, item.row.text, item.row.company?.name].filter(Boolean).join(' · ')) ? item.row : null;
         // a row's company / link ref opens through its own entity's opener (the client never builds a route)
         if (row) for (const ref of [row.company, row.link]) if (ref?.entity && ref.id) { const o = registry.openerFor(ref.entity); ref.open = o ? o(String(ref.id), ref) : null; }
-        items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null, ...(row ? { row } : {}) });
+        items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null, ...(row ? { row } : {}), ...(item.quiet ? { quiet: true } : {}) });
       }
     }
     if (multi && !partLabels.length && matched.length) push('(no rows for this part)');
     // S3: the owner stays on the server (the answer's first sentence is built from it); the client gets the grid
     const { owner = null, ...shown } = brief || {};
-    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.map(publicRead).join(' · '), labels: partLabels, count: total ?? partLabels.length, fill, brief: (ask.flags.brief || ask.flags.owner) && brief ? shown : null, owner: ask.flags.owner && owner ? owner : null });
+    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: (titles.find(t => !t.context) || titles[0])?.title || null, rule: rules.join(' ') || null, read: partReads.map(publicRead).join(' · '), labels: partLabels, groups: groups.length ? groups : null, count: total ?? partLabels.length, fill, brief: (ask.flags.brief || ask.flags.owner) && brief ? shown : null, owner: ask.flags.owner && owner ? owner : null });
   }
   const intent = matchedAll.length ? [...new Set(matchedAll)].join('+') : 'none';
-  return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads: reads.map(publicRead), dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
+  return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads: reads.map(publicRead), dropped_pii: droppedPii, truncated, chars, try: nearExamples(q, per.flatMap(({ m }) => m.intents)), lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
 }

@@ -255,13 +255,13 @@ test('W8: the three asks route to the weekly intent alone; its lines carry the n
   const all = await run('how are we pacing this week');
   assert.equal(all.read, 'goals/weekly?weeks=12 · week of 2026-11-16 · day 4 of 7');
   const d = all.items.find(x => x.id === 'delivered').text;
-  assert.equal(d, 'Delivered (Outbound) · this week to date 139 · same point last week 149 · ▼ worse than the same point last week by 10 · on pace for about 243 by Sunday · goal 400, 35 % of it · last week 198 against a goal of 150: hit · earlier weeks, oldest first: 90, 80, 198');
+  assert.equal(d, 'Delivered (Outbound) · this week to date (Nov 16–22): 139 · same point last week: 149 · ▼ worse than the same point last week by 10 · on pace for about 243 by Sunday · goal 400, 35 % of it · last week (Nov 9–15): 198 against a goal of 150: hit · earlier weeks, newest first: Nov 2–8: 80, Oct 26–Nov 1: no emails delivered, Oct 19–25: 90, Oct 12–18: no emails delivered, Oct 5–11: no emails delivered, Sep 28–Oct 4: no emails delivered, Sep 21–27: no emails delivered, Sep 14–20: no emails delivered, Sep 7–13: no emails delivered, Aug 31–Sep 6: no emails delivered');
   assert.ok(!all.items.some(x => ['total_in_sequence', 'sequences_running'].includes(x.id)));
-  assert.match(all.items.find(x => x.id === 'linkedin_requests').text, /last week 40, no goal was set .* last week entered by Cy$/);
+  assert.match(all.items.find(x => x.id === 'linkedin_requests').text, /last week \(Nov 9–15\): 40, no goal was set .* last week entered by Cy$/);
   assert.equal(all.items[all.items.length - 1].text, `${WORDING.week} ${WORDING.pace} ${WORDING.goals} ${WORDING.manual}`);
   const one = await run("what's our open rate trend");
   assert.deepEqual(one.items.map(x => x.id), ['human_open_rate', 'how']);
-  assert.match(one.items[0].text, /^Human open rate \(Outbound\) · this week to date \d+\.\d % · same point last week \d+\.\d % · .*goal 20\.0 %/);
+  assert.match(one.items[0].text, /^Human open rate \(Outbound\) · this week to date \(Nov 16–22\): \d+\.\d % · same point last week: \d+\.\d % · .*goal 20\.0 %/);
   assert.ok(!/on pace/.test(one.items[0].text));
   for (const it of [...all.items, ...one.items]) assert.ok(!hasPii(it.text), it.text);
   const { body } = await salesReads.loadWeekly(sb, B, { weeks: 12, now: NOW });

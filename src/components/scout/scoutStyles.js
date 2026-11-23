@@ -78,7 +78,8 @@ const SCOUT_CSS = `
 .scout-head .scout-scope { margin-left:auto; }
 .scout-prose { font-size:14px; line-height:1.55; color:var(--ui-text); }
 .scout-prose p { margin:0 0 6px; }
-.scout-prose ul { margin:0 0 6px; padding-left:18px; }
+.scout-prose ul, .scout-prose ol { margin:0 0 6px; padding-left:18px; }
+.scout-prose ol { padding-left:22px; }
 .scout-why { font-size:12px; color:var(--ui-muted); }
 .scout-records { display:flex; flex-direction:column; gap:4px; margin:0; padding:0; list-style:none; }
 .scout-records li { font-size:12px; color:var(--ui-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -149,6 +150,7 @@ const SCOUT_CSS = `
 .scout-card__verb .scout-verb { min-height:36px; padding:0 12px; }
 .scout-copyrow { display:flex; align-items:center; gap:6px; }
 .scout-copyrow .scout-btn[aria-pressed="true"] { color:var(--ui-text); border-color:${CREAM}; }
+.scout-try { padding:0 16px 10px; flex-wrap:wrap; }
 .scout-more-btn { min-width:28px; justify-content:center; font-weight:700; letter-spacing:.08em; }
 .scout-more { align-self:flex-start; }
 .scout-result { display:block; font-size:11px; }
