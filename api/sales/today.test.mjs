@@ -205,7 +205,7 @@ const deps = (over = {}) => {
     compose: async (_sb, a) => { log.push(['compose', a.type, a.id, a.person, a.extra.ask]); return { status: 200, body: { draft: { subject: 'An idea for Dana', body: 'Hi Dana,\n\nWorth 15 minutes?\n\nAna', why: 'w' }, lint: { ok: true, issues: [] }, cost_usd: 0.0131, cap: { used: 3, max: 30 }, extra: { steps: [{ text: 'Follow up on the visit', ground: 'G1' }, { text: 'Made up', ground: 'G77' }] } } }; },
     cap: async () => ({ used: 2, max: 30 }),
     brief: async () => ({ status: 200, body: { markdown: '# Brief: Cloudflare\n- [B1] Cloudflare, employer' } }),
-    pack: async (_sb, a) => { log.push(['pack', a.records, a.question]); return { text: `Question: ${a.question}\nScope: 2026-11-19 · 1 record\n\n## Cloudflare\n- stage contacted`, records: 1, chars: 80 }; },
+    pack: async (_sb, a) => { log.push(['pack', a.records, a.question]); return { text: `Scope: 2026-11-19 · 1 record\n\n# Cloudflare — employer\n- stage contacted\n\n## Ask\n${a.question}\n`, records: 1, chars: 80 }; },
     call: async a => { log.push(['call', a.callType, a.model, a.max_tokens, a.system, a.messages[0].content]); return { content: [{ type: 'text', text: JSON.stringify({ brief: 'Open with the pilot.', steps: [{ text: 'Ask about the pilot', ground: 'G1' }, { text: 'Ungrounded' }] }) }], usage: { input_tokens: 900, output_tokens: 120 } }; },
     ...over,
   } };
@@ -226,7 +226,10 @@ test('work: Draft email is ONE call (the Write-email call) addressed to the row\
   assert.equal(r.body.steps[0].based_on, r.body.grounds[0].text);
   assert.deepEqual(r.body.usage, { calls: 1, cost_usd: 0.0131, cap: { used: 3, max: 30 } });
   assert.deepEqual(r.body.prompt_pack.asks.map(a => a.id), ASKS.map(a => a[0]));
-  assert.ok(r.body.prompt_pack.asks.every(a => a.text.startsWith(`Question: ${ASKS.find(x => x[0] === a.id)[2]}`) && a.chars === a.text.length));
+  assert.deepEqual(r.body.prompt_pack.asks.map(a => a.id), ['sequence', 'email', 'research', 'call', 'objection'], 'P5: five asks');
+  assert.ok(r.body.prompt_pack.asks.every(a => a.text.endsWith(`## Ask\n${ASKS.find(x => x[0] === a.id)[2].replace('{person}', 'Dana Mayer')}\n`) && a.chars === a.text.length && a.text.startsWith('Scope: ')));
+  assert.equal(r.body.prompt_pack.asks[1].label, 'Write one email to Dana'); assert.equal(r.body.prompt_pack.asks[4].blank, '___');
+  assert.deepEqual(log.find(l => l[0] === 'pack')[1], [{ type: 'employer', id: CO.cloud, first: { key: 'prospect:p1', name: 'Dana Mayer' } }], 'P4: the row\'s person leads the company dossier');
   assert.ok(!JSON.stringify(r.body).includes('@'));
   // tone rides in the same call
   const warm = await work(sbNotes(), { businessId: B, auth, key: keyOf('Email the People team'), body: { tone: 'warmer' }, now: NOW, deps: d });
@@ -243,7 +246,8 @@ test('work: a draft or a pack that holds an address or phone shape is withheld w
   assert.deepEqual(r.body.draft, { to: { name: 'Dana Mayer', title: 'VP People', company: 'Cloudflare' }, tone: null, withheld: true, reason: 'Draft withheld: it held an address or phone shape. Try again.' });
   assert.deepEqual(r.body.prompt_pack, { blocked: true, reason: 'Not copied: the pack still held an address or phone shape.' });
   assert.equal(r.body.note, 'Nothing to suggest beyond the draft.');
-  assert.deepEqual(promptPack({ text: 'Question: q\nReach 415-555-0199', records: 1 }).asks.map(a => a.blocked), [true, true, true]);
+  assert.deepEqual(promptPack({ text: 'Reach 415-555-0199\n\n## Ask\nq\n', records: 1 }).asks.map(a => a.blocked), [true, true, true, true, true]);
+  assert.ok(promptPack({ text: '- Dana · LinkedIn https://www.linkedin.com/in/dana-mayer-123456789\n\n## Ask\nq\n', records: 1 }).asks.every(a => !a.blocked), 'a stored profile link is not a phone');
   const capped = deps({ compose: async () => ({ status: 429, body: { error: 'Write email cap reached (30 per day for this workspace)', used: 30, max: 30 } }) });
   assert.equal((await work(sbNotes(), { businessId: B, auth, key: keyOf('Email the People team'), body: {}, now: NOW, deps: capped.d })).status, 429);
   assert.equal((await work(sbNotes(), { businessId: B, auth, key: 'todo:nope', body: {}, now: NOW, deps: deps().d })).status, 404);

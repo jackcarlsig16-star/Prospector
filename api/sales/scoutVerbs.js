@@ -587,7 +587,7 @@ const copy = {
 export const salesVerbs = [assignOwner, assign, notFit, contacted, taskFinish, taskDone, taskDue, taskDrop, workPanel, draft, bundle, snooze, fiveAdd, fiveRemove, replyTodos, addTask, linkNamed, copy];
 
 const PACK_TYPE = { ...KIND, people: 'person' };
-export async function salesPack(sb, ctx, { q, records }) {
+export async function salesPack(sb, ctx, { q, records, full = false }) {
   const { copyPack } = await import('./targetsRoutes.js');
-  return copyPack(sb, { businessId: ctx.businessId, question: q, scope: ctx.business?.name || null, today: ctx.today, records: records.filter(r => PACK_TYPE[r.entity]).map(r => ({ type: PACK_TYPE[r.entity], id: r.id })) });
+  return copyPack(sb, { businessId: ctx.businessId, full, question: q, scope: ctx.business?.name || null, today: ctx.today, records: records.filter(r => PACK_TYPE[r.entity]).map(r => ({ type: PACK_TYPE[r.entity], id: r.id })) });
 }

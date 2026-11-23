@@ -161,6 +161,7 @@ export default function TodayList({ businessId, canEdit, lookup, compact = false
   const panel = workRow && (
     <WorkPanel work={work} row={workRow} canEdit={canEdit} phone={compact} notice={card || null}
       onClose={closeWork} onRetry={o => startWork(workRow, { verb: work.verb, person: work.person, ...o })} onCopy={copyOut} onCompose={prefill => openCompose(workRow, prefill)}
+      onFull={() => goalsApi.copyBundle(businessId, workRow.company.type, workRow.company.id, { person: work.person?.key || workRow.person?.key || null, full: true })}
       onDone={() => done(workRow)} onFinish={() => pick(workRow, { verb: 'task_finish', args: {}, say: {} })} onAddReply={() => pick(workRow, { verb: 'reply_todos', args: {}, say: {} })}
       onAddTodo={words => addTodo(workRow, words)} onAddPerson={p => addTodo(workRow, `reach out to ${p.name}`, p)} onDraftFor={p => startWork(workRow, { verb: 'draft_email', person: p })} />
   );

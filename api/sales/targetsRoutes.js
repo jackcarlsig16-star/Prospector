@@ -2,17 +2,15 @@ import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { applyTodo, applyTodos, relinkAll, loadTodo, isTodo } from './todoWrite.js';
 import { getSupabase, findRow, weekIsFinal } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { cleanText, hasPii } from './scrubText.js';
+import { cleanText } from './scrubText.js';
 import { SOURCE_COLS, sourceOf, logSource } from './leadSource.js';
 import { laDateString } from './laDate.js';
 import { resolveCompany } from './intakeMatch.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { applyPartnerSignal } from './partnerSignals.js';
 import { moveTargetPeople, relinkParked } from './visitorPeopleMove.js';
-import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
-import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
+import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { restampVisits, logRestamp } from './restampVisits.js';
-import { isSnoozed } from '../../src/constants/todoSnooze.js';
 
 // call-notes-targets-v1 - companies named in notes that aren't a partner or
 // an employer yet. Written by Intake's Accept (Stage 1); Stage 2 promotes a
@@ -363,194 +361,83 @@ export async function rejectTargetRoute(req, res) {
 }
 
 // ── Copy for Claude ──────────────────────────────────────────────────────────
-// No AI call. Every string passes cleanText; the route refuses to answer at
-// all if an "@" or a phone shape is still in the result.
+// FIX claude-pack-dossier: the pack IS the dossier (dossier.js - one builder for Scout's copy verb, Today's prompt
+// pack and every Copy for Claude button). No AI call. Every string passes cleanText; nothing is returned at all if an
+// "@" or a phone shape is still in the result (stored linkedin.com/in/ links are the one allowed URL).
 const BUNDLE_TYPES = ['partner', 'employer', 'target'];
-const DECISIONS_MAX = 10;
-const TERMS_LINE = /^\(\d{1,2}\/\d{1,2}\) Terms: /;
-const STATUS_LABEL = Object.fromEntries(PIPELINE_STATUSES.map(s => [s.id, s.label]));
+export const PACK_MAX = 12000;
+export const PACK_FULL_MAX = 40000;
 const when = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' }) : '');
 const onDay = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const t = (v, max = 400) => cleanLines(v, max);
-const ownershipLine = row => [
-  `Owner team: ${row.owner_team ? TEAM_LABEL[row.owner_team] : 'unset'}`,
-  row.co_owner_name ? `Co-owner: ${t(row.co_owner_name, 120)}` : null,
-  row.no_double_touch ? "Don't double-touch: yes" : null,
-].filter(Boolean).join(' · ');
-const fields = pairs => { const out = pairs.filter(([, v]) => v).map(([k, v]) => `- ${k}: ${t(v)}`); return out.length ? out : ['- none recorded']; };
 
 async function memberNames(supabase, businessId) {
   const { data } = await supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null);
   return Object.fromEntries((data || []).map(m => [m.user_id, m.profile?.display_name || m.name]));
 }
-const first = (names, id) => (id && names[id] ? t(names[id].split(' ')[0], 40) : null);
 
-async function openTodos(supabase, businessId, linkType, linkId, names) {
-  const today = laDateString();
-  const rows = must(await supabase.from('sales_week_goals').select('text, owner_user_id, due_date, snooze_until, status')
-    .eq('business_id', businessId).eq('kind', 'todo').eq('link_type', linkType).eq('link_id', linkId).eq('status', 'open').order('due_date').order('id').limit(50))
-    .filter(r => !isSnoozed(r, today));
-  return rows.length ? rows.map(r => `- ${t(r.text, 300)}${first(names, r.owner_user_id) ? ` · ${first(names, r.owner_user_id)}` : ''}${r.due_date ? ` · due ${onDay(r.due_date)}` : ''}`) : ['- none'];
-}
-
-async function openWaiting(supabase, businessId, linkType, linkId) {
-  const rows = must(await supabase.from('sales_week_goals').select('text, waiting_on, due_date')
-    .eq('business_id', businessId).eq('kind', 'waiting').eq('link_type', linkType).eq('link_id', linkId).eq('status', 'open').order('due_date').order('id').limit(50));
-  return rows.length ? rows.map(w => `- ${[t(w.waiting_on, 120), t(w.text, 300), w.due_date ? `due ${onDay(w.due_date)}` : null].filter(Boolean).join(' · ')}`) : ['- nothing'];
-}
-
-async function partnerBundle(supabase, businessId, id, names) {
-  const row = must(await supabase.from('sales_goals').select('*').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
-  if (!row) throw err(404, 'partner not found');
-  const [people, events, todos, notes, waiting] = await Promise.all([
-    supabase.from('partner_contacts').select('name, title, role_in_notes').eq('business_id', businessId).eq('goal_id', id).order('name').limit(50),
-    supabase.from('sales_partner_events').select('at, touch_type, contact_names, source, by_user, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'touch').order('at', { ascending: false }).limit(TOUCHES_MAX),
-    openTodos(supabase, businessId, 'partner', id, names),
-    supabase.from('sales_partner_events').select('at, note, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'note').order('at', { ascending: false }).limit(200),
-    openWaiting(supabase, businessId, 'partner', id),
-  ]);
-  const status = row.pipeline_status || 'not_started';
-  const head = [
-    `# ${t(row.name, 160)} — partner`,
-    ownershipLine(row),
-    [`Stage: ${STATUS_LABEL[status] || status}`, row.category ? `Category: ${t(row.category, 120)}` : null, row.tier ? `Tier: ${row.tier}` : null, row.hot ? 'Hot' : null, first(names, row.owner_user_id) ? `Owner: ${first(names, row.owner_user_id)}` : null].filter(Boolean).join(' · '),
-    row.next_step ? `Next step: ${t(row.next_step)}` : null,
-    row.next_meeting_at ? `Next meeting: ${onDay(row.next_meeting_at)}` : null,
-  ].filter(Boolean);
-  // call-notes-targets-v1 REV5 - decisions are note events with meta.kind; terms are the "(M/D) Terms:" lines in notes.
-  const decisions = must(notes).filter(e => e.meta?.kind === 'decision').slice(0, DECISIONS_MAX).map(e => `- ${when(e.at)} · ${t(e.note, 400)}`);
-  const terms = (row.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => `- ${t(l, 400)}`);
-  const intel = fields([['Champion', row.champion], ['Angle', row.angle], ['Watch-outs', row.watch_outs], ["Don't say", row.do_not_say], ['Target titles', row.target_titles], ['Known contacts', row.known_contacts], ['Sequence to use', row.sequence_to_use]]);
-  const peopleLines = (must(people)).map(p => `- ${[t(p.name, 120), p.title ? t(p.title, 160) : null, p.role_in_notes].filter(Boolean).join(' · ')}`);
-  const touchLines = must(events).map(e => `- ${[when(e.at), e.touch_type, e.meta?.direction === 'received' ? 'in' : 'out', e.contact_names?.length ? t(e.contact_names.join(', '), 200) : null, first(names, e.by_user) ? `by ${first(names, e.by_user)}` : e.source !== 'manual' ? `via ${e.source}` : null].filter(Boolean).join(' · ')}`);
-  return [...head, '', '## Intel', ...intel, '', `## People (${peopleLines.length})`, ...(peopleLines.length ? peopleLines : ['- none on file']),
-    '', `## Last touches (${touchLines.length})`, ...(touchLines.length ? touchLines : ['- none recorded']),
-    '', '## Decisions', ...(decisions.length ? decisions : ['- none recorded']),
-    '', '## Waiting on them', ...waiting,
-    '', '## Terms', ...(terms.length ? terms : ['- none recorded']), '', '## Open to-dos', ...todos];
-}
-
-async function employerBundle(supabase, businessId, id, names) {
-  const row = must(await supabase.from('sales_opportunities').select('*').eq('business_id', businessId).eq('id', id).maybeSingle());
-  if (!row) throw err(404, 'opportunity not found');
-  const [events, todos, waiting] = await Promise.all([
-    supabase.from('sales_opportunity_events').select('event_type, from_stage, to_stage, changed_at')
-      .eq('business_id', businessId).eq('opportunity_id', id).order('changed_at', { ascending: false }).limit(TOUCHES_MAX).then(must),
-    openTodos(supabase, businessId, 'employer', id, names),
-    openWaiting(supabase, businessId, 'employer', id),
-  ]);
-  const head = [
-    `# ${t(row.organization, 160)} — employer`,
-    [ownershipLine(row), first(names, row.owner_user_id) ? `Owner: ${first(names, row.owner_user_id)}` : null].filter(Boolean).join(' · '),
-    [`Stage: ${row.stage}`, row.org_type ? `Type: ${row.org_type}` : null, row.covered_lives != null ? `Covered lives: ${row.covered_lives}` : null, row.tier ? `Tier: ${row.tier}` : null, row.is_top ? 'Top' : null, row.archived_at ? 'Archived' : null].filter(Boolean).join(' · '),
-    row.next_action ? `Next action: ${t(row.next_action)}${row.next_action_date ? ` (${onDay(row.next_action_date)})` : ''}` : null,
-  ].filter(Boolean);
-  const intel = fields([['Champion', row.champion], ['Decision makers', row.decision_makers], ['Objections', row.objections], ['Needed to advance', row.needed_to_advance], ['Competitors', row.competitors], ['Notes', row.notes]]);
-  const history = events.map(e => `- ${when(e.changed_at)} · ${e.event_type === 'stage_change' ? `${e.from_stage} → ${e.to_stage}` : e.event_type}`);
-  return [...head, '', '## Intel', ...intel, '', `## History (${history.length})`, ...(history.length ? history : ['- none recorded']),
-    '', '## Waiting on them', ...waiting, '', '## Open to-dos', ...todos];
-}
-
-async function targetBundle(supabase, businessId, id, names) {
-  const row = must(await supabase.from('sales_targets').select(`${TARGET_COLS}, note:sales_call_notes(${NOTE_COLS})`).eq('business_id', businessId).eq('id', id).maybeSingle());
-  if (!row) throw err(404, 'target not found');
-  const target = withSource(row);
-  const todos = await openTodos(supabase, businessId, 'target', id, names);
-  const head = [
-    `# ${t(target.name, 160)} — target (${target.kind})`,
-    ownershipLine(target),
-    [`Status: ${target.status}`, target.suggested_category ? `Suggested category: ${t(target.suggested_category, 120)}` : null].filter(Boolean).join(' · '),
-    target.source ? `Source: ${[target.source.label ? t(target.source.label, 120) : null, onDay(target.source.date)].filter(Boolean).join(', ')}` : null,
-  ].filter(Boolean);
-  return [...head, '', '## Evidence', t(target.evidence) || '- none', '', '## Research notes', t(target.research_notes, 4000) || '- none yet', '', '## Open to-dos', ...todos];
-}
-
-// scout-v3 R12: the Brief's lines (companyBrief.js - score, source, visits, why) folded into this one builder.
-async function briefSection(supabase, businessId, type, id) {
-  try {
-    const { companyBrief } = await import('./companyBrief.js');
-    const r = await companyBrief(supabase, { businessId, type, id });
-    const lines = r.status === 200 ? r.body.lines.filter(l => ['score', 'source', 'visit', 'research', 'touch'].includes(l.kind)).map(l => `- ${t(l.text, 400)}`) : [];
-    return lines.length ? ['', '## Score, visits and why', ...lines] : [];
-  } catch { return []; }
-}
-
-// R12: a person (a People row key) - who they are, their heat and email / site signals, their timeline, then their
-// company's bundle when it has a record. Names, titles, companies only.
-async function personBundle(supabase, businessId, key, names) {
+// A person (a People row key): their company's dossier with them first when a record holds them; else who they are,
+// their heat and email / site signals and their timeline. Names, titles, companies only.
+async function personBlock(supabase, businessId, key, names) {
   const { peopleActivity, personDetail } = await import('./peopleActivityRoutes.js');
   const all = await peopleActivity(supabase, businessId, { window: 'all', snoozed: 'all' });
   const p = all.status === 200 ? all.body.rows.find(r => r.key === key) : null;
   if (!p) throw err(404, 'person not found');
+  if (p.company?.id && BUNDLE_TYPES.includes(p.company.type)) return recordBlock(supabase, businessId, { type: p.company.type, id: p.company.id, first: { key, name: p.name } }, names);
   const d = await personDetail(supabase, businessId, { key });
   const timeline = d.status === 200 ? d.body.timeline.filter(x => !x.automated).slice(0, TOUCHES_MAX).map(x => `- ${[when(x.at), x.kind, x.step != null ? `step ${x.step}` : null, x.reply_class, x.subject ? t(x.subject, 160) : null].filter(Boolean).join(' · ')}`) : [];
-  const head = [
+  return { flat: [
     `# ${t(p.name, 120)} — person`,
-    [p.title ? t(p.title, 160) : null, p.company?.name ? `${t(p.company.name, 160)}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : 'no company on file', p.source].filter(Boolean).join(' · '),
+    [p.title ? t(p.title, 160) : null, p.company?.name ? t(p.company.name, 160) : 'no company on file', p.source].filter(Boolean).join(' · '),
     [p.heat != null ? `Heat: ${p.heat_band} (${p.heat})` : 'Heat: none yet', `Emails: ${p.emails.sent} sent, ${p.emails.opened} opened, ${p.emails.clicked} clicked, ${p.emails.replied} replied`, p.last_email ? `last ${p.last_email.what} ${when(p.last_email.at)}` : null].filter(Boolean).join(' · '),
-    p.visits ? `Website: ${p.visits.visits_7d} visits in 7 days${p.visits.last_visit ? `, last ${onDay(String(p.visits.last_visit).slice(0, 10))}` : ''}${p.visits.top_page ? `, top page ${t(p.visits.top_page, 120)}` : ''}` : null,
-    d.status === 200 && d.body.notes ? `Note: ${t(d.body.notes, 400)}` : null,
-  ].filter(Boolean);
-  const company = p.company?.id && BUNDLE_TYPES.includes(p.company.type) ? ['', ...await recordLines(supabase, businessId, p.company.type, p.company.id, names)] : [];
-  return [...head, '', `## Timeline (${timeline.length})`, ...(timeline.length ? timeline : ['- no email activity']), ...company];
+    ...(p.visits ? [`Website: ${p.visits.visits_7d} visits in 7 days${p.visits.last_visit ? `, last ${onDay(String(p.visits.last_visit).slice(0, 10))}` : ''}${p.visits.top_page ? `, top page ${t(p.visits.top_page, 120)}` : ''}`] : []),
+    ...(d.status === 200 && d.body.notes ? [`Note: ${t(d.body.notes, 400)}`] : []),
+    '', `## Timeline (${timeline.length})`, ...(timeline.length ? timeline : ['- no email activity']),
+  ] };
 }
-async function recordLines(supabase, businessId, type, id, names) {
-  if (type === 'person') return personBundle(supabase, businessId, id, names);
-  const build = type === 'partner' ? partnerBundle : type === 'employer' ? employerBundle : targetBundle;
-  return [...await build(supabase, businessId, id, names), ...await briefSection(supabase, businessId, type, id)];
+async function recordBlock(supabase, businessId, r, names) {
+  if (r.type === 'person') return personBlock(supabase, businessId, r.id, names);
+  const { dossier } = await import('./dossier.js');
+  return { type: r.type, ...await dossier(supabase, { businessId, type: r.type, id: r.id, names, first: r.first || null }) };
 }
 
-// scout-v3 D10 - Copy for Claude from Scout: Question · Scope + date · then each record's bundle. At most PACK_MAX
-// characters: list lines are dropped from the END of the longest section first (lists are newest first, so the
-// oldest excerpts go), never a header. cleanText ran on every string; hasPii on the whole pack - a pack that trips
-// is not returned ({ blocked: true }). -> { text, records, chars, trimmed }.
-export const PACK_MAX = 6000;
-export async function copyPack(supabase, { businessId, question, scope, today, records }) {
+// scout-v3 D10 - Copy for Claude from Scout and Today: Scope + date · each record's dossier · About us · Ask (the
+// question typed, or the ask chip). P2: at most PACK_MAX characters (full: PACK_FULL_MAX), cut lines counted per
+// section. -> { text, records, chars, cut } | { blocked: true }.
+export async function copyPack(supabase, { businessId, question, scope, today, records, full = false }) {
   const names = await memberNames(supabase, businessId);
   const blocks = [];
   for (const r of records) {
     if (r.type !== 'person' && !(BUNDLE_TYPES.includes(r.type) && UUID.test(r.id || ''))) continue;
-    try { blocks.push(await recordLines(supabase, businessId, r.type, r.id, names)); } catch (e) { if (e.status !== 404) throw e; }
+    try { blocks.push(await recordBlock(supabase, businessId, r, names)); } catch (e) { if (e.status !== 404) throw e; }
   }
   if (!blocks.length) throw err(404, 'no record to copy');
-  const head = [`Question: ${t(question, 500) || '(none)'}`, `Scope: ${[scope ? t(scope, 80) : null, today].filter(Boolean).join(' · ')} · ${blocks.length} record${blocks.length === 1 ? '' : 's'}`];
-  // a list = a run of "- " lines; the last line of the longest run (2+ lines) goes first.
-  const size = () => [...head, ...blocks.flatMap(b => ['', ...b])].join('\n').length + 80;
-  let trimmed = 0;
-  while (size() > PACK_MAX) {
-    let best = null;
-    for (const b of blocks) for (let i = 0, n = 0; i <= b.length; i++) {
-      if (i < b.length && b[i].startsWith('- ')) { n += 1; continue; }
-      if (n > 1 && (!best || n > best.n)) best = { b, at: i - 1, n };
-      n = 0;
-    }
-    if (!best) break;
-    best.b.splice(best.at, 1); trimmed += 1;
-  }
-  let text = [...head, ...blocks.flatMap(b => ['', ...b]), ...(trimmed ? ['', `(${trimmed} older lines trimmed to fit)`] : [])].join('\n');
-  if (text.length > PACK_MAX) text = `${text.slice(0, PACK_MAX - 1)}…`;
-  if (hasPii(text)) { console.error('[copy-pack] blocked: scrub left an email or phone shape'); return { blocked: true }; }
-  return { text, records: blocks.length, chars: text.length, trimmed };
+  const { buildPack } = await import('./dossier.js');
+  const head = [`Scope: ${[scope ? t(scope, 80) : null, today].filter(Boolean).join(' · ')} · ${blocks.length} record${blocks.length === 1 ? '' : 's'}`];
+  const pack = await buildPack(supabase, { businessId, blocks, head, ask: t(question, 500), max: full ? PACK_FULL_MAX : PACK_MAX });
+  if (pack.blocked) { console.error('[copy-pack] blocked: scrub left an email or phone shape'); return pack; }
+  return { ...pack, records: blocks.length };
 }
 
-// GET /goals/copy-bundle?type=partner|employer|target&id=<uuid> -> { markdown }.
-// Viewer+: everything in it is data they can already see on screen.
-export async function copyBundle(supabase, { businessId, type, id }) {
+// GET /goals/copy-bundle?type=partner|employer|target&id=<uuid>[&person=<people key>][&full=1] -> { markdown, chars, cut }.
+// The markdown ends with "## Ask" - the caller appends what it wants. Viewer+: it is data they can already see.
+export async function copyBundle(supabase, { businessId, type, id, person = null, full = false }) {
   if (!BUNDLE_TYPES.includes(type)) return reply(400, { error: `type must be one of ${BUNDLE_TYPES.join('|')}` });
   if (!UUID.test(id || '')) return reply(400, { error: 'id must be a uuid' });
   try {
     const names = await memberNames(supabase, businessId);
-    const lines = await recordLines(supabase, businessId, type, id, names);
-    const markdown = `${[...lines, '', '## What I need:', ''].join('\n')}\n`;
-    if (hasPii(markdown)) {
+    const block = await recordBlock(supabase, businessId, { type, id, first: person ? { key: String(person).slice(0, 200), name: null } : null }, names);
+    const { buildPack } = await import('./dossier.js');
+    const pack = await buildPack(supabase, { businessId, blocks: [block], max: full ? PACK_FULL_MAX : PACK_MAX });
+    if (pack.blocked) {
       console.error(`[copy-bundle] blocked ${type} ${id}: scrub left an email or phone shape`);
       return reply(500, { error: 'The bundle was blocked: it still held an email or phone shape', code: 'bundle_pii' });
     }
-    return reply(200, { markdown });
+    return reply(200, { markdown: pack.text, chars: pack.chars, cut: pack.cut });
   } catch (e) {
     return reply(e.status || 500, { error: e.message });
   }
 }
 export async function copyBundleRoute(req, res) {
-  send(res, await copyBundle(getSupabase(), { businessId: req.params.businessId, type: req.query.type, id: req.query.id }));
+  send(res, await copyBundle(getSupabase(), { businessId: req.params.businessId, type: req.query.type, id: req.query.id, person: req.query.person || null, full: req.query.full === '1' }));
 }

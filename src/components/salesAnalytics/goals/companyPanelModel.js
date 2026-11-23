@@ -54,7 +54,7 @@ export function stageLabel(row, id = row.stage) {
   return row.stage_label || id;
 }
 
-// Appended under the copy-bundle's "## What I need:" for Draft email in
+// Appended under the copy-bundle's "## Ask" for Draft email in
 // Claude. Prospector never sends; Jack pastes and sends himself.
 export function playbookPrompt(row) {
   const what = row.type === 'employer' ? 'an employer that could offer us as an employee benefit' : row.type === 'partner' ? 'a channel partner that could offer us to the employers, members or clients it already reaches' : 'a company we want to open a conversation with';

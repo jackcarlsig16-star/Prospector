@@ -9,6 +9,11 @@ export const scrubPhones = s => s.replace(PHONE, m => (ISO_DATE.test(m) ? m : '[
 // text; the phone shape line by line - a date ending one line and "(11/10)" opening the next is not a number.
 export const hasPii = s => /@/.test(s) || String(s).split('\n').some(line => (line.match(PHONE) || []).some(m => !ISO_DATE.test(m)));
 
+// FIX claude-pack-dossier P1: a Copy-for-Claude pack may carry stored linkedin.com/in/ profile links (a slug's digits
+// read as a phone shape) - they are the one thing the check looks past.
+export const LINKEDIN_IN = /https:\/\/www\.linkedin\.com\/in\/[A-Za-z0-9_%.~-]+/g;
+export const packHasPii = s => hasPii(String(s).replace(LINKEDIN_IN, ''));
+
 // Saved model text: no email addresses, no phone numbers, one line, capped.
 const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
 export const cleanText = (v, max) => (typeof v === 'string' ? scrubPhones(v.replace(EMAIL, '[email removed]'))

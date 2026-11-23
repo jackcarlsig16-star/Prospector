@@ -9,7 +9,7 @@ import { menuFor, SCOUT_CAPTURE, bundleLine, TASK_LINE } from './scoutActions';
 jest.mock('../../utils/useMediaQuery', () => () => false);
 jest.mock('../salesAnalytics/goals/goalsApi', () => ({ goalsApi: {
   members: () => Promise.resolve([{ user_id: 'u1', name: 'Ana Member', color: '#6F8CF0' }, { user_id: 'u2', name: 'Bo Member', color: '#C97626' }]),
-  copyBundle: () => Promise.resolve('# Cloudflare — employer\n\n## What I need:\n\n'),
+  copyBundle: () => Promise.resolve('# Cloudflare — employer\n\n## Ask\n'),
 } }));
 jest.mock('../salesAnalytics/goals/priorities/ComposePanel', () => ({ row, onClose, onToast }) => (
   <div role="dialog" aria-label={`Write email · ${row.name}`} data-to={row.to || ''}>
@@ -44,7 +44,7 @@ beforeEach(() => {
     ask: () => json(200, ANSWER),
     plan: body => json(200, OPENS[body.verb] ? { verb: body.verb, ...OPENS[body.verb] } : CARD(body.verb)),
     act: () => json(200, { plan_id: 'plan-1', verb: 'assign', rows: [{ key: 'people:prospect:p1', title: 'Dana Mayer', ok: true, to: 'Ana' }], done: 1, failed: 0, skipped: 0, line: 'Assigned 1 to Ana', can_undo: true }),
-    pack: () => json(200, { text: 'Question: q\n\nDana Mayer', records: 1, chars: 2100, trimmed: 0 }),
+    pack: () => json(200, { text: 'Scope: HomeLover · 1 record\n\n# Dana Mayer — person\n\n## Ask\n', records: 1, chars: 2100, cut: 0 }),
   };
   global.fetch = jest.fn((url, init) => { const k = String(url).split('/').pop().split('?')[0]; return replies[k] ? replies[k](init?.body ? JSON.parse(init.body) : {}) : json(200, { groups: [] }); });
 });
@@ -152,7 +152,7 @@ test('a person with no company record: Copy draft bundle copies the person\'s ow
   await pick(PERSON, 'bundle');
   await waitFor(() => expect(container.querySelector('[data-scout-note="copied"]')).toBeTruthy());
   expect(bodies('/api/scout/pack')[0]).toEqual({ scope: 'b1', q: '', records: [{ entity: 'people', id: 'prospect:p1' }] });
-  expect(clip[0]).toMatch(/^Question: q\n\nDana Mayer\n\n## What I need:\n\nDraft one first email to Dana Mayer, a company we want/);
+  expect(clip[0]).toMatch(/^Scope: HomeLover · 1 record\n\n# Dana Mayer — person\n\n## Ask\nDraft one first email to Dana Mayer, a company we want/);
 
   const heard = [];
   const onCapture = e => heard.push(e.detail);

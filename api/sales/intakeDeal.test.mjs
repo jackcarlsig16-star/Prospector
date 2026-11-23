@@ -154,11 +154,11 @@ test('Copy for Claude: next meeting + Decisions, Waiting on them, Terms; no "@" 
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const md = r.body.markdown;
   assert.match(md, /Next meeting: Oct 26, 2026/);
-  for (const h of ['## Decisions', '## Waiting on them', '## Terms']) assert.ok(md.includes(h), h);
-  const section = h => md.split(h)[1].split('\n## ')[0];
-  assert.equal(section('## Decisions').split('\n').filter(l => l.startsWith('- ')).length, 5);
-  assert.ok(section('## Waiting on them').includes('Dana · Send the list of candidate pilot employers'));
-  assert.equal(section('## Terms').split('\n').filter(l => l.startsWith('- (10/16) Terms: ')).length, 3);
+  const intel = md.split('## Intel')[1].split('\n## ')[0].split('\n');
+  assert.equal(intel.filter(l => l.startsWith('- Decision · ')).length, 5);
+  assert.ok(intel.some(l => l.startsWith('- Waiting on them · Dana · Send the list of candidate pilot employers')));
+  assert.equal(intel.filter(l => l.startsWith('- (10/16) Terms: ')).length, 3);
+  assert.match(md, /## Calls \(1\)\n- Oct 16, 2026 · Equifax sync\n/);
   assert.ok(!md.includes('@') && !hasPii(md));
 });
 

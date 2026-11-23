@@ -110,9 +110,9 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
   const draftEmail = kind => act('draft', async () => {
     const rec = await ensureRecord(kind); if (!rec) return;
     setForm(null);
-    const markdown = await goalsApi.copyBundle(businessId, rec.type, rec.id);
-    await navigator.clipboard.writeText(`${markdown}${playbookPrompt(rec)}\n`);
-    onToast({ text: 'Copied for Claude - paste it into a Claude chat. Nothing was sent.' });
+    const text = `${await goalsApi.copyBundle(businessId, rec.type, rec.id)}${playbookPrompt(rec)}\n`;
+    await navigator.clipboard.writeText(text);
+    onToast({ text: `Copied for Claude · ${text.length.toLocaleString('en-US')} chars - paste it into a Claude chat. Nothing was sent.` });
   });
   const research = () => act('research', async () => {
     const rec = await ensureRecord(); if (!rec) return;

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import HeatPill from '../salesAnalytics/people/HeatPill';
-import { OpenGlyph, SortGlyph, CaretGlyph, WorkspaceTag } from './ScoutParts';
+import { OpenGlyph, SortGlyph, CaretGlyph, WorkspaceTag, StarGlyph } from './ScoutParts';
 import { entityLabel } from './scoutModel';
-import { keyOf, rowKind, menuFor, sectionNoun, countPill, SNOOZE_CHOICES, TASK_DATES, PHONE_SHOWN } from './scoutActions';
+import { keyOf, rowKind, menuFor, primaryVerb, packable, sectionNoun, countPill, SNOOZE_CHOICES, TASK_DATES, PHONE_SHOWN } from './scoutActions';
 
 // scout-v3 Stage 2 (specs/design/scout-v3/Scout3Answer + Scout3Phone) - one numbered section per part of the ask: its
 // title, a count pill, a table of the part's rows (people: name over title · company over stage · heat on the one
@@ -97,11 +97,19 @@ export function RowMenu({ item, phone, members, onPick, onClose }) {
   );
 }
 
-function Actions({ item, canAct, onOpen, onMenu, menu, phone, members, onPick }) {
+// P6: the row's primary verb, visible (Creamsicle outline + spark, filled while its card or draft is open).
+function VerbButton({ item, canAct, activeKey, onPick }) {
+  const v = canAct && !item.result ? primaryVerb(item) : null;
+  if (!v) return null;
+  return <button type="button" className="scout-btn scout-verb" data-scout-verb={v.id} aria-pressed={activeKey === keyOf(item)} aria-label={`${v.label}: ${item.title}`} onClick={() => onPick(item, v.id)}><StarGlyph size={11} />{v.label}</button>;
+}
+
+function Actions({ item, canAct, onOpen, onMenu, menu, phone, members, onPick, activeKey }) {
   const open = menu === keyOf(item);
   const has = canAct && menuFor(item).length > 0;
   return (
     <span className="scout-actions" style={{ position: 'relative' }}>
+      {!phone && <VerbButton item={item} canAct={canAct} activeKey={activeKey} onPick={onPick} />}
       {item.open && <button type="button" className="scout-btn" onClick={() => onOpen(item)} aria-label={`Open ${item.title}`}><OpenGlyph />Open</button>}
       {has && <button type="button" className="scout-btn scout-more-btn" aria-haspopup="menu" aria-expanded={open} aria-label={`Actions for ${item.title}`} onClick={() => onMenu(open ? null : keyOf(item))}>⋯</button>}
       {open && <RowMenu item={item} phone={phone} members={members} onPick={(id, args) => onPick(item, id, args)} onClose={() => onMenu(null)} />}
@@ -109,7 +117,7 @@ function Actions({ item, canAct, onOpen, onMenu, menu, phone, members, onPick })
   );
 }
 
-function PhoneCard({ item, kind, actions, members }) {
+function PhoneCard({ item, kind, actions, members, verb }) {
   const r = item.row || {};
   return (
     <div className="scout-card" data-scout-row={keyOf(item)}>
@@ -117,19 +125,24 @@ function PhoneCard({ item, kind, actions, members }) {
       {kind === 'person' && <small className="scout-dim">{[r.title, r.company?.name].filter(Boolean).join(' · ')}</small>}
       <div><span>{kind === 'person' ? (r.last_visit ? `visit ${fmt(r.last_visit)}${r.last_path ? ` · ${r.last_path}` : ''}` : r.last_email ? `${r.last_email.what} ${fmt(r.last_email.at)}` : 'no visit yet') : kind === 'task' ? <>{[r.link?.name, ownerName(r, members).name].filter(Boolean).join(' · ')} · {due(r)}</> : [entityLabel(item.entity), item.subtitle, item.date ? fmt(item.date) : item.score].filter(Boolean).join(' · ')}</span>{actions}</div>
       {kind === 'task' && r.steps && <small className="scout-dim" data-scout-steps>{r.steps.done}/{r.steps.total} steps done</small>}
+      {verb && <div className="scout-card__verb">{verb}</div>}
       <Result r={item.result} />
     </div>
   );
 }
 
-export function Section({ n, section, numbered, phone, cards = false, scopeAll, colorOf, sorted, canAct, onOpen, menu, onMenu, members, onPick }) {
+export function Section({ n, section, numbered, phone, cards = false, scopeAll, colorOf, sorted, canAct, onOpen, menu, onMenu, members, onPick, onCopy, activeKey = null }) {
   const [all, setAll] = useState(false);
+  const [full, setFull] = useState(false);
+  const stacked = phone || cards;
+  const toCopy = section.rows.filter(packable);
   const kinds = new Set(section.rows.map(rowKind));
   const kind = kinds.size === 1 ? [...kinds][0] : 'other';
   const cols = columnsFor(kind, { scopeAll, colorOf, sorted, members, onOpen });
   const cap = phone && !all ? PHONE_SHOWN[kind === 'person' ? 'people' : kind === 'task' ? 'todos' : ''] || section.rows.length : section.rows.length;
   const shown = section.rows.slice(0, cap), hidden = section.rows.length - shown.length;
-  const act = item => <Actions item={item} canAct={canAct} onOpen={onOpen} onMenu={onMenu} menu={menu} phone={phone} members={members} onPick={onPick} />;
+  const act = item => <Actions item={item} canAct={canAct} onOpen={onOpen} onMenu={onMenu} menu={menu} phone={stacked} members={members} onPick={onPick} activeKey={activeKey} />;
+  const verb = item => <VerbButton item={item} canAct={canAct} activeKey={activeKey} onPick={onPick} />;
   const foot = [section.rule, section.read ? `read from ${section.read}` : null].filter(Boolean);
   return (
     <section className="scout-section" data-scout-section={n} aria-label={section.title || `Part ${n}`}>
@@ -144,7 +157,7 @@ export function Section({ n, section, numbered, phone, cards = false, scopeAll, 
       {shown.length > 0 && !phone && !cards && (
         <div className="scout-tablewrap">
           <table className="scout-table" data-scout-table={kind}>
-            <thead><tr>{cols.map((c, i) => <th key={i} scope="col" style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th scope="col" style={{ width: 118 }}><span className="scout-sr">Actions</span></th></tr></thead>
+            <thead><tr>{cols.map((c, i) => <th key={i} scope="col" style={c.w ? { width: c.w } : undefined}>{c.label}</th>)}<th scope="col" style={{ width: canAct ? 236 : 118 }}><span className="scout-sr">Actions</span></th></tr></thead>
             <tbody>
               {shown.map(item => (
                 <tr key={keyOf(item)} data-scout-row={keyOf(item)} className={item.result ? `is-${item.result.state}` : undefined}>
@@ -156,9 +169,15 @@ export function Section({ n, section, numbered, phone, cards = false, scopeAll, 
           </table>
         </div>
       )}
-      {shown.length > 0 && (phone || cards) && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} members={members} />)}</div>}
+      {shown.length > 0 && (phone || cards) && <div className="scout-cards" data-scout-cards>{shown.map(item => <PhoneCard key={keyOf(item)} item={item} kind={kind} actions={act(item)} members={members} verb={primaryVerb(item) && canAct && !item.result ? verb(item) : null} />)}</div>}
       {hidden > 0 && <button type="button" className="scout-btn scout-more" onClick={() => setAll(true)}>{hidden} more <CaretGlyph /></button>}
       {foot.length > 0 && section.rows.length > 0 && <footer className="scout-rule" data-scout-rule>{foot.map((f, i) => <span key={i}>{f}</span>)}</footer>}
+      {onCopy && toCopy.length > 0 && (
+        <div className="scout-copyrow" data-scout-copyrow>
+          <button type="button" className="scout-btn scout-verb" data-scout-copy-section onClick={() => onCopy(toCopy.slice(0, 10), undefined, full)}>Copy for Claude{toCopy.length > 1 ? ` · ${Math.min(toCopy.length, 10)} records` : ''}</button>
+          <button type="button" className="scout-btn" aria-pressed={full} data-scout-copy-full title="Lift the 12,000-character cap to 40,000" onClick={() => setFull(f => !f)}>{full ? '✓ Full' : 'Full'}</button>
+        </div>
+      )}
     </section>
   );
 }

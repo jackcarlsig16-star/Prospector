@@ -190,7 +190,7 @@ export async function undo(supabase, registry, { auth, body = {}, now = actDeps.
   return reply(200, { plan_id: p.id, rows, undone: rows.length - bad.length, line: bad.length ? `undone ${rows.length - bad.length} of ${rows.length} · ${bad.map(r => `${r.title}: ${r.error}`).join(' · ')}` : 'undone' });
 }
 
-// POST /api/scout/pack { scope, q, records: [{ entity, id }] } -> { text, records, chars } | 422 { blocked } (D10; no model call).
+// POST /api/scout/pack { scope, q, records: [{ entity, id }], full? } -> { text, records, chars, cut } | 422 { blocked } (D10; no model call).
 export const PACK_RECORDS_MAX = 10;
 export async function pack(supabase, registry, { auth, body = {}, now = actDeps.now() }) {
   let s;
@@ -200,7 +200,7 @@ export async function pack(supabase, registry, { auth, body = {}, now = actDeps.
   const records = (Array.isArray(body.records) ? body.records : []).filter(r => r && typeof r.entity === 'string' && r.id != null).slice(0, PACK_RECORDS_MAX).map(r => ({ entity: r.entity, id: String(r.id) }));
   if (!records.length) return reply(400, { error: 'records is required' });
   try {
-    const r = await mod.pack(supabase, { businessId: s.business.id, business: s.business, auth, today: laDateString(new Date(now)), now }, { q: cleanText(String(body.q || ''), 500), records });
+    const r = await mod.pack(supabase, { businessId: s.business.id, business: s.business, auth, today: laDateString(new Date(now)), now }, { q: cleanText(String(body.q || ''), 500), records, full: body.full === true });
     return r.blocked ? reply(422, { blocked: true, error: 'Not copied: the pack still held an address or phone shape.' }) : reply(200, r);
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }

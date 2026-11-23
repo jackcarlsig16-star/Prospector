@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import TargetsList, { openTargets } from './TargetsList';
 import { goalsApi } from '../goals/goalsApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { promoteTarget: jest.fn(), rejectTarget: jest.fn(), copyBundle: jest.fn(), partners: jest.fn() } }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { promoteTarget: jest.fn(), rejectTarget: jest.fn(), copyDossier: jest.fn(), partners: jest.fn() } }));
 
 const target = (id, name, extra) => ({ id, name, kind: 'partner', status: 'researching', suggested_category: null, owner_team: null, co_owner_name: null, no_double_touch: false, evidence: null, research_notes: null, promoted_goal_id: null, source: { label: 'Seif weekly', date: '2026-10-12' }, created_at: '2026-10-13T00:00:00Z', ...extra });
 const targets = [
@@ -104,13 +104,13 @@ test('Not a fit drops via the reject route and Undo sends the dropped to-dos bac
 });
 
 test('Copy for Claude puts the bundle on the clipboard and says so', async () => {
-  goalsApi.copyBundle.mockResolvedValue('# Fundrise — target (partner)\n\n## What I need:\n\n');
+  goalsApi.copyDossier.mockResolvedValue({ markdown: '# Fundrise — target\n\n## Ask\n', chars: 27, cut: 0 });
   const writeText = jest.fn().mockResolvedValue();
   Object.assign(navigator, { clipboard: { writeText } });
   render(<TargetsList businessId="b1" targets={targets.slice(0, 1)} canEdit={false} onChanged={jest.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Copy for Claude' }));
-  await waitFor(() => expect(goalsApi.copyBundle).toHaveBeenCalledWith('b1', 'target', 't1'));
-  await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## What I need:')));
+  await waitFor(() => expect(goalsApi.copyDossier).toHaveBeenCalledWith('b1', 'target', 't1', { full: false }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## Ask')));
   await screen.findByText('Copied for Claude ✓');
 });
 

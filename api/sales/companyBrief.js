@@ -1,5 +1,6 @@
 import { getSupabase } from './goalsShared.js';
 import { cleanText } from './scrubText.js';
+import { RESEARCH_MARK } from './composeLint.js';
 import { companyDetail } from './companyPanel.js';
 import { breakdownLines, SOURCE_ORDER } from './intentScore.js';
 import { recomputeScores } from './intentScoreRun.js';
@@ -40,14 +41,16 @@ export function briefLines({ type, name, score, meta = {}, sourceRow = {}, sourc
   if (meta.visits_7d != null) {
     const v = detail.visits?.[0] || {};
     const pages = (v.top_paths || []).slice(0, 3).map(p => p.path || p).filter(Boolean);
-    push('visit', `Visited ${meta.visits_7d} time${meta.visits_7d === 1 ? '' : 's'} in 7 d${meta.unique_visitors_7d != null ? ` · ${meta.unique_visitors_7d} unique visitors` : ''}${pages.length ? ` · pages ${pages.join(', ')}` : ''}${meta.last_visit ? ` · last ${md(meta.last_visit)}` : ''}`);
+    // FIX claude-pack-dossier P3: visits and visitors are separate labelled lines - a visits count is never people.
+    push('visit', `visits (page loads) in 7 d: ${meta.visits_7d}${pages.length ? ` · pages ${pages.join(', ')}` : ''}${meta.last_visit ? ` · last ${md(meta.last_visit)}` : ''}`);
+    if (meta.unique_visitors_7d != null) push('visit', `distinct visitors in 7 d: ${meta.unique_visitors_7d}`);
   }
   for (const p of (detail.people || []).slice(0, PEOPLE_MAX)) push('person', `${p.name}${p.title ? ` — ${p.title}` : ''}${p.source === 'web_visit' || p.identified ? ' (identified visitor)' : ''}`);
   const done = (detail.research?.runs || []).find(r => r.status === 'done' && r.result);
   if (done) {
     const age = Math.round((now - Date.parse(done.created_at)) / DAY);
     push('research', `Researched ${md(done.created_at)} (${age} d ago)`);
-    for (const [k, label] of RESEARCH_LINES) if (done.result[k]) push('research', `${label}: ${done.result[k]}`);
+    for (const [k, label] of RESEARCH_LINES) if (done.result[k]) push('research', `${label}: ${cleanText(String(done.result[k]), 395 - RESEARCH_MARK.length - label.length)} ${RESEARCH_MARK}`);
   } else push('research', 'Not researched yet');
   for (const t of (detail.todos || []).slice(0, TASKS_MAX)) push('task', `Open to-do: ${t.text}${t.due_date ? ` · due ${md(t.due_date)}` : ''}${t.owner ? ` · ${t.owner}` : ''}`);
   if (meta.last_touch_at) {
@@ -64,10 +67,10 @@ export function briefMarkdown(name, lines) {
   return [`# Brief: ${name}`, ...lines.map(l => `- [${l.ref}] ${l.text}`), '', 'Use only these lines as facts; cite the ref of any line you rely on.'].join('\n');
 }
 
-export async function companyBrief(supabase, { businessId, type, id, now = Date.now() }) {
-  if (!BRIEF_TYPES.includes(type)) return reply(400, { error: `type must be one of ${BRIEF_TYPES.join('|')}` });
+// The Brief's pieces for one company - the Brief route and the Copy-for-Claude dossier (dossier.js) share this one load.
+export async function briefParts(supabase, { businessId, type, id, now = Date.now() }) {
   const d = await companyDetail(supabase, { businessId, type, id, now: new Date(now) });
-  if (d.status !== 200) return d;
+  if (d.status !== 200) return { error: d };
   const detail = d.body;
   let score = must(await supabase.from('sales_company_scores').select('*').eq('business_id', businessId).eq('company_type', type).eq('company_id', id).maybeSingle());
   if (!score) {
@@ -81,7 +84,14 @@ export async function companyBrief(supabase, { businessId, type, id, now = Date.
   const journey = ALL_STAGES.some(s => funnel[s]) ? chain : null;
   const meta = score?.components?.meta || {};
   const name = detail.record?.name || meta.name || type;
-  const lines = briefLines({ type, name, score, meta, sourceRow, sourcePartner, journey, detail, now });
+  return { detail, score, sourceRow, meta, name, lines: briefLines({ type, name, score, meta, sourceRow, sourcePartner, journey, detail, now }) };
+}
+
+export async function companyBrief(supabase, { businessId, type, id, now = Date.now() }) {
+  if (!BRIEF_TYPES.includes(type)) return reply(400, { error: `type must be one of ${BRIEF_TYPES.join('|')}` });
+  const parts = await briefParts(supabase, { businessId, type, id, now });
+  if (parts.error) return parts.error;
+  const { detail, score, sourceRow, meta, name, lines } = parts;
   return reply(200, {
     company: { type, id, name, owner_user_id: meta.owner_user_id || null, owner: meta.owner || null }, score: score ? { score: score.score, band: score.band, closed: score.closed, flagged_out: score.flagged_out, source_label: score.source_label, computed_at: score.computed_at } : null,
     upside_owned: meta.owner_team === 'upside' || meta.owner_team === 'both', no_double_touch: !!sourceRow.no_double_touch,

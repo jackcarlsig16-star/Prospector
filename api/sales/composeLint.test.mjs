@@ -3,7 +3,7 @@
 // Brief or the proof points, a banned phrase, pricing, an em / en dash, a wrong sign-off, length, an address.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lintDraft, mergeRules, DEFAULT_COMPOSE_RULES } from './composeLint.js';
+import { lintDraft, mergeRules, DEFAULT_COMPOSE_RULES, RESEARCH_MARK } from './composeLint.js';
 import { composeSystem, parseDraft } from './composeRoutes.js';
 
 const REFS = [{ ref: 'B1', text: 'Quarry Labs · target · stage researching · 800 employees' }, { ref: 'B2', text: 'Visited 6 times in 7 d · pages /pricing' }, { ref: 'B3', text: 'Why HomeLover: Big relocation program' }];
@@ -82,4 +82,26 @@ test('composeSystem carries the hard rules and the sign-off; parseDraft reads th
   assert.deepEqual([d.subject, d.body, d.why, d.claims.length, d.claims[1].brief_ref], ['Hi', 'Line one\nJack', 'visits', 2, null]);
   assert.ok(!parseDraft('{"subject":"mail me@x.example","body":"ok"}').subject.includes('@'));
   assert.throws(() => parseDraft('no json here'), e => e.status === 502);
+});
+
+// FIX claude-pack-dossier P3 - units: a visits count is page loads, never people; a research line's number is context.
+test('P3: "97 visits" passes, "97 employees" / "97 Flowserve employees" / "97 people" fail; the distinct-visitors number may count people; a research-only number is refused', () => {
+  const refs = [
+    { ref: 'B1', kind: 'company', text: 'Flowserve · target · stage researching · 16,000 employees' },
+    { ref: 'B2', kind: 'visit', text: 'visits (page loads) in 7 d: 97 · pages /employers, /pricing · last Nov 20' },
+    { ref: 'B3', kind: 'visit', text: 'distinct visitors in 7 d: 12' },
+    { ref: 'B4', kind: 'research', text: `Summary: Flowserve relocates staff across 50 countries ${RESEARCH_MARK}` },
+  ];
+  const run = body => lintDraft({ subject: 's', body: `${body}\n\nAna`, refs, signOff: 'Ana' }).issues.map(i => i.rule);
+  assert.deepEqual(run('Your team made 97 visits to our site this week.'), []);
+  assert.deepEqual(run('97 Flowserve employees checked out HomeLover this week.'), ['visits_as_people']);
+  assert.deepEqual(run('We saw 97 people from your team.'), ['visits_as_people']);
+  assert.deepEqual(run('97 of your staff looked.'), ['visits_as_people']);
+  assert.deepEqual(run('We counted 97 visits by your staff.'), [], 'the number is paired with visits');
+  assert.deepEqual(run('12 people from Flowserve visited, 97 visits in all.'), []);
+  assert.deepEqual(run('With 16,000 employees, housing matters.'), []);
+  assert.deepEqual(run('We help you relocate across 50 countries.'), ['research_number']);
+  const same = [{ ref: 'B1', text: 'visits (page loads) in 7 d: 12' }, { ref: 'B2', text: 'distinct visitors in 7 d: 12' }];
+  assert.deepEqual(lintDraft({ subject: 's', body: '12 people visited.\n\nAna', refs: same, signOff: 'Ana' }).issues, [], 'the same number on both lines is a people count too');
+  assert.match(composeSystem({ prompt: 'p', rules: DEFAULT_COMPOSE_RULES, signOff: 'Ana' }), /counts visits, never people[\s\S]*use no number from it/);
 });

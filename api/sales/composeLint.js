@@ -10,6 +10,10 @@ export const DEFAULT_COMPOSE_RULES = {
   proof_points: [],
   banned_claims: ['guarantee', 'guaranteed', 'best in class', 'best-in-class', 'industry leading', 'industry-leading', '#1', 'no risk', 'risk free', 'risk-free', 'free money', 'revolutionary', 'game changer', 'game-changer'],
 };
+// FIX claude-pack-dossier P3: a Brief research line carries this mark - background about them, never a number to cite.
+export const RESEARCH_MARK = '(research — context, not a claim)';
+const VISITS_LINE = /^visits \(page loads\) in 7 d: ([\d,]+)/, VISITORS_LINE = /^distinct visitors in 7 d: ([\d,]+)/;
+const PEOPLE_WORDS = 'employees|people|staff|team members|colleagues'; // REVISABLE (P3)
 const NUMBER = /\d[\d,]*(?:\.\d+)?%?/g;
 const PRICING = /\$\s?\d|\b(?:per|a|each)\s+(?:month|user|employee|seat|year|head)\b|\bpricing\b|\bprice\b|\bdiscount\b/i;
 const DASH = /[—–]/;
@@ -46,6 +50,17 @@ export function lintDraft({ subject, body, claims = [], refs = [], rules = DEFAU
   }
   const known = new Set([...refs.flatMap(r => numbersIn(r.text)), ...rules.proof_points.flatMap(numbersIn), String(rules.ask_minutes)]);
   for (const n of new Set(numbersIn(body))) if (!known.has(n) && !known.has(n.replace(/%$/, ''))) add('number_unverified', `${n} is not in the Brief or the proof points`);
+  // P3: a visits count is page loads, never people; a number only a research line holds is not ours to claim.
+  const numsOf = test => new Set(refs.filter(r => test(String(r.text || ''))).flatMap(r => numbersIn(r.text)));
+  const countOf = line => new Set(refs.map(r => line.exec(String(r.text || ''))?.[1]).filter(Boolean).map(n => n.replace(/,/g, '')));
+  const visitors = countOf(VISITORS_LINE);
+  for (const n of countOf(VISITS_LINE)) {
+    if (visitors.has(n)) continue;
+    const shown = n.replace(/\B(?=(\d{3})+(?!\d))/g, ',?');
+    if (new RegExp(`(?<![\\d,.])${shown}\\s+(?!(?:visits?|page|times|sessions?)\\b)(?:[\\w'-]+\\s+){0,2}(?:${PEOPLE_WORDS})\\b`, 'i').test(String(body || ''))) add('visits_as_people', `${n} is a count of visits (page loads), not people - say "${n} visits"`);
+  }
+  const elsewhere = new Set([...refs.filter(r => !String(r.text || '').includes(RESEARCH_MARK)).flatMap(r => numbersIn(r.text)), ...rules.proof_points.flatMap(numbersIn), String(rules.ask_minutes)]);
+  for (const n of numsOf(t => t.includes(RESEARCH_MARK))) if (new Set(numbersIn(body)).has(n) && !elsewhere.has(n)) add('research_number', `${n} comes from a research line - context about them, not a claim to make`);
   for (const b of rules.banned_claims) if (b && norm(text).includes(norm(b))) add('banned_claim', `"${b}" is on the banned list`);
   if (PRICING.test(text)) add('pricing', 'No pricing in a first email');
   if (DASH.test(text)) add('dash', 'Use hyphens, not em or en dashes');

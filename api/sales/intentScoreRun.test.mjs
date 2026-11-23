@@ -279,7 +279,7 @@ test('Brief: one block with refs B1.., score breakdown, source + referrer, visit
   assert.ok(b.lines.every((l, i) => l.ref === `B${i + 1}` && l.kind && l.text));
   const text = b.lines.map(l => l.text).join('\n');
   assert.match(text, /Intent \d+ · P1/);
-  assert.match(text, /Visited 6 times in 7 d · 3 unique visitors · pages \/pricing/);
+  assert.match(text, /visits \(page loads\) in 7 d: 6 · pages \/pricing[^\n]*\ndistinct visitors in 7 d: 3\n/);
   assert.match(text, /Mona Q\. — VP People/);
   assert.match(text, /Why HomeLover: Big relocation program/);
   assert.match(text, /Open to-do: Send the deck/);

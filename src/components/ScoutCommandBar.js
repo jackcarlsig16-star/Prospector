@@ -213,7 +213,7 @@ export default function ScoutCommandBar({ mode = 'plain', scope, scopeOptions, a
       <AnswerPanel key={current.at} turn={current} phone={sheet || stacked} cards={mode === 'window'} scopeAll={current.scope === 'all'} colorOf={colorOf} viewer={viewer} canAct={canAct && current.scope === scope}
         scopeChip={<StaticScope name={opt?.name || allText} color={opt?.color} />}
         onOpen={openItem} inlineKey={inlineKey} members={members} menu={menu} onMenu={setMenu} onPick={(item, id, args) => { setMenu(null); actions.pick(item, id, args); }}
-        onCopy={actions.copy} act={actBlock}
+        onCopy={actions.copy} act={actBlock} activeKey={actions.activeKey}
         focus={focus && <div className="scout-focus" data-scout-focus><span className="scout-pill">{focus.label}<button type="button" aria-label={`Clear the focus (${focus.label})`} title="Clear the focus" onClick={() => setFocus(null)}>×</button></span></div>}
         turns={turns} onReopen={reopen} onClear={clearThread} />
     );

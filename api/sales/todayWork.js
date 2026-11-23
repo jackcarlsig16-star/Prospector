@@ -1,5 +1,5 @@
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
-import { cleanText, hasPii } from './scrubText.js';
+import { cleanText, hasPii, packHasPii } from './scrubText.js';
 import { nbaOf, VERB_IDS } from './todayRank.js';
 
 // actions-v2 A2 (Q7-Q10) - the work panel's server side. Nothing here runs until a verb is clicked, and nothing is
@@ -19,10 +19,14 @@ export const STEPS_MAX = 4;
 export const NOTES_MAX = 3;
 export const WORK_MAX_TOKENS = 900;
 export const TONES = { shorter: 'Make this draft shorter than you otherwise would: at most 70 words in the body.', warmer: 'Make this draft a little warmer in tone, without hype and without adding any fact.' };
+// FIX claude-pack-dossier P5: five asks, each the pack's last line (## Ask). {person} = the row's person; ___ is typed.
+export const ASK_BLANK = '___';
 export const ASKS = [
-  ['sequence', 'Write a 3-touch sequence', 'Write a 3-touch outreach sequence (email, follow-up, last note) for this record, using only the facts below.'],
-  ['research', 'Research the account', 'Research this account: what should a HomeLover account executive know before reaching out? Say what is known from the facts below and what is still unknown.'],
-  ['call', 'Prep me for a call', 'Prep me for a call with this record: an opening line, three questions to ask and the likely objections, using only the facts below.'],
+  ['sequence', 'Write a 3-touch sequence', 'Write a 3-touch outreach sequence (email, follow-up, last note) for this record, using only the facts above.'],
+  ['email', 'Write one email', 'Write one first email to {person}, using only the facts above. Under it, list the facts you used.'],
+  ['research', 'Research the account', 'Research this account: what should a HomeLover account executive know before reaching out? Say what is known from the facts above and what is still unknown.'],
+  ['call', 'Prep me for a call', 'Prep me for a call with this record: an opening line, three questions to ask and the likely objections, using only the facts above.'],
+  ['objection', 'Handle this objection', `Help me answer this objection from them, using only the facts above: ${ASK_BLANK}`],
 ];
 const NOTHING = 'Nothing to suggest beyond the draft.';
 const reply = (status, body) => ({ status, body });
@@ -112,11 +116,17 @@ export function workSystem(verb) {
     : `${head}\n\nReturn ONLY a JSON object: { "steps": [...] } - up to 3 next steps, ${STEPS_RULE}`;
 }
 
-// The Copy-for-Claude pack with each ask chip as its question (Q: real length, hasPii-gated per variant).
-export function promptPack(pack) {
+// The Copy-for-Claude pack with each ask chip as its Ask (real length, PII-gated per variant). person = the row's
+// person's name (the email chip names them); the objection chip's blank is filled in the browser.
+export function promptPack(pack, person = null) {
   if (!pack || pack.blocked || !pack.text) return pack?.blocked ? { blocked: true, reason: 'Not copied: the pack still held an address or phone shape.' } : null;
-  const asks = ASKS.map(([id, label, ask]) => { const text = pack.text.replace(/^Question: .*$/m, `Question: ${ask}`); return hasPii(text) ? { id, label, blocked: true } : { id, label, text, chars: text.length }; });
-  return { asks, records: pack.records };
+  const who = person ? cleanText(person, 120) : null;
+  const asks = ASKS.map(([id, base, ask]) => {
+    const label = id === 'email' && who ? `Write one email to ${who.split(' ')[0]}` : base;
+    const text = pack.text.replace(/## Ask\n[\s\S]*$/, `## Ask\n${ask.replace('{person}', who || 'the best person to reach at this company')}\n`);
+    return packHasPii(text) ? { id, label, blocked: true } : { id, label, text, chars: text.length, ...(id === 'objection' ? { blank: ASK_BLANK } : {}) };
+  });
+  return { asks, records: pack.records, cut: pack.cut || 0 };
 }
 
 export const workDeps = {
@@ -163,9 +173,9 @@ export async function work(supabase, { businessId, auth, key, body = {}, busines
   const rule = templateSteps(grounds);
   const out = { key, verb, row: { text: row.text, company: c ? { type: c.type, id: c.id, name: c.name } : row.company ? { name: row.company.name } : null, person: person ? { key: person.key, name: person.name, title: person.title || null } : null }, grounds, steps: rule, usage: { calls: 0, cost_usd: null, cap: null } };
 
-  const records = c ? [{ type: c.type, id: c.id }] : person ? [{ type: 'person', id: person.key }] : [];
+  const records = c ? [{ type: c.type, id: c.id, first: person ? { key: person.key, name: person.name } : null }] : person ? [{ type: 'person', id: person.key }] : [];
   if (records.length) {
-    try { out.prompt_pack = promptPack(await deps.pack(supabase, { businessId, question: ASKS[0][2], scope: businessName, today: t.view.today, records })); }
+    try { out.prompt_pack = promptPack(await deps.pack(supabase, { businessId, question: ASKS[0][2], scope: businessName, today: t.view.today, records }), person?.name || null); }
     catch (e) { if (e.status !== 404) throw e; out.prompt_pack = null; }
   } else out.prompt_pack = null;
 

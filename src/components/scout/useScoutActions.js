@@ -38,10 +38,10 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
     return () => clearTimeout(t);
   }, [act]);
 
-  const packCopy = useCallback(async (records, q) => {
+  const packCopy = useCallback(async (records, q, full = false) => {
     setAct({ kind: 'planning', label: 'Copying…' });
     try {
-      const r = await scoutApi.pack({ scope, q: q || turnRef.current?.q || '', records: records.map(x => ({ entity: x.entity, id: x.id })) });
+      const r = await scoutApi.pack({ scope, q: q || turnRef.current?.q || '', records: records.map(x => ({ entity: x.entity, id: x.id })), ...(full ? { full: true } : {}) });
       if (r.cant) { setAct({ kind: 'cant', cant: r.cant, text: '' }); return; }
       await copy(r.text);
       note('copied', copiedLine(r));
@@ -55,7 +55,7 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
       if (o.copy === 'bundle') {
         const pack = o.records ? await scoutApi.pack({ scope, q: '', records: o.records }) : null;
         if (pack && !pack.text) throw new Error('there is no record to copy for this person');
-        const record = pack ? `${pack.text}\n\n## What I need:\n\n` : await goalsApi.copyBundle(scope, o.type, o.id);
+        const record = pack ? pack.text : await goalsApi.copyBundle(scope, o.type, o.id);
         const text = `${record}${playbookPrompt({ type: o.type, name: o.person })}\n`;
         await copy(text);
         note('copied', bundleLine(o.person, text.length));
@@ -72,7 +72,7 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
 
   // -> 'ask' when the server says the text is not a command.
   const run = useCallback(async body => {
-    setAct({ kind: 'planning', label: body.text ? 'Reading the command…' : 'Working…' });
+    setAct({ kind: 'planning', label: body.text ? 'Reading the command…' : 'Working…', keys: body.keys });
     let r;
     try { r = await scoutApi.plan({ scope, rows: planRows(turnRef.current), inline: true, ...(focusRef.current?.length ? { focus: focusRef.current } : {}), ...body }); }
     catch (e) { if (e.status === 403 && e.body?.cant) r = e.body; else { note('note', e.offline ? OFFLINE : e.message); return 'done'; } }
@@ -111,18 +111,28 @@ export function useScoutActions({ scope, current, focus = null, onTurn, onOpenIt
     } catch (e) { if (e.body?.expired) setAct(a => ({ ...a, left: 0 })); else note('note', e.message); }
   }, [act, onTurn]);
 
+  // P6: a visitor row's visible verb - the pipeline's own Add as target, on the company the site saw
+  const addVisitor = useCallback(async item => {
+    setAct({ kind: 'planning', label: 'Adding…', keys: [keyOf(item)] });
+    try { const r = await goalsApi.addToPipeline(scope, { type: 'visitor', id: item.row.company_key, to: 'target' }); note('opened', r.already ? `${r.already.name} is already in the pipeline` : `${item.title} added as a target`); }
+    catch (e) { note('note', e.offline ? OFFLINE : e.message); }
+  }, [scope]);
+
   const pick = useCallback((item, id, args) => {
     if (TASK_LINE[id]) {
       if (!item.open) { note('note', "This task has no page to open · find it in Actions."); return undefined; }
       onOpenItem(item); note('opened', TASK_LINE[id]); return undefined;
     }
     if (id === 'copy') return packCopy([item]);
+    if (id === 'add_target') return addVisitor(item);
     const { days, ...rest } = args || {};
     return run({ verb: id, keys: [keyOf(item)], args: days != null ? { ...rest, date: dateIn(days) } : rest, text: '' });
-  }, [onOpenItem, packCopy, run]);
+  }, [onOpenItem, packCopy, run, addVisitor]);
 
   return {
     act, confirm, retry, undo, pick, copy: packCopy,
+    // P6: the row whose verb is open (its button reads filled)
+    activeKey: (act?.kind === 'planning' ? act.keys?.[0] : act?.kind === 'draft' ? act.body?.keys?.[0] : null) || null,
     // C2 - the inline draft: one more call, the clipboard, or the Write email panel prefilled (never a send)
     regenerate: () => (act?.kind === 'draft' ? run(act.body) : undefined),
     copyDraft: async () => { if (act?.kind !== 'draft' || act.draft.withheld) return; try { await copy(draftText(act.draft)); setAct(a => ({ ...a, copied: true })); } catch (e) { note('note', `Not copied: ${e.message}`); } },

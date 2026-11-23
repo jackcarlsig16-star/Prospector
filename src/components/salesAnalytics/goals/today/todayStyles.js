@@ -54,6 +54,9 @@ export const TODAY_CSS = `
 .td-st b { color:var(--sa-text); font-weight:500; font-size:13px; }
 .td-kv { display:grid; grid-template-columns:54px minmax(0,1fr); gap:4px 8px; font-size:13px; }
 .td-draft { background:var(--sa-inset); border:1px solid var(--sa-border-strong); border-radius:8px; padding:10px 12px; font:inherit; font-size:13px; line-height:1.55; color:var(--sa-text); width:100%; box-sizing:border-box; resize:vertical; }
+.td-in { height:32px; padding:0 10px; border-radius:8px; border:1px solid var(--sa-border); background:var(--sa-inset); color:var(--sa-text); font-size:13px; box-sizing:border-box; width:100%; }
+.td-in:focus-visible { outline:2px solid var(--sa-accent); outline-offset:1px; }
+.td-ph .td-in { height:44px; font-size:16px; }
 .td-mono { background:var(--sa-inset); border:1px solid var(--sa-border); border-radius:8px; padding:9px 11px; font:11.5px/1.55 var(--ui-mono, ui-monospace, monospace); color:var(--sa-muted); white-space:pre-wrap; overflow:auto; overflow-wrap:anywhere; max-height:170px; margin:0; }
 .td-sk { height:8px; border-radius:4px; background:var(--sa-surface-2); }
 .td-sk--gen { background:var(--td-ombre); opacity:.5; }

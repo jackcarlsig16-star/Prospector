@@ -11,7 +11,7 @@ import { plan, act, undo, pack, parseDate, parseCommand, resolveTargets, actDeps
 import { VOCABULARY, register } from './scoutEntities.js';
 import { salesReads, salesIntents, rankTodos, TODO_RULE } from './scoutIntents.js';
 import { salesWrites, salesVerbs } from './scoutVerbs.js';
-import { copyPack, PACK_MAX } from './targetsRoutes.js';
+import { copyPack, PACK_MAX, PACK_FULL_MAX } from './targetsRoutes.js';
 import { editCompanyFields } from './companyFields.js';
 import { buildPeopleTable, peopleRows, windowOf } from './peopleActivityRoutes.js';
 import { readType, aliasCount } from './readType.js';
@@ -341,13 +341,18 @@ test('D7 dates and the command reader: next weekday never today, tomorrow / next
   const fired = aliasCount(); assert.equal(readType('partner'), 'partner'); assert.equal(readType('employer'), 'employer'); assert.equal(aliasCount(), fired); assert.equal(readType('opportunity'), 'employer'); assert.equal(aliasCount(), fired + 1);
 });
 
-test('D10 / R12: one builder - a company pack carries the Brief\'s lines, a person pack their signals and their company; capped at 6,000 characters by dropping the oldest list lines; a pack that still holds an "@" is not copied', async () => {
-  const contacts = Array.from({ length: 50 }, (_, i) => ({ id: u('c') + i, business_id: A, goal_id: u('1'), name: `Contact Number ${i}`, title: `Senior Director of People Operations and Total Rewards, Region ${i} `.repeat(2), role_in_notes: null }));
-  const sb = seed({ partner_contacts: contacts });
+test('D10 / R12: one builder - a company pack carries the Brief\'s lines, a person pack their signals and their company; capped at 12,000 characters by cutting the last people / events with a counted line (Full lifts it); a stored LinkedIn link passes; a pack that still holds an "@" is not copied', async () => {
+  const contacts = Array.from({ length: 50 }, (_, i) => ({ id: u('c') + i, business_id: A, goal_id: u('1'), name: `Contact Number ${i}`, title: `Senior Director of People Operations and Total Rewards, Region ${i} `.repeat(2), role_in_notes: null, linkedin_url: i ? null : 'linkedin.com/in/contact-zero-123456789/' }));
+  const touches = Array.from({ length: 20 }, (_, i) => ({ id: u('e') + i, business_id: A, goal_id: u('1'), event: 'touch', touch_type: 'email', at: `2026-11-0${1 + (i % 9)}T18:00:00Z`, contact_names: [`Contact Number ${i} of the regional people operations and total rewards leadership group, `.repeat(2)], source: 'manual', meta: {} }));
+  const sb = seed({ partner_contacts: contacts, sales_partner_events: touches });
   const big = await copyPack(sb, { businessId: A, question: 'pull everything on Hilton Partners', scope: 'Alpha', today: TODAY, records: [{ type: 'partner', id: u('1') }] });
   assert.ok(big.chars <= PACK_MAX && big.text.length === big.chars);
-  assert.ok(big.trimmed > 0); assert.match(big.text, /older lines trimmed to fit/);
-  assert.match(big.text, /^Question: pull everything on Hilton Partners\nScope: Alpha · 2026-11-10 · 1 record\n\n# Hilton Partners — partner/);
+  assert.ok(big.cut > 0); assert.match(big.text, /^\+ \d+ more (people|events)$/m);
+  assert.match(big.text, /^Scope: Alpha · 2026-11-10 · 1 record\n\n# Hilton Partners — partner\n\n## Company\n/);
+  assert.ok(big.text.endsWith('## About us\n(no company context yet)\n\n## Ask\npull everything on Hilton Partners\n'));
+  assert.match(big.text, /- Contact Number 0 · [^\n]* · LinkedIn https:\/\/www\.linkedin\.com\/in\/contact-zero-123456789\n/, 'P1: the stored profile link, normalized, is allowed');
+  const whole = await copyPack(sb, { businessId: A, question: 'q', scope: 'Alpha', today: TODAY, records: [{ type: 'partner', id: u('1') }], full: true });
+  assert.equal(whole.cut, 0); assert.ok(whole.chars > PACK_MAX && whole.chars <= PACK_FULL_MAX, 'P2: Full lifts the cap');
   assert.ok(!big.text.includes('@'));
   const trip = seed({ partner_contacts: [{ id: u('c'), business_id: A, goal_id: u('1'), name: 'Pat Lee', title: 'VP HR @Hilton', role_in_notes: null }] });
   assert.deepEqual(await copyPack(trip, { businessId: A, question: 'q', scope: 'Alpha', today: TODAY, records: [{ type: 'partner', id: u('1') }] }), { blocked: true });

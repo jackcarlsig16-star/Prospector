@@ -46,7 +46,7 @@ export default function PersonDetail({ businessId, row, canEdit, meId, members =
   const noRecord = 'Add the company to the pipeline first';
   const act = async (what, fn) => { setBusy(what); try { await fn(); } catch (e) { onToast({ text: e.message }); } finally { setBusy(''); } };
   const draft = () => act('draft', async () => {
-    const markdown = await goalsApi.copyBundle(businessId, rec.type, rec.id);
+    const markdown = await goalsApi.copyBundle(businessId, rec.type, rec.id, { person: row.key });
     await navigator.clipboard.writeText(`${markdown}${playbookPrompt(rec)}\n`);
     onToast({ text: `Draft bundle for ${row.name} copied - paste it into Claude. Prospector never sends.` });
   });

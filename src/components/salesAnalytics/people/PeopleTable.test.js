@@ -188,7 +188,7 @@ test('quick menu: Draft email copies the REACH bundle (never sends); Add to-do l
   const detail = await waitFor(() => { const el = t.querySelector('[data-person-detail]'); if (!el) throw new Error('no detail'); return el; });
   const menu = within(within(detail).getByRole('group', { name: 'Quick menu' }));
   fireEvent.click(menu.getByRole('button', { name: 'Draft email' }));
-  await waitFor(() => expect(goalsApi.copyBundle).toHaveBeenCalledWith('b1', 'employer', 'o1'));
+  await waitFor(() => expect(goalsApi.copyBundle).toHaveBeenCalledWith('b1', 'employer', 'o1', { person: 'prospect:CrystalPringle' }));
   await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalled());
   expect(navigator.clipboard.writeText.mock.calls[0][0]).toMatch(/^# Acme Health\nDraft one first email to Acme Health/);
   expect(await screen.findByRole('status')).toHaveTextContent('Draft bundle for Crystal Pringle copied - paste it into Claude. Prospector never sends.');

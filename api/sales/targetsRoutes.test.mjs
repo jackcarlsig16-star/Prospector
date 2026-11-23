@@ -258,7 +258,7 @@ test('reject refuses a promoted target and a finalized week keeps its to-dos', a
   assert.equal(s.db.sales_week_goals.find(w => w.id === W.deloitteTodo).status, 'open');
 });
 
-test('copy bundle (partner): intel, people, touches, open to-dos - no "@", no phone, ends with What I need', async () => {
+test('copy bundle (partner): the dossier - company, people, history, open to-dos - no "@", no phone, ends with Ask', async () => {
   const s = seed();
   const r = await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -268,9 +268,12 @@ test('copy bundle (partner): intel, people, touches, open to-dos - no "@", no ph
   assert.match(md, /Stage: Replied · Category: 4\. Mid-Market Benefits Brokers · Tier: 2 · Hot · Owner: Jack/);
   assert.match(md, /- Angle: Call Pat at \[number removed\] or \[email removed\] about the broker pilot/);
   assert.match(md, /## People \(1\)\n- Pat Example · VP Benefits · champion/);
-  assert.match(md, /## Last touches \(1\)\n- Oct 12, 2026 · email · out · Pat Example · by Jack/);
+  assert.match(md, /## History \(1\)\n- Oct 12, 2026 · email · out · Pat Example · by Jack/);
+  assert.deepEqual(md.match(/^## .*$/gm).map(h => h.replace(/ \(\d+\)$/, '')), ['## Company', '## Why now', '## People', '## Calls', '## Intel', '## History', '## Open to-dos', '## Research', '## About us', '## Ask'], 'P1: the sections, in order');
+  assert.match(md, /## About us\n\(no company context yet\)/);
+  assert.equal(r.body.chars, md.length);
   assert.match(md, /## Open to-dos\n- Send Gallagher the one-pager · Jack · due Oct 17, 2026/);
-  assert.ok(md.endsWith('## What I need:\n\n'));
+  assert.ok(md.endsWith('## Ask\n'));
   assert.equal(md.includes('@'), false);
   assert.equal(md.includes('555'), false, 'the contact email and the phone in the DB never reach the bundle');
   assert.equal(hasPii(md), false);
@@ -285,7 +288,7 @@ test('copy bundle (employer + target): scrubbed, source note named, 404 / 400 on
   assert.match(e.body.markdown, /Stage: contacted · Type: employer/);
   assert.equal(e.body.markdown.includes('@'), false);
   // FIX loop-quickfixes Q2: the employer's open to-dos and waiting-on rows, same format as a partner's; still scrubbed.
-  assert.match(e.body.markdown, /## Waiting on them\n- nothing\n\n## Open to-dos\n- none/);
+  assert.match(e.body.markdown, /## Open to-dos\n- none/);
   const opp = s.db.sales_opportunities[0].id;
   const row = extra => ({ id: randomUUID(), business_id: B, week_start: WEEK, status: 'open', owner_user_id: null, link_type: 'employer', link_id: opp, ...extra });
   s.db.sales_week_goals.push(row({ kind: 'todo', text: 'Send the pilot terms to crystal@solidcore.example', due_date: '2026-10-20' }),
@@ -293,15 +296,17 @@ test('copy bundle (employer + target): scrubbed, source note named, 404 / 400 on
     row({ kind: 'todo', text: 'Already done', status: 'done' }));
   const e2 = await copyBundle(s, { businessId: B, type: 'employer', id: opp });
   assert.equal(e2.status, 200, JSON.stringify(e2.body));
-  assert.match(e2.body.markdown, /## Waiting on them\n- Crystal · the eligibility file · due Oct 18, 2026\n\n## Open to-dos\n- Send the pilot terms to \[email removed\] · due Oct 20, 2026\n/);
+  assert.match(e2.body.markdown, /- Waiting on them · Crystal · the eligibility file · due Oct 18, 2026\n/);
+  assert.match(e2.body.markdown, /## Open to-dos\n- Send the pilot terms to \[email removed\] · due Oct 20, 2026\n/);
   assert.equal(e2.body.markdown.includes('Already done'), false);
   assert.equal(hasPii(e2.body.markdown), false);
   const t = await copyBundle(s, { businessId: B, type: 'target', id: T.fundrise });
   assert.equal(t.status, 200, JSON.stringify(t.body));
-  assert.match(t.body.markdown, /^# Fundrise — target \(partner\)\n/);
-  assert.match(t.body.markdown, /Source: Seif weekly, Oct 12, 2026/);
-  assert.match(t.body.markdown, /## Evidence\nrenter-investing platforms are worth approaching/);
-  assert.match(t.body.markdown, /## Research notes\nPerson: Ana Example — CEO \(champion\)\n\(10\/12\) angle: reaches 400k renters/);
+  assert.match(t.body.markdown, /^# Fundrise — target\n/);
+  assert.match(t.body.markdown, /- Status: researching · Kind: partner · /);
+  assert.match(t.body.markdown, /## Calls \(1\)\n- Oct 12, 2026 · [^\n]*Seif weekly/);
+  assert.match(t.body.markdown, /- Evidence: renter-investing platforms are worth approaching/);
+  assert.match(t.body.markdown, /- Note: Person: Ana Example — CEO \(champion\)\n- Note: \(10\/12\) angle: reaches 400k renters/);
   assert.match(t.body.markdown, /## Open to-dos\n- Research Fundrise · Jack · due Oct 16, 2026/);
   assert.equal((await copyBundle(s, { businessId: B, type: 'partner', id: randomUUID() })).status, 404);
   assert.equal((await copyBundle(s, { businessId: B, type: 'sponsor', id: G.gallagher })).status, 400);
@@ -324,4 +329,29 @@ test('copy bundle: a snoozed to-do is not under Open to-dos until its day (the o
   assert.match(hidden, /## Open to-dos\n- none/);
   s.db.sales_week_goals.find(w => w.text === 'Send Gallagher the one-pager').snooze_until = '2020-01-01';
   assert.match((await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher })).body.markdown, /## Open to-dos\n- Send Gallagher the one-pager/);
+});
+
+// FIX claude-pack-dossier P1 / P4 - what we sent each person and what they did with it, visits by week, the person asked about first.
+test('dossier: each person with LinkedIn, heat, what we sent and what they did; visits and distinct visitors apart; the person asked about leads; an "@" still blocks', async () => {
+  const s = seed();
+  const now = new Date();
+  const day = n => new Date(now.getTime() - n * 864e5).toISOString();
+  s.db.sales_prospect_state = [{ business_id: B, contact_id: 'c9', name: 'Zed Last', title: 'Head of Total Rewards', company: 'Gallagher', linkedin_url: 'http://linkedin.com/in/zed-last-987654321/', status: 'contacted', goal_id: G.gallagher, owner_user_id: null }];
+  s.db.sales_email_messages = [
+    { business_id: B, apollo_message_id: 'm1', contact_id: 'c9', step: 1, delivered_at: day(9), subject: 'A housing perk for Gallagher', num_opens: 3, num_clicks: 1, last_opened_at: day(8), last_clicked_at: day(8), replied: false },
+    { business_id: B, apollo_message_id: 'm2', contact_id: 'c9', step: 2, delivered_at: day(4), subject: 'Re: A housing perk', num_opens: 1, num_clicks: 0, last_opened_at: day(3), replied: true, reply_class: 'interested', replied_at: day(2) },
+  ];
+  s.db.sales_person_activity = [{ business_id: B, person_key: 'prospect:c9', contact_id: 'c9', heat: 82, heat_band: 'hot' }];
+  s.db.web_visits = [{ id: randomUUID(), business_id: B, company_key: 'gallagher', matched_type: 'partner', matched_id: G.gallagher, pulled_on: day(1).slice(0, 10), last_visit: day(1).slice(0, 10), visits_7d: 97, unique_visitors_7d: 12, weekly: [{ week_start: day(6).slice(0, 10), count: 60 }, { week_start: day(13).slice(0, 10), count: 37 }, { week_start: day(90).slice(0, 10), count: 5 }], top_paths: [{ path: '/employers' }, '/pricing'] }];
+  const r = await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher, person: 'prospect:c9' });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const md = r.body.markdown;
+  assert.match(md, /## Why now\n- Visits \(page loads\), 7 d to [^\n]*: 97 · distinct visitors: 12 · last visit /);
+  assert.match(md, /- Visits by week, last 30 d: week of [^\n]*: 60 · week of [^\n]*: 37 \(total 97\)\n- Top pages \([^)]*\): \/employers, \/pricing\n/);
+  assert.match(md, /- Email, last 30 d: 2 delivered · 2 opened · 1 clicked · 1 replied\n- Hottest person: Zed Last · heat hot \(82\)\n/);
+  assert.match(md, /## People \(2\)\n- Zed Last · Head of Total Rewards · LinkedIn https:\/\/www\.linkedin\.com\/in\/zed-last-987654321 · heat hot \(82\) · status contacted · \(the person this copy is about\)\n  - sent step 2 · [^\n]* · "Re: A housing perk" → opened 1 · replied \(interested\) [^\n]*\n  - sent step 1 · [^\n]* · "A housing perk for Gallagher" → opened 3 · clicked 1\n- Pat Example · VP Benefits · champion\n/);
+  assert.equal(hasPii(md), true, 'the slug reads as a phone to the plain check');
+  assert.equal(md.includes('@'), false);
+  s.db.sales_email_messages[0].subject = 'see vp @gallagher';
+  assert.equal((await copyBundle(s, { businessId: B, type: 'partner', id: G.gallagher })).body.code, 'bundle_pii', 'the refusal stays');
 });

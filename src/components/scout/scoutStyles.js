@@ -1,5 +1,5 @@
 import '../../ui/kitTheme';
-import { T, KIT_MAX_WIDTH } from '../../ui/tokens';
+import { T, KIT_MAX_WIDTH, KIT_PRIORITY } from '../../ui/tokens';
 import { HEADER_H } from '../../shell/shellStyles';
 
 // scout-v2 REV3 Stage 2 - the bar's look, from specs/design/scout-v2 (ScoutBar / ScoutAsk / ScoutPhone). Neon (D8) only
@@ -7,6 +7,9 @@ import { HEADER_H } from '../../shell/shellStyles';
 // row's bar + wash and the popover edge. Never a button fill. Scout's surfaces carry .ui-theme-dark, so neon text
 // always sits on a dark ground (light mode included). The sweep is CSS; reduced motion keeps it still.
 const N = T.neon;
+// FIX claude-pack-dossier P6: the visible verb buttons are Creamsicle (the kit's P1 orange, the hue Today's verb
+// buttons wear) - never neon, never the periwinkle accent. Scout's surfaces are always dark, so the dark value.
+const CREAM = KIT_PRIORITY.P1[0];
 const n = a => `color-mix(in srgb, ${N} ${a}%, transparent)`;
 const edge = a => `color-mix(in srgb, var(--ui-border) ${a}%, transparent)`;
 
@@ -139,6 +142,13 @@ const SCOUT_CSS = `
 .scout-overdue { color:#FF7878; }
 .scout-rule { display:flex; flex-wrap:wrap; gap:4px 14px; font-size:11px; color:var(--ui-muted); }
 .scout-empty { margin:0; font-size:13px; color:var(--ui-sub); }
+.scout-verb { color:${CREAM}; border-color:color-mix(in srgb, ${CREAM} 55%, transparent); background:color-mix(in srgb, ${CREAM} 8%, transparent); }
+.scout-verb:hover { color:${CREAM}; border-color:${CREAM}; }
+.scout-verb[aria-pressed="true"] { background:${CREAM}; color:#12161B; border-color:transparent; }
+.scout-card__verb { display:flex; justify-content:flex-start; margin-top:4px; }
+.scout-card__verb .scout-verb { min-height:36px; padding:0 12px; }
+.scout-copyrow { display:flex; align-items:center; gap:6px; }
+.scout-copyrow .scout-btn[aria-pressed="true"] { color:var(--ui-text); border-color:${CREAM}; }
 .scout-more-btn { min-width:28px; justify-content:center; font-weight:700; letter-spacing:.08em; }
 .scout-more { align-self:flex-start; }
 .scout-result { display:block; font-size:11px; }

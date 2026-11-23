@@ -88,12 +88,20 @@ function Draft({ draft: t, phone, bodyRef, copied, onRetry, onCopy, onCompose })
 }
 const Withheld = ({ reason, onRetry }) => <div data-work-withheld style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-start' }}><span className="td-note" style={{ color: 'var(--sa-text)' }}>{reason}</span><button type="button" className="td-btn" onClick={() => onRetry()}>Try again</button></div>;
 
-function Claude({ work, row, phone, onCopy }) {
+function Claude({ work, row, phone, onCopy, onFull }) {
   const pack = work.data?.prompt_pack;
   const [ask, setAsk] = useState(0);
   const [copied, setCopied] = useState(false);
-  const a = pack?.asks?.[ask];
-  useEffect(() => setCopied(false), [ask, work.data]);
+  const [typed, setTyped] = useState('');
+  const [full, setFull] = useState(null); // null | 'busy' | the uncut dossier (ends with "## Ask")
+  const picked = pack?.asks?.[ask];
+  // P5: the objection chip's blank is what was typed; P2: Full swaps the record for the uncut dossier, same ask
+  const filled = picked?.text && picked.blank ? picked.text.replace(picked.blank, typed.trim() || picked.blank) : picked?.text;
+  const text = filled && typeof full === 'string' ? `${full}${filled.split('## Ask\n').pop()}` : filled;
+  const a = picked && !picked.blocked ? { ...picked, text, chars: text === picked.text ? picked.chars : text.length } : picked;
+  useEffect(() => setCopied(false), [ask, work.data, typed, full]);
+  useEffect(() => setFull(null), [work.data]);
+  const toggleFull = async () => { if (full) { setFull(null); return; } setFull('busy'); setFull(await onFull().catch(() => null)); };
   return (
     <section className="td-pane" aria-label="Take it to Claude" data-work-pane="claude">
       <span className="td-lbl">Take it to Claude</span>
@@ -102,10 +110,12 @@ function Claude({ work, row, phone, onCopy }) {
           : pack.blocked ? <p className="td-note" style={{ margin: 0, color: 'var(--sa-text)' }} data-work-pack-blocked>{pack.reason}</p> : <>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }} role="group" aria-label="What to ask Claude">{pack.asks.map((x, i) => <button key={x.id} type="button" className="td-chip" aria-pressed={i === ask} onClick={() => setAsk(i)}>{x.label}</button>)}</div>
             {a.blocked ? <p className="td-note" style={{ margin: 0, color: 'var(--sa-text)' }} data-work-pack-blocked>Not copied: the pack still held an address or phone shape.</p> : <>
+              {a.blank && <input className="td-in" value={typed} onChange={e => setTyped(e.target.value)} maxLength={300} placeholder="Type the objection, in their words" aria-label="The objection" data-work-objection />}
               <pre className="td-mono" tabIndex={0} aria-label="The prompt" data-work-prompt>{a.text}</pre>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button type="button" className={`td-btn${phone ? ' td-big' : ''}`} onClick={async () => { if (await onCopy(a.text, 'Prompt')) setCopied(true); }} data-work-copy-prompt>{copied ? '✓ Copied' : 'Copy prompt'}</button>
-                <span className="td-note"><span className="td-num" data-work-chars>{a.chars.toLocaleString('en-US')}</span> chars · names and titles only</span>
+                {onFull && row.company?.id && (pack.cut > 0 || full) && <button type="button" className="td-chip" aria-pressed={typeof full === 'string'} disabled={full === 'busy'} onClick={toggleFull} data-work-full title="Lift the 12,000-character cap to 40,000">Full</button>}
+                <span className="td-note"><span className="td-num" data-work-chars>{a.chars.toLocaleString('en-US')}</span> chars{pack.cut > 0 && typeof full !== 'string' ? ` · ${pack.cut} cut to fit` : ''} · names, titles and LinkedIn links only</span>
               </div>
             </>}
           </>}
@@ -118,7 +128,7 @@ function Claude({ work, row, phone, onCopy }) {
 // onRetry({ tone?, person? }) re-calls · onCopy(text, what) -> true when copied · onCompose({ subject, body }) opens the
 // Write email panel with THAT draft · onDone / onFinish: the to-do done / done + its person marked contacted (Scout's
 // verbs, one Undo) · onAddTodo(text) / onAddPerson(person): Scout's Add task card · notice: the confirm card, when one is up.
-export default function WorkPanel({ work, row, canEdit, phone = false, notice = null, onClose, onRetry, onCopy, onCompose, onDone, onFinish, onAddReply, onAddTodo, onAddPerson, onDraftFor }) {
+export default function WorkPanel({ work, row, canEdit, phone = false, notice = null, onClose, onRetry, onCopy, onFull, onCompose, onDone, onFinish, onAddReply, onAddTodo, onAddPerson, onDraftFor }) {
   const draft = work.data?.draft;
   const [copied, setCopied] = useState(false);
   const [tab, setTab] = useState('middle');
@@ -133,7 +143,7 @@ export default function WorkPanel({ work, row, canEdit, phone = false, notice = 
   const cost = work.data?.usage?.calls ? draftCost({ cost: { usd: work.data.usage.cost_usd }, cap: work.data.usage.cap }) : null;
   const steps = <Steps work={work} row={row} canEdit={canEdit} onUseDraft={() => { setTab('middle'); setTimeout(() => bodyRef.current?.focus(), 0); }} onAddTodo={onAddTodo} />;
   const middle = hasMiddle && <Middle work={work} row={row} canEdit={canEdit} phone={phone} bodyRef={bodyRef} copied={copied} onRetry={onRetry} onCopy={copy} onCompose={onCompose} onDraftFor={onDraftFor} onAddPerson={onAddPerson} />;
-  const claude = <Claude work={work} row={row} phone={phone} onCopy={copy} />;
+  const claude = <Claude work={work} row={row} phone={phone} onCopy={copy} onFull={onFull} />;
   const big = phone ? ' td-big' : '';
   const finish = canEdit && (
     <>

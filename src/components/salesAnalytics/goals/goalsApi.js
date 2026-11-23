@@ -79,7 +79,9 @@ export const goalsApi = {
   promoteTarget: (id, targetId, body) => call(id, `/prospect-targets/${targetId}/promote`, { method: 'POST', body }),
   rejectTarget: (id, targetId, body = {}) => call(id, `/prospect-targets/${targetId}/reject`, { method: 'POST', body }),
   // Copy for Claude - markdown with no emails or phones (the route refuses otherwise). 0 AI calls.
-  copyBundle: (id, type, recordId) => call(id, `/copy-bundle?${q({ type, id: recordId })}`).then(d => d.markdown),
+  // FIX claude-pack-dossier: the dossier (ends with "## Ask"). opts: { person: a People key - that person leads; full: lift the 12,000 cap }.
+  copyDossier: (id, type, recordId, { person = null, full = false } = {}) => call(id, `/copy-bundle?${q({ type, id: recordId, person, full: full ? 1 : null })}`),
+  copyBundle: (id, type, recordId, opts) => goalsApi.copyDossier(id, type, recordId, opts).then(d => d.markdown),
   callNote: (id, noteId) => call(id, `/call-notes/${noteId}`).then(d => d.note),
   // call-notes-targets-v1 Stage 3 - Tidy. suggestions = { suggestions (proposed), last_run };
   // run = { ran, created, skipped } or { ran: false, reason, last_run }; force = "Tidy now". 0 AI, 0 Apollo.

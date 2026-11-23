@@ -16,7 +16,7 @@ const COMPANY = ['partners', 'employers', 'targets'];
 const KIND_WORD = { partner: 'Partner', employer: 'Employer', target: 'Target', person: 'Person' };
 export const keyOf = it => `${it.entity}:${it.id}`;
 // A person / task row needs its structured row (an older thread turn has none: it shows as a plain record).
-export const rowKind = it => (it.row?.kind === 'person' ? 'person' : it.row?.kind === 'task' ? 'task' : COMPANY.includes(it.entity) ? 'company' : 'other');
+export const rowKind = it => (it.row?.kind === 'person' ? 'person' : it.row?.kind === 'task' ? 'task' : COMPANY.includes(it.entity) ? 'company' : it.row?.kind === 'visitor' ? 'visitor' : 'other');
 export const sectionsOf = turn => (turn?.sections?.length ? turn.sections : [{ title: null, count: (turn?.items || []).length, total: (turn?.items || []).length, rule: null, read: null, rows: turn?.items || [], line: null, brief: null }]);
 // What /plan resolves "those", "the first 3" or a name against: every row of the answer on screen, in order.
 export function planRows(turn) {
@@ -37,6 +37,10 @@ export const TASK_DATES = [{ id: 'tomorrow', label: 'Tomorrow', days: 1 }, { id:
 const RECORD_MENU = [{ id: 'assign', label: 'Assign', sub: 'members' }, { id: 'add_task', label: 'Task' }, { id: 'contacted', label: 'Mark contacted' }, { id: 'not_fit', label: 'Not a fit' }, { id: 'draft', label: 'Draft email' }, { id: 'snooze', label: 'Snooze', sub: 'dates' }, { id: 'copy', label: 'Copy for Claude' }];
 const PERSON_MENU = RECORD_MENU.flatMap(m => (m.id === 'draft' ? [m, { id: 'bundle', label: 'Copy draft bundle' }] : [m]));
 const TASK_MENU = [{ id: 'task_done', label: 'Done' }, { id: 'assign', label: 'Reassign', sub: 'members' }, { id: 'snooze', label: 'Snooze', sub: 'taskdates' }, { id: 'task_due', label: 'Due', sub: 'dues' }, { id: 'task_drop', label: 'Drop' }, { id: 'open', label: 'Open', open: true }];
+// FIX claude-pack-dossier P6: each row's primary verb is a visible button; the ⋯ keeps the rest.
+const PRIMARY = { person: { id: 'draft', label: 'Draft email' }, company: { id: 'draft', label: 'Draft email' }, task: { id: 'task_done', label: 'Done' }, visitor: { id: 'add_target', label: 'Add as target' } };
+export const primaryVerb = item => PRIMARY[rowKind(item)] || null;
+export const packable = item => ['person', 'company'].includes(rowKind(item));
 export const menuFor = item => ({ person: PERSON_MENU, company: RECORD_MENU, task: TASK_MENU })[rowKind(item)] || [];
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -74,7 +78,7 @@ export const undoneAction = turn => ({ ...turn, actions: (turn.actions || []).ma
 // C3: a filled list says how it was made ("5 people · 1 hot · 4 warm to make 5") - the server's words.
 export const countPill = (s, noun) => (s.fill?.text ? s.fill.text : `${s.count}${s.total > s.count ? ` of ${s.total}` : ''}${noun ? ` ${noun}` : ''}`);
 export const sectionNoun = s => { const kinds = new Set(s.rows.map(rowKind)); return kinds.size !== 1 ? '' : kinds.has('person') ? (s.count === 1 ? 'person' : 'people') : kinds.has('task') ? 'open' : kinds.has('company') ? (s.count === 1 ? 'company' : 'companies') : ''; };
-export const copiedLine = r => `✓ Copied · ${r.records} record${r.records === 1 ? '' : 's'} · ${Number(r.chars).toLocaleString('en-US')} chars`;
+export const copiedLine = r => `✓ Copied · ${r.records} record${r.records === 1 ? '' : 's'} · ${Number(r.chars).toLocaleString('en-US')} chars${r.cut ? ` · ${r.cut} cut to fit - Full copies everything` : ''}`;
 export const bundleLine = (name, chars) => `✓ Copied the draft bundle for ${name} · ${Number(chars).toLocaleString('en-US')} chars — paste it into Claude`;
 export const TASK_LINE = { open: 'Opened the task in Actions' };
 // C2: the inline draft as plain text for the clipboard, and its cost line ("$0.018 · Write email 4 of 30 today").

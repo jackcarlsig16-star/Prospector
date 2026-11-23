@@ -11,27 +11,30 @@ const SHOWN_MS = 1800;
 export const copyBtnStyle = { ...saSans, height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.text, fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' };
 
 export default function CopyForClaude({ businessId, type, id, label, style }) {
-  const [state, setState] = useState(null); // 'busy' | 'copied' | { error }
+  const [state, setState] = useState(null); // 'busy' | { copied: { chars, cut } } | { error }
+  const [full, setFull] = useState(false);
   useEffect(() => {
-    if (state !== 'copied' && !state?.error) return;
-    const t = setTimeout(() => setState(null), state === 'copied' ? SHOWN_MS : 4000);
+    if (!state?.copied && !state?.error) return;
+    const t = setTimeout(() => setState(null), state.copied ? SHOWN_MS : 4000);
     return () => clearTimeout(t);
   }, [state]);
   const copy = async () => {
     setState('busy');
     try {
-      const markdown = await goalsApi.copyBundle(businessId, type, id);
-      await navigator.clipboard.writeText(markdown);
-      setState('copied');
+      const d = await goalsApi.copyDossier(businessId, type, id, { full });
+      await navigator.clipboard.writeText(d.markdown);
+      setState({ copied: { chars: d.chars, cut: d.cut } });
     } catch (e) { setState({ error: e.message || 'Copy failed' }); }
   };
   const name = label || 'Copy for Claude';
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
       <button type="button" onClick={copy} disabled={state === 'busy'} aria-label={name} title="Copies this record as text for Claude - no emails or phone numbers"
-        style={{ ...copyBtnStyle, borderColor: state === 'copied' ? SA.accent : SA.border }}>
-        {state === 'copied' ? 'Copied for Claude ✓' : state === 'busy' ? 'Copying…' : name}
+        style={{ ...copyBtnStyle, borderColor: state?.copied ? SA.accent : SA.border }}>
+        {state?.copied ? 'Copied for Claude ✓' : state === 'busy' ? 'Copying…' : name}
       </button>
+      <button type="button" aria-pressed={full} onClick={() => setFull(f => !f)} title="Full lifts the 12,000-character cap to 40,000" style={{ ...copyBtnStyle, padding: '0 8px', borderColor: full ? SA.accent : SA.border, color: full ? SA.text : SA.muted }}>{full ? '✓ Full' : 'Full'}</button>
+      {state?.copied && <span role="status" data-copy-chars style={{ fontSize: 12, color: SA.muted, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{state.copied.chars.toLocaleString('en-US')} chars{state.copied.cut ? ` · ${state.copied.cut} cut to fit` : ''}</span>}
       <span role="status" style={{ fontSize: 12, color: SA.bad }}>{state?.error || ''}</span>
     </span>
   );
