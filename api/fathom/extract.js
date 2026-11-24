@@ -2,6 +2,7 @@ import { extractNotes } from '../sales/callNotesRoutes.js';
 import { scrubExtract } from '../sales/intakeDeal.js';
 import { laDateString } from '../sales/laDate.js';
 import { toNote, extractSource } from './toNote.js';
+import { linkStoredNote } from '../sales/callLinks.js';
 
 // fathom-notes-v1 F4 / F5 - store a recording as a note, and run the ONE extraction (callNotesRoutes.extractNotes)
 // on a stored note under the workspace's daily cap. The extract is only ever a proposal on the note: nothing here
@@ -39,6 +40,8 @@ export async function storeRecording(supabase, { businessId, userId, meeting }) 
     .select('id, title, call_date, source_type, source_label, text, transcript, attendees, fathom_recording_id').single();
   if (error?.code === '23505') return { duplicate: true, recording_id: n.fathom_recording_id };
   if (error) throw new Error(error.message);
+  // F12 (2): the attendees' external domains name one record -> the note is about it ("linked by domain").
+  await linkStoredNote(supabase, { businessId, noteId: data.id });
   return { note: data, recording_id: n.fathom_recording_id };
 }
 
@@ -50,5 +53,7 @@ export async function extractStored(supabase, { businessId, userId, note, now = 
     sourceType: note.source_type, sourceLabel: note.source_label, attendees: note.attendees, callType: FATHOM_CALL_TYPE,
   });
   must(await supabase.from('sales_call_notes').update({ extract: scrubExtract(raw) }).eq('id', note.id).is('extract', null).select('id'));
+  // F12 (3): still no record -> the extract's first company, when one record carries that name.
+  await linkStoredNote(supabase, { businessId, noteId: note.id, extract: raw });
   return { status: 'extracted', raw, ctx, usage };
 }

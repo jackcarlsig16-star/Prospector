@@ -829,6 +829,9 @@ app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/s
 // fathom-notes-v1: the review of a stored note (no model call) and Accept on it; a member's Fathom connection.
 app.get('/api/sales/:businessId/goals/call-notes/:id/review', salesModuleRoute('./api/sales/callNotesRoutes.js', 'reviewCallNoteRoute', 'goals/call-notes/:id/review'));
 app.post('/api/sales/:businessId/goals/call-notes/:id/accept', salesModuleRoute('./api/sales/callNotesRoutes.js', 'acceptCallNoteRoute', 'goals/call-notes/:id/accept POST'));
+// fathom-notes-v1 REV 2: the Calls log (the view sales_calls_v) and the record a call is about.
+app.get('/api/sales/:businessId/goals/calls', salesModuleRoute('./api/sales/callLinks.js', 'listCallsRoute', 'goals/calls'));
+app.put('/api/sales/:businessId/goals/call-notes/:id/record', salesModuleRoute('./api/sales/callLinks.js', 'setCallRecordRoute', 'goals/call-notes/:id/record PUT'));
 app.get('/api/sales/:businessId/fathom', salesModuleRoute('./api/fathom/routes.js', 'statusRoute', 'fathom'));
 app.post('/api/sales/:businessId/fathom/connect', salesModuleRoute('./api/fathom/routes.js', 'connectRoute', 'fathom/connect POST'));
 app.post('/api/sales/:businessId/fathom/test', salesModuleRoute('./api/fathom/routes.js', 'testRoute', 'fathom/test POST'));

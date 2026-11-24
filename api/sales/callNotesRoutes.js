@@ -13,6 +13,7 @@ import { scrubExtract, signExtract, extractIfSigned, recentAccepts } from './int
 import { linkFor, linkRecords } from './todoLink.js';
 import { findPerson } from './scoutIntents.js';
 import { normName } from './normName.js';
+import { aboutFor, parseAbout, applyAbout, recordRow } from './callLinks.js';
 import { INSIGHT_RULES, INSIGHT_JSON, toInsights, enrichInsights, linkPeople, parseInsights } from './intakeInsights.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
@@ -235,7 +236,7 @@ export async function extractCallNotesRoute(req, res) {
     const { raw, ctx, usage } = await extractNotes(supabase, { businessId, userId: req.auth.user.id, text, noteDate: callDate, title, sourceType: source_type, sourceLabel: source_label });
     // The extract runs before the note row exists, so it rides through the browser signed (intakeDeal.js).
     const extract = scrubExtract(raw);
-    res.json({ call_date: callDate, hash, ...await reviewOf(supabase, businessId, raw, ctx, callDate), extract, extract_sig: signExtract(extract, hash), usage });
+    res.json({ call_date: callDate, hash, ...await reviewOf(supabase, businessId, raw, ctx, callDate), about: await aboutFor(supabase, businessId, { extract: raw }), extract, extract_sig: signExtract(extract, hash), usage });
   } catch (e) {
     if (e.status && e.status < 500 || e.status === 502) return res.status(e.status).json({ error: e.message });
     console.error('[call-notes/extract]', e.message);
@@ -276,8 +277,9 @@ async function readAccept(req, res, supabase, businessId) {
     rows.push({ payload: v.payload, steps: steps.map(s => s.trim()) });
   }
   const ctx = await noteContext(supabase, businessId);
-  let intake, insights;
-  try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); } catch (e) { return no(e.status || 400, { error: e.message }); }
+  let intake, insights, about;
+  try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); about = parseAbout(req.body); } catch (e) { return no(e.status || 400, { error: e.message }); }
+  if (about && !await recordRow(supabase, businessId, about.type, about.id)) return no(400, { error: 'This call is about: that record is not in this workspace' });
   // todo-events-v1 T7 (K9): a to-do left without a link in the review is linked to the ONE record its text names;
   // when it names several, nothing is guessed - the reply lists the choices (needs_link) and the screen asks.
   // A to-do that names a person kept in the review carries that person's People key (K4).
@@ -299,7 +301,13 @@ async function readAccept(req, res, supabase, businessId) {
   if (!picked) return no(400, { error: 'nothing is ticked - tick at least one row' });
   const week = weekOf(laDateString());
   if (await weekIsFinal(supabase, businessId, week)) return no(409, { error: FINAL_ERROR });
-  return { rows, ctx, intake, insights, asks, week };
+  return { rows, ctx, intake, insights, asks, week, about };
+}
+// F12 (1): the review's "This call is about" pick, written once the accept itself is through. A link that cannot be
+// written never fails the accept - the reply says why.
+async function linkAbout(supabase, { businessId, noteId, about, extract = null, byUser }) {
+  try { return { about: (await applyAbout(supabase, { businessId, noteId, about, extract, byUser })).record || null }; }
+  catch (e) { console.error('[call-notes/about]', e.message); return { about: null, about_error: e.message }; }
 }
 const needsLink = (asks, result) => asks.filter(a => result.goals?.[a.i]).map(a => ({ todo_id: result.goals[a.i].id, text: a.text, choices: a.choices }));
 
@@ -325,8 +333,9 @@ export async function createFromCallNotesRoute(req, res) {
     if (!a) return;
     const hash = noteHash(text);
     // A pasted note only exists once it is accepted, so it is born accepted (fathom-notes-v1 F7).
+    const stored = extractIfSigned(extract, extract_sig, hash);
     const { data: note, error: noteErr } = await supabase.from('sales_call_notes')
-      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, extract: extractIfSigned(extract, extract_sig, hash), created_by: userId, accepted_at: new Date().toISOString() })
+      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, extract: stored, created_by: userId, accepted_at: new Date().toISOString() })
       .select('id, title, call_date, source_type, source_label, created_at').single();
     if (noteErr?.code === '23505') return res.status(409).json({ error: 'These notes were already accepted', duplicate: await findNote(supabase, businessId, hash) });
     if (noteErr) throw new Error(noteErr.message);
@@ -340,14 +349,14 @@ export async function createFromCallNotesRoute(req, res) {
       if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
       throw e;
     }
-    res.status(201).json({ note, ...result, needs_link: needsLink(a.asks, result) });
+    res.status(201).json({ note, ...result, ...await linkAbout(supabase, { businessId, noteId: note.id, about: a.about, extract: stored, byUser: userId }), needs_link: needsLink(a.asks, result) });
   } catch (e) {
     console.error('[call-notes/create]', e.message);
     res.status(500).json({ error: e.message });
   }
 }
 
-const NOTE_COLS = 'id, title, call_date, source_type, source_label, created_at, accepted_at, fathom_url, attendees';
+const NOTE_COLS = 'id, title, call_date, source_type, source_label, created_at, accepted_at, fathom_url, attendees, record_type, record_id';
 async function storedNote(supabase, businessId, id, cols = NOTE_COLS) {
   if (!UUID.test(id)) return null;
   const { data, error } = await supabase.from('sales_call_notes').select(cols).eq('business_id', businessId).eq('id', id).maybeSingle();
@@ -365,9 +374,10 @@ export async function reviewCallNoteRoute(req, res) {
     const row = await storedNote(supabase, businessId, req.params.id, `${NOTE_COLS}, extract`);
     if (!row) return res.status(404).json({ error: 'note not found' });
     const { extract, ...note } = row;
-    if (!extract) return res.json({ note, needs_extract: true });
+    const about = await aboutFor(supabase, businessId, { note, extract });
+    if (!extract) return res.json({ note, about, needs_extract: true });
     const ctx = await noteContext(supabase, businessId);
-    res.json({ note, call_date: note.call_date, ...await reviewOf(supabase, businessId, extract, ctx, note.call_date) });
+    res.json({ note, call_date: note.call_date, ...await reviewOf(supabase, businessId, extract, ctx, note.call_date), about });
   } catch (e) {
     console.error('[call-notes/review]', e.message);
     res.status(500).json({ error: e.message });
@@ -400,7 +410,7 @@ export async function acceptCallNoteRoute(req, res) {
       if (e.status && e.status < 500) return res.status(e.status).json({ error: e.message });
       throw e;
     }
-    res.json({ note: { ...note, accepted_at }, ...result, needs_link: needsLink(a.asks, result) });
+    res.json({ note: { ...note, accepted_at }, ...result, ...await linkAbout(supabase, { businessId, noteId: note.id, about: a.about, byUser: userId }), needs_link: needsLink(a.asks, result) });
   } catch (e) {
     console.error('[call-notes/accept]', e.message);
     res.status(500).json({ error: e.message });

@@ -66,7 +66,7 @@ test('priorities-v2 D9: the Priorities sub-view is labelled Map; its id stays pr
 });
 
 test('dashboard-v3 A2: Dashboard = Home · Email · Scorecard · Sources (ids overview · analytics · scorecard · sources); no Sequenced', () => {
-  expect(SUB_VIEWS.dashboard).toEqual([['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources']]);
+  expect(SUB_VIEWS.dashboard).toEqual([['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources'], ['calls', 'Calls']]);
 });
 
 test('company-panel-v3 Copy link: Pipeline > Companies with ?open=<type>-<id>; only a real record key opens', () => {

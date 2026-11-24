@@ -5,11 +5,12 @@
 // dashboard-v3 (A2): the Dashboard sub-views keep their ids and change their words - overview = Home, analytics = Email,
 // scorecard (Seif's weekly view, its own sub-view again), sources; Sequenced is gone (an old link to it lands on Email,
 // a stored 'sequenced' falls back to Home). Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
+// Calls (fathom-notes-v1 REV 2 F11) = the log of every call note, from Fathom or pasted.
 // homelover-team-emails-v1: Settings = workspace settings (owner edits, everyone else reads); Team emails first.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions'], ['settings', 'Settings']];
 export const SUB_VIEWS = {
   pipeline: [['top-targets', 'Top targets'], ['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
-  dashboard: [['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources']],
+  dashboard: [['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources'], ['calls', 'Calls']],
   settings: [['team-emails', 'Team emails']],
 };
 export const DEFAULT_TAB = 'actions';

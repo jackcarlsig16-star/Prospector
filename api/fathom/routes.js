@@ -3,6 +3,7 @@ import { getSupabase } from '../sales/goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from '../sales/laDate.js';
 import { reviewOf } from '../sales/callNotesRoutes.js';
+import { aboutFor } from '../sales/callLinks.js';
 import { sealer, listMeetings, createWebhook, deleteWebhook } from './client.js';
 import { storeRecording, extractStored, extractsLeft } from './extract.js';
 
@@ -177,7 +178,8 @@ export async function extractNoteRoute(req, res) {
     const done = await extractStored(supabase, { businessId, userId: req.auth.user.id, note });
     if (done.status === 'capped') return res.status(429).json({ error: "Today's extractions for this workspace are used - an Owner can raise the daily cap" });
     const { text, transcript, extract, ...pub } = note;
-    res.json({ note: pub, call_date: note.call_date, ...await reviewOf(supabase, businessId, done.raw, done.ctx, note.call_date), usage: done.usage });
+    const link = must(await supabase.from('sales_call_notes').select('record_type, record_id').eq('business_id', businessId).eq('id', note.id).maybeSingle()) || {};
+    res.json({ note: { ...pub, ...link }, call_date: note.call_date, ...await reviewOf(supabase, businessId, done.raw, done.ctx, note.call_date), about: await aboutFor(supabase, businessId, { note: { ...note, ...link }, extract: done.raw }), usage: done.usage });
   } catch (e) {
     if (e.status === 502) return res.status(502).json({ error: e.message });
     console.error('[fathom/extract]', e.message);

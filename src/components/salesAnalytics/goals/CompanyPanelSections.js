@@ -93,10 +93,12 @@ export function WaitingCard({ detail, bare = false }) {
   );
 }
 
-const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client', flow: 'Flow' };
+const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client', flow: 'Flow', call: 'Call' };
 // homelover-flow-v1: the flow Activity (deprioritize, bring back, fit, assign, the automatic reply / meeting moves,
 // They replied…, undo) reads here beside the notes and touches, newest first; an undone row says so.
-export const notesRows = (detail, flow = []) => [...detail.recent, ...flow.map(f => ({ id: f.id, event: 'flow', at: f.at, text: `${f.text}${f.by_user ? '' : f.kind === 'undo' ? '' : ' · automatic'}${f.undone_at ? ' · undone' : ''}` }))].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8);
+// fathom-notes-v1 F12: the calls linked to this company lead the list (up to 3), whatever their date.
+const callRows = detail => (detail.calls || []).slice(0, 3).map(c => ({ id: `call-${c.id}`, event: 'call', at: `${c.call_date}T12:00:00Z`, text: `${c.title}${c.status === 'reviewed' ? '' : ' · unreviewed'}` }));
+export const notesRows = (detail, flow = []) => [...callRows(detail), ...[...detail.recent, ...flow.map(f => ({ id: f.id, event: 'flow', at: f.at, text: `${f.text}${f.by_user ? '' : f.kind === 'undo' ? '' : ' · automatic'}${f.undone_at ? ' · undone' : ''}` }))].sort((a, b) => String(b.at).localeCompare(String(a.at)))].slice(0, 8);
 export const notesText = (e, lookup) => e.text || eventText(e, lookup);
 export function NotesCard({ detail, canEdit, lookup, onForm, flow = [], bare = false }) {
   const rows = notesRows(detail, flow);

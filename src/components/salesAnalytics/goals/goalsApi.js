@@ -70,6 +70,9 @@ export const goalsApi = {
   // extract ({ note, needs_extract } when it has none yet), and Accept on it (never inserts, never deletes the note).
   reviewCallNote: (id, noteId) => call(id, `/call-notes/${noteId}/review`),
   acceptCallNote: (id, noteId, body) => call(id, `/call-notes/${noteId}/accept`, { method: 'POST', body }),
+  // fathom-notes-v1 REV 2 - the Calls log, and the one record a call is about (record = { type, id } or null).
+  calls: (id, params = {}) => call(id, `/calls?${new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString()}`),
+  setCallRecord: (id, noteId, record) => call(id, `/call-notes/${noteId}/record`, { method: 'PUT', body: record ? { type: record.type, id: record.id } : { type: null } }),
   // lead-upload-v1 - a pasted lead list: one read, then File (all or nothing).
   extractLeads: (id, body) => call(id, '/leads/extract', { method: 'POST', body }),
   fileLeads: (id, body) => call(id, '/leads', { method: 'POST', body }),

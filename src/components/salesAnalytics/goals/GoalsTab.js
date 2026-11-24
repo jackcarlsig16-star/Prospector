@@ -17,6 +17,7 @@ import { writePeopleCompany } from '../salesNav';
 import TodayList from './today/TodayList';
 import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
+import CallsView from './CallsView';
 import ClientsView from './ClientsView';
 import TopTargetsView from './topTargets/TopTargetsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
@@ -241,6 +242,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
           onOpenEmail={() => onNav('dashboard', 'analytics')} onOpenMap={() => onNav('pipeline', 'priorities')} onOpenActions={() => onNav('actions', null)} />}
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
+        {section === 'dashboard' && view === 'calls' && me && <CallsView businessId={businessId} canEdit={canEdit} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
         {section === 'dashboard' && view === 'scorecard' && me && <ScorecardView businessId={businessId} isOwner={isOwner} canEdit={canEdit} toolsSlot={toolsSlot} />}
 

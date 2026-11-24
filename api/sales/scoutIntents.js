@@ -24,6 +24,8 @@ export const salesReads = {
   topTargets: lazy('./topTargets.js', 'topTargets'),
   loadWeekly: lazy('./weeklyRoutes.js', 'loadWeekly'),
   loadToday: lazy('./todayRoutes.js', 'loadToday'),
+  listCalls: lazy('./callLinks.js', 'listCalls'),
+  recordCallIds: lazy('./callLinks.js', 'recordCallIds'),
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets', 'accounts']);
 const day = v => (v ? String(v).slice(0, 10) : null);
@@ -48,7 +50,7 @@ const noteItem = (r, chars) => ({ entity: 'call_notes', id: r.id, title: noteTit
 // call, and nothing here writes.
 const IDEAS_ASK = /\bideas?\b[^.?!]{0,40}\b(?:calls?|notes|meetings?)\b/;
 const REVIEW_ASK = /\breview\b[^.?!]{0,80}\bcalls?\b/;
-const AGREED_ASK = /\bwhat (?:did|have) we (?:agree|agreed|decide|decided)\b|\bwhat was (?:agreed|decided)\b|\bagreed? (?:to |on )?with\b/;
+const AGREED_ASK = /\bwhat (?:did|have) we (?:agree|agreed|decide|decided|discuss|discussed|talk about|talked about)\b|\bwhat was (?:agreed|decided|discussed)\b|\bagreed? (?:to |on )?with\b/;
 const plainQ = ask => String(ask.q || '').toLowerCase().replace(/['’]/g, '');
 export const callAsk = ask => { const t = plainQ(ask); return IDEAS_ASK.test(t) ? 'ideas' : REVIEW_ASK.test(t) ? 'review' : AGREED_ASK.test(t) ? 'agreed' : null; };
 const TIME_TAIL = /\s+(?:yesterday|today|this (?:week|month)|last (?:week|month)|on (?:the|that|our) call|in (?:the|that|our) call)\b.*$/;
@@ -59,6 +61,16 @@ export function callTerm(ask) {
   if (callAsk(ask) === 'agreed' && ask.company[0]) return ask.company[0];
   return NO_NAME.has(named) ? ask.company[0] || null : named.replace(/ (?:team|folks|people)$/, '').slice(0, 60);
 }
+// fathom-notes-v1 REV 2 F13: "calls this week" · "unreviewed calls" · "what calls did we have with Aon" · "last call
+// with Hilton" list the Calls log (the view sales_calls_v through listCalls): names, dates, status, company. No model.
+const CALL_WORD = /\b(?:calls?|recordings?)\b/;
+const UNREVIEWED_ASK = /\bunreviewed\b|\bnot (?:yet )?reviewed\b/;
+const LAST_CALL_ASK = /\b(?:last|latest|most recent|newest) (?:call|recording)\b/;
+const CALL_LIST_ASK = /\b(?:this|last) (?:week|month)\b|\btoday\b|\byesterday\b|\b(?:calls?|recordings?) (?:did we have |have we had |we had )?with\b|\bwhat calls\b|\b(?:list|show)(?: me)?(?: (?:our|my|the|all))? (?:calls|recordings)\b/;
+export const callsAsk = ask => { const t = plainQ(ask); return !callAsk(ask) && CALL_WORD.test(t) && (UNREVIEWED_ASK.test(t) || LAST_CALL_ASK.test(t) || CALL_LIST_ASK.test(t)); };
+const callLogItem = c => ({ entity: 'call_notes', id: c.id, title: c.title, subtitle: [day(c.call_date), c.record?.name, c.status === 'reviewed' ? null : UNREVIEWED].filter(Boolean).join(' · '), date: day(c.call_date),
+  text: [c.title, day(c.call_date), c.record ? `about ${c.record.name} (${c.record.type})` : 'no company linked', c.status === 'reviewed' ? `reviewed ${day(c.reviewed_at)}` : c.status === 'no_proposal' ? `${UNREVIEWED}, not read yet` : UNREVIEWED,
+    c.member?.name ? `recorded by ${c.member.name}` : null, c.attendees.total ? `${c.attendees.total} invited (${c.attendees.external} external)` : null, c.duration_seconds ? `${Math.round(c.duration_seconds / 60)} min` : null, c.source].filter(Boolean).join(' · ') });
 const CALL_LINES = 12;
 function callItems(r) {
   const mark = r.accepted_at ? '' : ` (${UNREVIEWED})`;
@@ -494,14 +506,26 @@ export const salesIntents = [
       const r = await salesReads.listClients(sb, { businessId });
       return { read: `clients (${r.body?.totals?.clients ?? 0})`, items: (r.body?.clients || []).slice(0, 40).map(c => ({ entity: 'clients', id: c.id, title: c.name, text: [c.name, `client ${c.client_status}`, c.covered_lives != null ? `${c.covered_lives} covered lives` : null, c.launch_date ? `launch ${day(c.launch_date)}` : null, c.referred_by?.name ? `referred by ${c.referred_by.name}` : c.source_kind ? `source ${c.source_kind}` : null, c.owner ? `owner ${c.owner}` : null].filter(Boolean).join(' · ') })) };
     } },
+  { id: 'calls', example: 'calls this week', title: 'Calls', rule: UNREVIEWED_RULE, match: callsAsk,
+    async run(sb, { businessId, auth, ask, today }) {
+      const t = plainQ(ask);
+      const term = callTerm(ask);
+      const company = term ? await findCompany(sb, businessId, term) : null;
+      const r = await salesReads.listCalls(sb, { businessId, userId: auth.user.id, today, query: { who: ask.mine ? 'mine' : 'team', unreviewed: UNREVIEWED_ASK.test(t), since: ask.since, until: ask.until, record: company ? `${company.type}:${company.id}` : null, q: company ? '' : term || '' } });
+      const rows = LAST_CALL_ASK.test(t) ? r.calls.slice(0, 1) : r.calls.slice(0, 25);
+      const c = r.counts;
+      return { read: `goals/calls${ask.since ? ` since ${ask.since}` : ''}${company ? ` about ${cleanText(company.name, 60)}` : term ? ` matching "${cleanText(term, 40)}"` : ''}${ask.mine ? ' (mine)' : ''} · ${c.calls} call${c.calls === 1 ? '' : 's'} · ${c.unreviewed} ${UNREVIEWED} · ${c.no_company} without a company`, total: c.calls, items: rows.map(callLogItem) };
+    } },
   { id: 'call_review', example: 'review the Hilton call', title: 'Call notes', rule: UNREVIEWED_RULE, match: ask => ['review', 'agreed'].includes(callAsk(ask)),
     async run(sb, { businessId, ask }) {
-      let q = sb.from('sales_call_notes').select(`${NOTE_COLS}, extract`).eq('business_id', businessId);
-      if (ask.since) q = q.gte('call_date', ask.since);
-      if (ask.until) q = q.lte('call_date', ask.until);
       const term = callTerm(ask);
-      if (term) q = q.or(`title.ilike.${pat(term)},text.ilike.${pat(term)}`);
-      const rows = must(await q.order('call_date', { ascending: false }).limit(3));
+      const windowed = () => { let q = sb.from('sales_call_notes').select(`${NOTE_COLS}, extract`).eq('business_id', businessId); if (ask.since) q = q.gte('call_date', ask.since); if (ask.until) q = q.lte('call_date', ask.until); return q; };
+      // F12: the notes linked to the company named come first, then the text match.
+      const company = term ? await findCompany(sb, businessId, term) : null;
+      const linkedIds = company ? await salesReads.recordCallIds(sb, businessId, company.type, company.id) : [];
+      const linked = linkedIds.length ? must(await windowed().in('id', linkedIds).order('call_date', { ascending: false }).limit(3)) : [];
+      const byText = linked.length >= 3 ? [] : must(await (term ? windowed().or(`title.ilike.${pat(term)},text.ilike.${pat(term)}`) : windowed()).order('call_date', { ascending: false }).limit(3));
+      const rows = [...linked, ...byText.filter(n => !linked.some(l => l.id === n.id))].slice(0, 3);
       const per = rows.map(callItems);
       const sum = k => per.reduce((n, x) => n + x[k], 0);
       return { read: `call notes${ask.since ? ` since ${ask.since}` : ''}${term ? ` matching "${cleanText(term, 40)}"` : ''} · ${rows.length}${unreviewedOf(rows)} · ${sum('decisions')} decisions · ${sum('waiting')} waiting on them`, total: rows.length, items: per.flatMap(x => x.items) };

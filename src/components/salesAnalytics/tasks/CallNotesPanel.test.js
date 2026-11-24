@@ -5,7 +5,7 @@ import { laWeekStart } from '../periods';
 
 import { fathomApi } from '../goals/fathomApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn(), appendToSection: jest.fn(), reviewCallNote: jest.fn(), acceptCallNote: jest.fn() } }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn(), appendToSection: jest.fn(), reviewCallNote: jest.fn(), acceptCallNote: jest.fn(), setCallRecord: jest.fn() } }));
 jest.mock('../goals/fathomApi', () => ({ fathomApi: { extractNote: jest.fn() } }));
 
 const JACK = 'u-jack', CY = 'u-cy';
@@ -325,4 +325,58 @@ test('paste warning → Open the Fathom note: the panel turns into that note’s
   await screen.findByText('Pilot agreed');
   expect(goalsApi.reviewCallNote).toHaveBeenCalledWith('b1', 'n9');
   expect(screen.queryByLabelText('Call notes')).toBeNull();
+});
+
+// fathom-notes-v1 REV 2 F12 (1) - "This call is about".
+const PICK_LINKS = { load: jest.fn(), options: { partner: [{ id: 'p1', label: 'Northwind' }, { id: 'p2', label: 'Northwind Re' }], employer: [{ id: 'e1', label: 'Harbor Hotels' }], target: [], commitment: [{ id: 'c1', label: 'Ship the deck' }] }, labelFor: (t, id) => `${t}: ${id}` };
+
+test('review: the picker opens on the server’s record, searches partners / employers / targets only, and the pick rides with Accept', async () => {
+  goalsApi.reviewCallNote.mockResolvedValue({ ...REVIEW, about: { record: { type: 'partner', id: 'p1', name: 'Northwind' }, by: 'linked', candidates: [{ type: 'partner', id: 'p2', name: 'Northwind Re' }] } });
+  goalsApi.acceptCallNote.mockResolvedValue({ goals: [{}], note: NOTE });
+  setup({ noteId: 'n9', links: PICK_LINKS });
+  await screen.findByText('Pilot agreed');
+  const box = document.querySelector('[data-call-about]');
+  expect(box).toHaveTextContent('This call is about');
+  expect(screen.getByRole('button', { name: 'Change link for this call' })).toHaveTextContent('Partner: Northwind');
+  expect(box).toHaveTextContent('Also matches');
+  fireEvent.click(screen.getByRole('button', { name: 'Change link for this call' }));
+  const search = screen.getByRole('combobox', { name: 'Search what to link for this call' });
+  expect(search).toHaveAttribute('placeholder', 'Partner, employer or target');
+  expect(screen.queryByRole('option', { name: 'Ship the deck' })).toBeNull();
+  fireEvent.change(search, { target: { value: 'harbor' } });
+  fireEvent.click(screen.getByRole('option', { name: 'Harbor Hotels' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }));
+  await waitFor(() => expect(goalsApi.acceptCallNote).toHaveBeenCalled());
+  expect(goalsApi.acceptCallNote.mock.calls[0][2].about).toEqual({ type: 'employer', id: 'e1' });
+  expect(goalsApi.setCallRecord).not.toHaveBeenCalled();
+});
+
+test('review: no record proposed shows the candidates; one click picks it; × sends "none"', async () => {
+  goalsApi.reviewCallNote.mockResolvedValue({ ...REVIEW, about: { record: null, by: null, candidates: [{ type: 'partner', id: 'p1', name: 'Northwind' }, { type: 'partner', id: 'p2', name: 'Northwind Re' }] } });
+  goalsApi.acceptCallNote.mockResolvedValue({ goals: [{}], note: NOTE });
+  setup({ noteId: 'n9', links: PICK_LINKS });
+  await screen.findByText('Pilot agreed');
+  expect(screen.getByRole('button', { name: 'Link for this call' })).toHaveTextContent('None · pick a company');
+  expect(document.querySelector('[data-call-about]')).toHaveTextContent('Could be');
+  fireEvent.click(screen.getByRole('button', { name: 'Partner: Northwind Re' }));
+  expect(screen.getByRole('button', { name: 'Change link for this call' })).toHaveTextContent('Partner: Northwind Re');
+  fireEvent.click(screen.getByRole('button', { name: 'Remove link for this call' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Accept / }));
+  await waitFor(() => expect(goalsApi.acceptCallNote).toHaveBeenCalled());
+  expect(goalsApi.acceptCallNote.mock.calls[0][2].about).toBeNull();
+});
+
+test('a note already accepted: the pick is saved at once through the record route; a refusal shows', async () => {
+  goalsApi.reviewCallNote.mockResolvedValue({ note: { ...NOTE, accepted_at: '2026-11-20T19:00:00Z' }, about: { record: null, by: null, candidates: [{ type: 'partner', id: 'p1', name: 'Northwind' }] } });
+  goalsApi.setCallRecord.mockResolvedValueOnce({ changed: true });
+  setup({ noteId: 'n9', links: PICK_LINKS });
+  await screen.findByText('These notes were already reviewed and accepted.');
+  expect(document.querySelector('[data-call-about]')).toHaveTextContent('Saved as soon as you pick.');
+  fireEvent.click(screen.getByRole('button', { name: 'Partner: Northwind' }));
+  await waitFor(() => expect(goalsApi.setCallRecord).toHaveBeenCalledWith('b1', 'n9', { type: 'partner', id: 'p1', name: 'Northwind' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Change link for this call' })).toHaveTextContent('Partner: Northwind'));
+  goalsApi.setCallRecord.mockRejectedValueOnce(new Error('record not found'));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove link for this call' }));
+  expect(await screen.findByText('record not found')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Change link for this call' })).toHaveTextContent('Partner: Northwind');
 });

@@ -23,6 +23,7 @@ import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } f
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 import { rematchVisits } from './visitMatch.js';
 import { touchesFor } from './touches.js';
+import { recordCalls } from './callLinks.js';
 import { splitSnoozed } from './snoozed.js';
 import { starOf } from './pinState.js';
 import { isSnoozed as todoSnoozed } from '../../src/constants/todoSnooze.js';
@@ -320,7 +321,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     if (!record) return reply(404, { error: `${type} not found` });
     const key = type === 'visitor' ? id : normName(record.name);
     const prospects = await prospectsFor(supabase, businessId, record);
-    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, touchRead, stages] = await Promise.all([
+    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, touchRead, stages, calls] = await Promise.all([
       linkedWork(supabase, businessId, type, id, 'todo', names, laDateString(now)),
       linkedWork(supabase, businessId, type, id, 'waiting', names, laDateString(now)),
       visitsFor(supabase, businessId, type, id, key),
@@ -332,6 +333,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       emailFor(supabase, businessId, prospects.map(p => p.contact_id), now),
       RECORD_TYPES.includes(type) ? touchesFor(supabase, businessId, { type, id }) : null,
       stageHistory(supabase, businessId, type, id),
+      RECORD_TYPES.includes(type) ? recordCalls(supabase, businessId, type, id) : [],
     ]);
     const personSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime() });
     const timelineSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime(), days: TIMELINE_DAYS });
@@ -358,7 +360,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     return reply(200, {
       record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,
       recent, people, people_snoozed: awake.snoozed.length, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
-      research, decisions, terms, stage_history: stages,
+      research, decisions, terms, stage_history: stages, calls,
       // company-workflow-v1 W1: the guided steps (one "next").
       steps: companySteps({ record: { ...record, last_touch: lastTouch }, research, site, ownerName, now: now.getTime() }),
     });

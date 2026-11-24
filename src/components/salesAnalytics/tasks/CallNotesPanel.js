@@ -11,6 +11,7 @@ import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows, DecisionRows, W
 import { acceptBody, acceptCount, insightsBody, NO_INSIGHTS } from './intakeBody';
 import IntakeInsights from './IntakeInsights';
 import LeadListPanel from './LeadListPanel';
+import CallAbout from './CallAbout';
 import Segmented from '../../../ui/Segmented';
 
 // call-notes-to-tasks-v1 - paste or upload call notes, review what the AI
@@ -100,6 +101,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const [error, setError] = useState('');
   const [stored, setStored] = useState(null); // the stored note under review: { id, title, call_date, source_label, fathom_url, accepted_at }
   const [storedId, setStoredId] = useState(noteId);
+  const [about, setAbout] = useState({ value: null, candidates: [] }); // F12: the one record this call is about
   const fileRef = useRef(null);
   const loadLinks = links.load;
   const show = useCallback(r => {
@@ -108,6 +110,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
     setPicks((r.tasks || []).map(toPick));
     setIntake(Object.fromEntries(Object.keys(NO_INTAKE).map(k => [k, r[k] || []])));
     setInsights({ ...NO_INSIGHTS, ...(r.insights || {}) });
+    setAbout({ value: r.about?.record || null, candidates: r.about?.candidates || [] });
     if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) loadLinks();
   }, [loadLinks]);
   useEffect(() => {
@@ -117,6 +120,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
     goalsApi.reviewCallNote(businessId, storedId).then(r => {
       if (!live) return;
       setStored(r.note); setTitle(r.note.title || '');
+      setAbout({ value: r.about?.record || null, candidates: r.about?.candidates || [] });
       if (!r.needs_extract) return r.note.accepted_at ? null : show(r);
       if (!extractNow || storedId !== noteId) return null;
       setBusy('extract');
@@ -152,7 +156,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const create = async () => {
     setBusy('create'); setError('');
     try {
-      const ticked = { tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })), ...body, insights: kept };
+      const ticked = { tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })), ...body, insights: kept, about: about.value ? { type: about.value.type, id: about.value.id } : null };
       const out = stored ? await goalsApi.acceptCallNote(businessId, stored.id, ticked) : await goalsApi.createFromCallNotes(businessId, {
         text, title: title.trim() || null, call_date: result.call_date, source_type: sourceType, source_label: sourceLabel.trim() || null,
         ...ticked, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
@@ -168,6 +172,12 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       await goalsApi.appendToSection(businessId, laWeekStart(), 's1', line);
       setReportState('added');
     } catch (err) { setError(err.message); setReportState(''); }
+  };
+  // A note that is not under review (already accepted, or no proposal yet) saves the pick at once.
+  const saveAbout = async value => {
+    setBusy('about'); setError('');
+    try { await goalsApi.setCallRecord(businessId, stored.id, value); setAbout(a => ({ ...a, value })); } catch (err) { setError(err.message); }
+    setBusy('');
   };
   const setPick = i => patch => setPicks(prev => prev.map((p, k) => (k === i ? { ...p, ...patch } : p)));
   const setRow = list => i => patch => setIntake(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
@@ -196,6 +206,9 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
               ? <span style={{ color: SA.soft }}>These notes were already reviewed and accepted.</span>
               : <span style={{ color: SA.soft }}>These notes are stored and have not been read yet. Extract makes the proposal - one AI call, under today’s cap. Nothing is saved until Accept.</span>}
           </div>
+        )}
+        {!reviewing && storedId && stored && (
+          <CallAbout value={about.value} candidates={about.candidates} links={links} disabled={!!busy} onChange={saveAbout} hint="Saved as soon as you pick." />
         )}
         {!reviewing && !storedId && (
           <>
@@ -262,6 +275,8 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
                 </ul>
               </div>
             )}
+            <CallAbout value={about.value} candidates={about.candidates} links={links} disabled={!!busy} onChange={value => setAbout(a => ({ ...a, value }))}
+              hint="The note is filed under this company when you Accept." />
             <Section title="Companies mentioned" count={intake.companies.length}>
               <CompanyRows rows={intake.companies} categories={result.categories || []} set={setRow('companies')} />
             </Section>
@@ -315,7 +330,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
           </>
         ) : (
           <>
-            {busy && <span role="status" style={{ fontSize: 13, color: SA.muted }}>{busy === 'load' ? 'Opening the notes…' : 'Reading the notes - about 20 seconds…'}</span>}
+            {busy && <span role="status" style={{ fontSize: 13, color: SA.muted }}>{busy === 'load' ? 'Opening the notes…' : busy === 'about' ? 'Saving…' : 'Reading the notes - about 20 seconds…'}</span>}
             {storedId
               ? stored && !stored.accepted_at && <Btn primary style={{ marginLeft: 'auto' }} disabled={!!busy} onClick={() => extract()}>Extract</Btn>
               : <Btn primary style={{ marginLeft: 'auto' }} disabled={!text.trim() || text.length > MAX_CHARS || !!busy || !!result?.duplicate || !!twin} onClick={() => extract()}>Read notes</Btn>}

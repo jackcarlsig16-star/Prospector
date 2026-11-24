@@ -3,6 +3,7 @@ import { laDateString } from './laDate.js';
 import { addDays } from './goalsShared.js';
 import { briefParts } from './companyBrief.js';
 import { normName } from './normName.js';
+import { recordCallIds } from './callLinks.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { normalizeLinkedinUrl } from '../lib/linkedinUrl.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
@@ -120,9 +121,12 @@ async function callsFor(supabase, businessId, type, id, row) {
     supabase.from('sales_week_goals').select('source_note_id').eq('business_id', businessId).eq('link_type', type).eq('link_id', id).not('source_note_id', 'is', null).limit(200).then(must),
     type === 'partner' ? supabase.from('sales_partner_events').select('meta').eq('business_id', businessId).eq('goal_id', id).not('meta->>from_note_id', 'is', null).limit(200).then(must) : [],
   ]);
-  const ids = [...new Set([...todos.map(x => x.source_note_id), ...events.map(e => e.meta?.from_note_id), row.source_note_id].filter(Boolean))];
+  // fathom-notes-v1 F12: the notes linked to this record come first, then what the older rules reach.
+  const ids = await recordCallIds(supabase, businessId, type, id, [...todos.map(x => x.source_note_id), ...events.map(e => e.meta?.from_note_id), row.source_note_id]);
   if (!ids.length) return [];
-  return must(await supabase.from('sales_call_notes').select('id, title, call_date, text, source_label, attendees, extract').eq('business_id', businessId).in('id', ids).order('call_date', { ascending: false }).limit(CALLS_MAX));
+  const rows = must(await supabase.from('sales_call_notes').select('id, title, call_date, text, source_label, attendees, extract, record_type, record_id').eq('business_id', businessId).in('id', ids).order('call_date', { ascending: false }));
+  const linked = n => n.record_type === type && n.record_id === id;
+  return [...rows.filter(linked), ...rows.filter(n => !linked(n))].slice(0, CALLS_MAX);
 }
 
 // -> { title, sections: [{ head, count?, items: [[line, ...sub-lines]], noun?, keep? }] }. first = { key, name } of the

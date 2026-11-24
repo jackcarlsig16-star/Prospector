@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
 import Tabs from '../../ui/Tabs';
-import { IconTarget, IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconSource, IconMail, IconHome, IconScorecard } from '../../ui/icons';
+import { IconTarget, IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconSource, IconMail, IconHome, IconScorecard, IconPhone } from '../../ui/icons';
 import AnalyticsView from './AnalyticsView';
 import PeopleTable from './people/PeopleTable';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
@@ -70,7 +70,7 @@ const PRINT_STYLES = `
 // Pipeline / Dashboard; Pipeline > People is people/PeopleTable (people-v2: the one table
 // on its Live tab, Priorities and Done beside it).
 
-const SUB_VIEW_ICON = { 'top-targets': IconTarget, companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconHome, analytics: IconMail, scorecard: IconScorecard, sources: IconSource, 'team-emails': IconMail };
+const SUB_VIEW_ICON = { 'top-targets': IconTarget, companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconHome, analytics: IconMail, scorecard: IconScorecard, sources: IconSource, calls: IconPhone, 'team-emails': IconMail };
 
 export default function SalesAnalyticsTab({ businessId }) {
   const [tab, setTab] = useState(() => readNav().tab);

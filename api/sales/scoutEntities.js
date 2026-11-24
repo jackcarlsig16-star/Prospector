@@ -154,6 +154,8 @@ export async function glossary(sb, { businessId }) {
     'Prospects, people, contacts, leads and "who" mean PEOPLE (one row per person, Pipeline › People); accounts, companies, employers, partners and targets mean COMPANIES. A lead is a person from any source.',
     // person-owner-v1 O6
     "A person's owner is separate from their company's: assigning a person changes who owns that person, assigning a company changes who owns the company; a person with no owner is Unassigned.",
+    // fathom-notes-v1 REV 2 F13
+    "A call = one row of the Calls log (Dashboard › Calls): a call note from a Fathom recording or from pasted notes. A recording = a call Fathom recorded - it carries a Fathom link, its invitees and, when Fathom sent the times, a duration. Unreviewed = no member has accepted the note's proposal yet, so nothing from it is on a record ('not read yet' = it has no proposal either). A call is about one company when a member picked it, or when exactly one record matched the invitees' domain or the first company the notes name.",
     // top-targets-v1 Q1 / Q2
     "Top targets = the open companies in one order: pinned first (newest pin first), then intent score. A pin is a member's hand-set priority: it lifts the company to the top band for 30 days, carries a reason and can be renewed or removed (a partner's 'hot' is the same pin). The score's five bars are heat (visits, pages, Apollo intent, people, engagement), fit (fit, research), impact (source + stage), recency and pin (the pin's lift); they sum to the score.",
   ].filter(Boolean);

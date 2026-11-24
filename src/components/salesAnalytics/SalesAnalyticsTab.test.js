@@ -65,7 +65,7 @@ test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; pi
   expect(new URLSearchParams(window.location.search).get('view')).toBe('overview');
   act(() => announceOpen({ page: 'sales', params: { tab: 'dashboard', view: 'analytics' } }));
   const dash = screen.getByRole('tablist', { name: 'Dashboard views' });
-  expect(within(dash).getAllByRole('tab').map(t => t.textContent)).toEqual(['Email', 'Scorecard', 'Sources']);
+  expect(within(dash).getAllByRole('tab').map(t => t.textContent)).toEqual(['Email', 'Scorecard', 'Sources', 'Calls']);
   expect(within(dash).getAllByRole('tab').every(t => t.querySelector('svg'))).toBe(true);
   fireEvent.click(within(dash).getByRole('tab', { name: 'Sources' }));
   const q = new URLSearchParams(window.location.search);

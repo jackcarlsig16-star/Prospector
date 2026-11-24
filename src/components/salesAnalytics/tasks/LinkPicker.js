@@ -11,7 +11,7 @@ export const fieldChip = { ...saSans, height: 24, boxSizing: 'border-box', paddi
 
 // Typeahead over commitments, goals, partners, companies, targets and employers, grouped.
 // onChange(type, id) - both null clears the link.
-export default function LinkPicker({ link, links, onChange, disabled, taskText }) {
+export default function LinkPicker({ link, links, onChange, disabled, taskText, placeholder = 'Commitment, goal, partner, company or employer', empty = '🔗 Link' }) {
   const [editing, setEditing] = useState(false);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -27,7 +27,7 @@ export default function LinkPicker({ link, links, onChange, disabled, taskText }
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, maxWidth: '100%' }}>
         <button type="button" disabled={disabled} onClick={() => { links.load(); setEditing(true); }} aria-label={link ? `Change link${what}` : `Link${what}`}
           style={{ ...chipStyle, cursor: disabled ? 'default' : 'pointer', overflowWrap: 'anywhere', height: 'auto', minHeight: 26 }}>
-          {link ? links.labelFor(link.type, link.id) : '🔗 Link'}
+          {link ? links.labelFor(link.type, link.id) : empty}
         </button>
         {link && !disabled && (
           <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" onClick={() => onChange(null, null)} aria-label={`Remove link${what}`}>×</button>
@@ -48,7 +48,7 @@ export default function LinkPicker({ link, links, onChange, disabled, taskText }
       <input autoFocus value={query} onChange={e => { setQuery(e.target.value); setActive(0); }} onKeyDown={onKey}
         onBlur={e => { if (!e.currentTarget.parentElement.contains(e.relatedTarget)) close(); }}
         role="combobox" aria-expanded aria-controls={listId} aria-activedescendant={flat[active] ? `${listId}-${active}` : undefined}
-        aria-label={`Search what to link${what}`} placeholder="Commitment, goal, partner, company or employer"
+        aria-label={`Search what to link${what}`} placeholder={placeholder}
         style={{ ...saSans, fontSize: 13, height: 34, boxSizing: 'border-box', background: SA.inset, border: `1px solid ${SA.accent}`, borderRadius: 8, color: SA.text, padding: '0 10px' }} />
       <div id={listId} role="listbox" aria-label="Link to" style={{ maxHeight: 260, overflowY: 'auto', border: `1px solid ${SA.border}`, borderRadius: 8, background: SA.surface }}>
         {groups.map(g => (

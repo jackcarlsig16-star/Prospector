@@ -29,6 +29,7 @@ export function toNote(meeting) {
   const label = v => cleanText(v, 200).replace(/@/g, ' ').replace(/\s+/g, ' ').trim();
   const title = label(meeting.meeting_title) || label(meeting.title) || 'Fathom recording';
   const started = new Date(meeting.recording_start_time || meeting.created_at || NaN);
+  const instant = v => { const d = new Date(v || NaN); return Number.isNaN(d.getTime()) ? null : d.toISOString(); };
   const summary = typeof meeting.default_summary?.markdown_formatted === 'string' ? safeLines(meeting.default_summary.markdown_formatted).trim() : '';
   const items = (Array.isArray(meeting.action_items) ? meeting.action_items : []).map(a => {
     const d = cleanText(unlink(String(a?.description ?? '')), 400);
@@ -53,6 +54,8 @@ export function toNote(meeting) {
     fathom_recording_id: recordingId,
     title,
     call_date: laDateString(Number.isNaN(started.getTime()) ? new Date() : started),
+    recording_start: instant(meeting.recording_start_time),
+    recording_end: instant(meeting.recording_end_time),
     source_type: 'call',
     source_label: `Fathom · ${title}`.slice(0, 120),
     text,
