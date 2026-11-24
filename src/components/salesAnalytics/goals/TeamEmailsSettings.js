@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
 import { ErrorNote, Btn, cardStyle, h3Style, inputStyle } from './goalsUi';
-import { connectMicrosoft } from '../../ConnectionsPage';
+import { connectMicrosoft, enableTeamSending } from '../../ConnectionsPage';
 
 // homelover-team-emails-v1 T2 (REV2) - Sales › Settings › Team emails. The owner edits everything; everyone else
 // reads (counts only - the server never hands a non-owner an address). Every list change can be undone for 10 s.
@@ -60,13 +60,15 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const isSender = data.sender?.user_id === meId;
   const domains = (data.domains || []).map(d => `@${d}`).join(' or ');
 
+  const needsSend = /Mail\.Send/.test(data.banner || '');
   const banner = data.banner && (
     <div role="alert" data-team-email-banner style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.warn}`, background: SA.inset }}>
       <span style={{ fontSize: 14, color: SA.text, flex: '1 1 260px' }}>
         <b style={{ color: SA.warn }}>{data.banner}.</b>{' '}
-        {isSender ? 'Reconnect Microsoft and approve the "Send mail as you" permission; nothing is sent until then.' : `${data.sender?.first_name || 'The sender'} needs to reconnect Microsoft; nothing is sent until then.`}
+        {needsSend ? (isSender && data.is_owner ? 'Approve "Send mail as you" on Microsoft\'s screen; nothing is sent until then.' : 'The owner enables it under Connections; nothing is sent until then.')
+          : isSender ? 'Reconnect Microsoft; nothing is sent until then.' : `${data.sender?.first_name || 'The sender'} needs to reconnect Microsoft; nothing is sent until then.`}
       </span>
-      {isSender && <Btn primary onClick={connectMicrosoft}>Reconnect Microsoft →</Btn>}
+      {isSender && (needsSend ? data.is_owner && <Btn primary onClick={enableTeamSending}>Enable team email sending →</Btn> : <Btn primary onClick={connectMicrosoft}>Reconnect Microsoft →</Btn>)}
     </div>
   );
 

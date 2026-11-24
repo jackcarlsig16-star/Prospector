@@ -4,7 +4,7 @@ import ConnectionsPage, { describeRun } from './ConnectionsPage';
 // shell-facelift-v1 Stage 3: the three provider cards on one page. The Microsoft
 // cases come from microsoft-connect-v1 Stage 2 (the Outlook sync block) unchanged.
 const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
-const connected = { configured: true, email: 'jack@homelover.ai', scopes: ['Mail.Read', 'Calendars.Read', 'User.Read', 'openid'], connected_at: '2026-10-08T10:00:00Z', last_used_at: null, error: null };
+const connected = { configured: true, connected: true, email: 'jack@homelover.ai', domain: 'homelover.ai', organization: '…d36f', problem: null, last_refresh: null, is_owner: false, can_send: false, team_email: null, admin_consent: null, scopes: ['Mail.Read', 'Calendars.Read', 'User.Read', 'openid'], connected_at: '2026-10-08T10:00:00Z', last_used_at: null, error: null };
 const folderRun = (folder, over = {}) => ({ folder, pages: 2, seen: 60, stored: 20, skipped_draft: 1, skipped_internal: 30, skipped_personal: 9, capped: false, error: null, ...over });
 const page = (props = {}) => render(<ConnectionsPage businesses={[]} {...props} />);
 
@@ -55,7 +55,7 @@ test('viewer: sees the counts, no sync buttons; unmapped mailbox: the refusal is
 
 test('not connected: no Outlook block, no sync-summary call, Connect Microsoft', async () => {
   const calls = [];
-  global.fetch = url => { calls.push(url); return url === '/api/microsoft/status' ? json(200, { ...connected, email: null, scopes: [] }) : json(409, { error: 'Connect Microsoft to use this', needs_microsoft: true }); };
+  global.fetch = url => { calls.push(url); return url === '/api/microsoft/status' ? json(200, { ...connected, connected: false, email: null, domain: null, scopes: [] }) : json(409, { error: 'Connect Microsoft to use this', needs_microsoft: true }); };
   page();
   await screen.findByRole('button', { name: 'Connect Microsoft →' });
   expect(screen.queryByTestId('outlook-sync')).toBeNull();
@@ -68,7 +68,7 @@ test('Google (mailbox-connections-v1 REV2): the tether map replaces the card - o
   const HK = '981b790c-a3b0-4265-b32e-1f701d5731ff';
   const mailboxes = { accounts: [{ id: '11111111-1111-4111-8111-111111111111', provider: 'google', email: 'jack.personal@example.test', is_default: true, features: ['gmail', 'calendar'], state: 'ok', error_at: null, last_used_at: null, linked_business_ids: [] }], microsoft: null, apollo: [], workspaces: [{ id: HK, name: 'HumanKind', color: '#22c55e', role: 'owner', google_link: null, microsoft_derived: [], apollo_derived: false }] };
   const calls = [];
-  global.fetch = (url, init) => { calls.push(`${init?.method || 'GET'} ${url}`); return url === '/api/mailboxes' ? json(200, mailboxes) : url === '/api/microsoft/status' ? json(200, { ...connected, email: null, scopes: [] }) : json(404, {}); };
+  global.fetch = (url, init) => { calls.push(`${init?.method || 'GET'} ${url}`); return url === '/api/mailboxes' ? json(200, mailboxes) : url === '/api/microsoft/status' ? json(200, { ...connected, connected: false, email: null, domain: null, scopes: [] }) : json(404, {}); };
   page({ businesses: [{ id: HK, name: 'HumanKind', features: { hk_sales: true } }] });
   await screen.findByText('jack.personal@example.test');
   expect(screen.getByText('Default')).toBeInTheDocument();
@@ -136,16 +136,77 @@ test('Apollo: only a leftover code across the workspace -> the card pill is Conn
   expect(screen.getByText('one@x.com').closest('[data-provider="apollo"]').querySelector('[data-status="bad"]')).toBeNull();
 });
 
-test('homelover-team-emails-v1: a grant without Mail.Send says "Reconnect to allow team emails"; a ready one says nothing', async () => {
-  global.fetch = url => (url === '/api/microsoft/status' ? json(200, { ...connected, team_email: 'Reconnect to allow team emails' }) : json(404, {}));
-  const { unmount } = page();
-  expect((await screen.findByText('Reconnect to allow team emails.')).closest('[data-team-email-reconnect]')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Reconnect / switch account →' })).toBeEnabled();
-  unmount();
-  global.fetch = url => (url === '/api/microsoft/status' ? json(200, { ...connected, scopes: [...connected.scopes, 'Mail.Send'], team_email: 'ready' }) : json(404, {}));
+const SEND_NEEDED = "Sending needs the owner's Mail.Send grant";
+const statusOnly = body => { global.fetch = url => (url === '/api/microsoft/status' ? json(200, body) : json(404, {})); };
+
+test('FIX microsoft-consent M1: the owner without Mail.Send gets "Enable team email sending"; a member never sees it; a ready grant says nothing', async () => {
+  const assign = jest.fn();
+  const real = window.location;
+  delete window.location;
+  window.location = { pathname: '/sales', search: '?business=b1', assign };
+  statusOnly({ ...connected, is_owner: true, team_email: SEND_NEEDED });
+  let view = page();
+  expect((await screen.findByText(`${SEND_NEEDED}.`)).closest('[data-team-email-reconnect]')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Enable team email sending →' }));
+  expect(assign).toHaveBeenCalledWith('/api/microsoft/connect?scope=send&return=%2Fsales%3Fbusiness%3Db1');
+  fireEvent.click(screen.getByRole('button', { name: 'Reconnect / switch account →' }));
+  expect(assign).toHaveBeenLastCalledWith('/api/microsoft/connect?return=%2Fsales%3Fbusiness%3Db1');
+  view.unmount();
+  statusOnly(connected);
+  view = page();
+  await screen.findByRole('button', { name: 'Reconnect / switch account →' });
+  expect(screen.queryByRole('button', { name: /Enable team email sending/ })).toBeNull();
+  expect(document.querySelector('[data-team-email-reconnect]')).toBeNull();
+  view.unmount();
+  statusOnly({ ...connected, is_owner: true, can_send: true, scopes: [...connected.scopes, 'Mail.Send'], team_email: 'ready' });
   page();
   await screen.findByRole('button', { name: 'Reconnect / switch account →' });
-  expect(document.querySelector('[data-team-email-reconnect]')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Enable team email sending/ })).toBeNull();
+  window.location = real;
+});
+
+test('FIX microsoft-consent M2: the card says what is wrong in words, shows domain + organization + scopes + last refresh, and never a local part', async () => {
+  const cases = [
+    [{ family: 'expired', text: 'expired (90 days unused / revoked)' }, /What is wrong:.*expired \(90 days unused \/ revoked\)\. Click Reconnect\./],
+    [{ family: 'needs_admin', text: 'needs admin approval for: Mail.Send' }, /needs admin approval for: Mail\.Send\. A Microsoft admin has to approve it once/],
+    [{ family: 'other_org', text: 'this mailbox is in a different Microsoft organization than Prospector is registered to' }, /different Microsoft organization than Prospector is registered to\. Reconnect with a mailbox in the organization/],
+  ];
+  for (const [problem, words] of cases) {
+    statusOnly({ ...connected, error: problem.family === 'other_org' ? null : 'stored', problem, last_refresh: { ok: false, at: '2026-11-20T19:27:00Z' } });
+    const view = page();
+    const alert = await waitFor(() => { const el = document.querySelector('[data-microsoft-problem]'); expect(el).toBeTruthy(); return el; });
+    expect(alert).toHaveAttribute('data-microsoft-problem', problem.family);
+    expect(alert).toHaveAttribute('role', 'alert');
+    expect(alert.textContent).toMatch(words);
+    const facts = document.querySelector('[data-microsoft-facts]').textContent;
+    expect(facts).toMatch(/Mailbox at homelover\.ai/);
+    expect(facts).toMatch(/Organization …d36f/);
+    expect(facts).toMatch(/Access: Mail\.Read, Calendars\.Read, User\.Read/);
+    expect(facts).toMatch(/Last refresh: failed Nov 20/);
+    expect(document.body.textContent).not.toMatch(/jack@|@homelover/);
+    expect(screen.getByRole('button', { name: 'Check connection' })).toBeEnabled();
+    view.unmount();
+  }
+});
+
+test('FIX microsoft-consent M2/M5: the owner copies the admin consent link with its sentence; Check connection prints Microsoft\'s answer in words', async () => {
+  const writeText = jest.fn(() => Promise.resolve());
+  Object.assign(navigator, { clipboard: { writeText } });
+  const admin = { url: 'https://login.microsoftonline.com/t/v2.0/adminconsent?client_id=c', note: 'Please open this link signed in as a Microsoft 365 admin and click Accept.' };
+  global.fetch = (url, init) => (url === '/api/microsoft/status' ? json(200, { ...connected, is_owner: true, error: 'stored', problem: { family: 'needs_admin', text: 'needs admin approval for: Mail.Read' }, admin_consent: admin })
+    : url === '/api/microsoft/check' && init?.method === 'POST' ? json(409, { error: 'Microsoft access needs admin approval for: Mail.Read - reconnect', needs_microsoft: true }) : json(404, {}));
+  const view = page();
+  fireEvent.click(await screen.findByRole('button', { name: 'Copy admin consent link' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${admin.note}\n\n${admin.url}`));
+  expect(await screen.findByText('Admin consent link copied - send it to your Microsoft admin')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Check connection' }));
+  expect(await screen.findByText('Microsoft access needs admin approval for: Mail.Read - reconnect')).toBeInTheDocument();
+  view.unmount();
+  global.fetch = (url, init) => (url === '/api/microsoft/status' ? json(200, connected) : url === '/api/microsoft/check' && init?.method === 'POST' ? json(200, { ok: true, domain: 'homelover.ai', folders: [] }) : json(404, {}));
+  page();
+  fireEvent.click(await screen.findByRole('button', { name: 'Check connection' }));
+  expect(await screen.findByText(/Checked just now - Microsoft answered for a homelover\.ai mailbox/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Copy admin consent link' })).toBeNull();
 });
 
 // fathom-notes-v1 follow-up (ruling S-1): one Connections page - a sales workspace's Fathom card under Microsoft and Apollo.

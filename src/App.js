@@ -288,7 +288,8 @@ export default function App({ me }) {
     const url=new URL(window.location.href);
     const err=url.searchParams.get("microsoft_error");
     if(!err&&!url.searchParams.has("microsoft_connected"))return;
-    setMicrosoftResult(err?{ok:false,text:err}:{ok:true,text:"Microsoft connected"});
+    const done=url.searchParams.get("microsoft_connected");
+    setMicrosoftResult(err?{ok:false,text:err}:{ok:true,text:done==="send"?"Team email sending enabled":done==="admin"?"Admin consent recorded - now click Connect":"Microsoft connected"});
     setPage("connections");
     url.searchParams.delete("microsoft_error");url.searchParams.delete("microsoft_connected");
     window.history.replaceState({},"",url.pathname+url.search+url.hash);

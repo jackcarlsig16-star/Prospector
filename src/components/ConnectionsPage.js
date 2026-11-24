@@ -33,6 +33,18 @@ export function connectMicrosoft() {
   window.location.assign(`/api/microsoft/connect?return=${encodeURIComponent(back)}`);
 }
 
+export function enableTeamSending() {
+  const back = window.location.pathname + window.location.search;
+  window.location.assign(`/api/microsoft/connect?scope=send&return=${encodeURIComponent(back)}`);
+}
+
+const PROBLEM_NEXT = {
+  expired: 'Click Reconnect.',
+  sign_in: 'Click Reconnect and sign in again.',
+  needs_admin: 'A Microsoft admin has to approve it once for the organization; then click Reconnect.',
+  other_org: 'Reconnect with a mailbox in the organization Prospector is registered to.',
+};
+
 export function describeRun(f) {
   const skipped = f.skipped_draft + f.skipped_internal + f.skipped_personal;
   return `${FOLDER_LABEL[f.folder]}: ${n(f.seen)} seen · ${n(f.stored)} kept · ${n(skipped)} skipped (${n(f.skipped_internal)} internal, ${n(f.skipped_personal)} personal, ${n(f.skipped_draft)} drafts)${f.capped ? ' · capped, continues next run' : ''}${f.error ? ` · error: ${f.error}` : ''}`;
@@ -48,7 +60,7 @@ function MicrosoftCard({ result, plain = false }) {
   const load = () => fetch('/api/microsoft/status').then(r => r.json()).then(setStatus).catch(() => setStatus({ email: null, scopes: [], error: 'Couldn’t load the Microsoft connection' }));
   const loadSummary = () => fetch('/api/microsoft/sync-summary').then(async r => { const d = await r.json().catch(() => ({})); setSummary(r.ok ? d : { unavailable: d.error || `Outlook sync unavailable (${r.status})` }); }).catch(() => setSummary(null));
   useEffect(() => { load(); }, []);
-  const connected = !!status?.email;
+  const connected = !!status?.connected;
   const healthy = connected && !status.error;
   useEffect(() => { if (healthy) loadSummary(); }, [healthy]);
 
@@ -57,8 +69,12 @@ function MicrosoftCard({ result, plain = false }) {
     const r = await fetch('/api/microsoft/check', { method: 'POST' });
     const d = await r.json().catch(() => ({}));
     const folderLine = f => `${FOLDER_LABEL[f.folder]} ${f.total ?? f.total_error ?? '?'} total · ${f.window ?? f.window_error ?? '?'} in the 90-day window`;
-    setNote(r.ok ? `Checked just now${plain ? '' : ` - reading ${d.email}`}${d.folders ? ' · ' + d.folders.map(folderLine).join(' · ') : ''}` : d.error || `Check failed (${r.status})`);
+    setNote(r.ok ? `Checked just now - Microsoft answered${d.domain ? ` for a ${d.domain} mailbox` : ''}${d.folders ? ' · ' + d.folders.map(folderLine).join(' · ') : ''}` : d.error || `Check failed (${r.status})`);
     setBusy(''); load();
+  };
+  const copyAdminLink = async () => {
+    try { await navigator.clipboard.writeText(`${status.admin_consent.note}\n\n${status.admin_consent.url}`); setNote('Admin consent link copied - send it to your Microsoft admin'); }
+    catch { setNote(status.admin_consent.url); }
   };
   const disconnect = async () => {
     setBusy('disconnect'); setNote('');
@@ -76,7 +92,7 @@ function MicrosoftCard({ result, plain = false }) {
 
   const pill = status === null ? ['off', '…'] : healthy ? ['ok', 'Connected'] : connected ? ['bad', 'Needs attention'] : ['off', 'Not connected'];
   return (
-    <Card title={plain ? 'Microsoft' : 'Microsoft 365'} subtitle={status === null ? '…' : plain ? 'Outlook mail, calendar and sent items for the team' : connected ? status.email : 'Not connected'}
+    <Card title={plain ? 'Microsoft' : 'Microsoft 365'} subtitle={status === null ? '…' : plain ? 'Outlook mail, calendar and sent items for the team' : connected ? `A ${status.domain} mailbox` : 'Not connected'}
       actions={<StatusPill status={pill[0]}>{pill[1]}</StatusPill>}
       footer={healthy && (
         <div data-testid="outlook-sync" style={{ display: 'grid', gap: KIT_SPACE[1] }}>
@@ -115,25 +131,30 @@ function MicrosoftCard({ result, plain = false }) {
         {result && statusLine(result.text, result.ok ? 'ok' : 'bad')}
         <div style={fine}>READS YOUR MAIL AND CALENDAR. NEVER DELETES OR CHANGES ANYTHING. SENDS ONLY THE HOMELOVER TEAM EMAILS, TO THE TEAM’S OWN LIST</div>
         {status?.configured === false && <p style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}>Microsoft isn’t configured on the server yet.</p>}
-        {status?.error && <p role="alert" style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}>{status.error}</p>}
-        {/* homelover-team-emails-v1: a grant from before Mail.Send still reads; only team emails wait for a Reconnect. */}
-        {connected && !status.error && status.team_email && status.team_email !== 'ready' && (
+        {status?.problem
+          ? <p role="alert" data-microsoft-problem={status.problem.family} style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}><b>What is wrong:</b> {status.problem.text}. {PROBLEM_NEXT[status.problem.family] || ''}</p>
+          : status?.error && <p role="alert" style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}>{status.error}</p>}
+        {healthy && status.team_email && status.team_email !== 'ready' && (
           <p role="status" data-team-email-reconnect style={{ ...KIT_TYPE.small, color: ui.text, margin: 0 }}>
-            <b>{status.team_email}.</b> Click Reconnect and approve “Send mail as you” - mail and calendar reads keep working either way.
+            <b>{status.team_email}.</b> The daily and Friday team emails wait for it - mail and calendar reads work either way.
           </p>
         )}
         {connected && (
-          <div style={{ ...small, display: 'flex', gap: KIT_SPACE[2], flexWrap: 'wrap' }}>
-            <span>Connected {when(status.connected_at)}</span>
-            <span>Last used {when(status.last_used_at)}</span>
+          <div data-microsoft-facts style={{ ...small, display: 'flex', gap: KIT_SPACE[2], flexWrap: 'wrap' }}>
+            <span>Mailbox at {status.domain || '—'}</span>
+            <span>Organization {status.organization || '—'}</span>
             <span>Access: {status.scopes.filter(s => !/^(openid|offline_access)$/i.test(s)).join(', ')}</span>
+            <span>Connected {when(status.connected_at)}</span>
+            <span>Last refresh: {status.last_refresh ? `${status.last_refresh.ok ? 'ok' : 'failed'} ${when(status.last_refresh.at)}` : 'not yet'}</span>
           </div>
         )}
         <ButtonRow align="start">
           <Button variant="primary" onClick={connectMicrosoft} disabled={status === null || status.configured === false || !!busy}>
             {connected ? 'Reconnect / switch account →' : 'Connect Microsoft →'}
           </Button>
-          {healthy && <Button onClick={check} disabled={!!busy}>{busy === 'check' ? 'Checking…' : 'Check connection'}</Button>}
+          {healthy && status.is_owner && !status.can_send && <Button onClick={enableTeamSending} disabled={!!busy}>Enable team email sending →</Button>}
+          {connected && <Button onClick={check} disabled={!!busy}>{busy === 'check' ? 'Checking…' : 'Check connection'}</Button>}
+          {status?.admin_consent && <Button variant="tertiary" onClick={copyAdminLink} disabled={!!busy}>Copy admin consent link</Button>}
           {connected && <Button variant="tertiary" onClick={disconnect} disabled={!!busy}>{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</Button>}
         </ButtonRow>
         {note && statusLine(note)}

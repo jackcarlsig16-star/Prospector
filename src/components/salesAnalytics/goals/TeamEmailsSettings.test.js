@@ -1,10 +1,10 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import TeamEmailsSettings from './TeamEmailsSettings';
 import { goalsApi } from './goalsApi';
-import { connectMicrosoft } from '../../ConnectionsPage';
+import { connectMicrosoft, enableTeamSending } from '../../ConnectionsPage';
 
 jest.mock('./goalsApi', () => ({ goalsApi: { teamEmails: jest.fn(), clients: jest.fn(), updateTeamEmails: jest.fn(), addTeamRecipient: jest.fn(), editTeamRecipient: jest.fn(), removeTeamRecipient: jest.fn(), undoTeamEmailChange: jest.fn(), teamEmailTest: jest.fn(), teamEmailSendNow: jest.fn() } }));
-jest.mock('../../ConnectionsPage', () => ({ connectMicrosoft: jest.fn() }));
+jest.mock('../../ConnectionsPage', () => ({ connectMicrosoft: jest.fn(), enableTeamSending: jest.fn() }));
 
 // homelover-team-emails-v1 Stage 2 - the panel: owner edits, everyone else reads counts; Reconnect banner; Undo.
 // Invented people at a reserved test domain.
@@ -66,17 +66,32 @@ test('Send a test to me only: visitor straight away; client after picking one', 
 });
 
 test('Reconnect banner: the sender gets the button; anyone else is told who must reconnect; tests wait', async () => {
-  goalsApi.teamEmails.mockResolvedValue({ ...owner, ready: false, banner: 'Reconnect to allow team emails' });
+  goalsApi.teamEmails.mockResolvedValue({ ...owner, ready: false, banner: 'Microsoft access for the sending mailbox expired - reconnect it; team emails are paused until then' });
   const { unmount } = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
-  expect(await screen.findByRole('alert')).toHaveTextContent('Reconnect to allow team emails');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Microsoft access for the sending mailbox expired');
   fireEvent.click(screen.getByRole('button', { name: 'Reconnect Microsoft →' }));
   expect(connectMicrosoft).toHaveBeenCalled();
   for (const b of screen.getAllByRole('button', { name: 'Send a test to me only' })) expect(b).toBeDisabled();
   unmount();
-  goalsApi.teamEmails.mockResolvedValue({ ...base, ready: false, banner: 'Reconnect to allow team emails' });
+  goalsApi.teamEmails.mockResolvedValue({ ...base, ready: false, banner: 'Microsoft access for the sending mailbox expired - reconnect it; team emails are paused until then' });
   render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
   expect(await screen.findByRole('alert')).toHaveTextContent('Alex needs to reconnect Microsoft');
   expect(screen.queryByRole('button', { name: /Reconnect/ })).toBeNull();
+});
+
+test('FIX microsoft-consent: a sender without Mail.Send - the owner gets "Enable team email sending", never a Reconnect; anyone else is pointed at the owner', async () => {
+  const banner = "Sending needs the owner's Mail.Send grant";
+  goalsApi.teamEmails.mockResolvedValue({ ...owner, is_owner: true, ready: false, banner });
+  const { unmount } = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  expect(await screen.findByRole('alert')).toHaveTextContent(banner);
+  expect(screen.queryByRole('button', { name: /Reconnect/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Enable team email sending →' }));
+  expect(enableTeamSending).toHaveBeenCalled();
+  unmount();
+  goalsApi.teamEmails.mockResolvedValue({ ...base, is_owner: false, ready: false, banner });
+  render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('The owner enables it under Connections');
+  expect(screen.queryByRole('button', { name: /Enable team email sending|Reconnect/ })).toBeNull();
 });
 
 // FIX visitor-email-top10-v1 follow-up: "Send to team now" (owner only) - one confirm; if today's went out, "Send again"

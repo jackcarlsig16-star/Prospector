@@ -1,10 +1,10 @@
-import { microsoftTokenFor } from '../lib/microsoftGrants.js';
+import { accessTokenFor, NeedsMicrosoft } from '../lib/microsoftGrants.js';
 import { GRAPH_URL, BACKFILL_DAYS } from './graphSync.js';
+import { storedFamily } from './errorFamily.js';
 
-// POST /api/microsoft/check - mints a fresh access token from the stored
-// refresh token and reads the signed-in mailbox's address plus what Graph
-// says each mail folder holds (total, and inside the sync's 90-day window)
-// so the sync's "seen" counts can be checked against the mailbox. Read-only.
+// POST /api/microsoft/check - asks Microsoft for a fresh access token (even when the grant row holds an error: an
+// admin may have approved since), reads /me, then what Graph says each mail folder holds (total, and inside the
+// sync's 90-day window) so the sync's "seen" counts can be checked against the mailbox. Read-only; domain only.
 async function graph(token, path, headers = {}) {
   const r = await fetch(`${GRAPH_URL()}${path}`, { headers: { Authorization: `Bearer ${token}`, ...headers } });
   const data = await r.json().catch(() => ({}));
@@ -23,11 +23,14 @@ async function folderCounts(token, folder, since) {
 }
 
 export default async function handler(req, res) {
-  const token = await microsoftTokenFor(req, res);
-  if (!token) return;
+  let token;
+  try { token = await accessTokenFor(req.auth.user.id, { retry: true }); } catch (err) {
+    if (err instanceof NeedsMicrosoft) return res.status(409).json({ error: err.message, needs_microsoft: true, problem: storedFamily(err.message) });
+    return res.status(502).json({ error: err.message });
+  }
   let me;
   try { me = await graph(token, '/me?$select=mail,userPrincipalName'); } catch (err) { return res.status(502).json({ error: err.message }); }
   const since = new Date(Date.now() - BACKFILL_DAYS * 864e5).toISOString();
   const folders = [await folderCounts(token, 'inbox', since), await folderCounts(token, 'sentitems', since)];
-  res.json({ ok: true, email: String(me.mail || me.userPrincipalName || '').toLowerCase(), checked_at: new Date().toISOString(), window_since: since, folders });
+  res.json({ ok: true, domain: String(me.mail || me.userPrincipalName || '').toLowerCase().split('@')[1] || null, checked_at: new Date().toISOString(), window_since: since, folders });
 }

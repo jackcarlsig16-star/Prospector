@@ -80,7 +80,7 @@ export async function updateTeamEmails(supabase, { businessId, userId, body = {}
     if (!UUID.test(id || '')) return reply(400, { error: 'sender_user_id must be a member' });
     const members = await loadMembers(supabase, businessId);
     if (!members.some(m => m.userId === id)) return reply(400, { error: 'sender_user_id must be a member' });
-    if (!canSendTeamEmail(await grantOf(id))) return reply(409, { error: `That member's Microsoft connection can't send yet - ${RECONNECT_NOTE.toLowerCase()}` });
+    if (!canSendTeamEmail(await grantOf(id))) return reply(409, { error: `That member's Microsoft connection can't send yet - ${RECONNECT_NOTE}` });
   }
   if ('auto_add_cap' in body) must(await supabase.from('sales_settings').upsert({ business_id: businessId, auto_create_daily_cap: cap }, { onConflict: 'business_id' }).select('business_id'));
   if (Object.keys(emailBody).length) {

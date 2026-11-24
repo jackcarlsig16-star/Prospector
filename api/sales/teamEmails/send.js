@@ -9,7 +9,7 @@ import { laInstant } from './visitorEmail.js';
 // No caller can name an address - sendTeamEmail refuses any option that isn't in ALLOWED; addresses are read here,
 // filtered by domain, capped, and only their COUNT ever leaves this module (logs, rows, replies).
 export const KINDS = ['visitor', 'client', 'weekly'];
-export const RECONNECT_NOTE = 'Reconnect to allow team emails';
+export const RECONNECT_NOTE = 'Sending needs the owner\'s Mail.Send grant';
 export const MAX_RECIPIENTS = 25;
 // weekly-funnel-v1 W7: the weekly funnel email goes to the visitor email's list (the same recipients, the same domain rule).
 const FLAG = { visitor: 'visitor_email', client: 'client_alert', weekly: 'visitor_email' };

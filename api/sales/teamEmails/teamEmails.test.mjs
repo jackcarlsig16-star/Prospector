@@ -93,13 +93,13 @@ test('T-b: a grant without Mail.Send refreshes with exactly its stored scopes (+
   assert.equal(canSendTeamEmail({ scopes: [...READS, 'Mail.Send'], error: 'expired' }), false);
 });
 
-test('T-b: team emails show "Reconnect to allow team emails" for a grant without Mail.Send; non-owners see counts, no address', async () => {
+test('T-b: team emails show "Sending needs the owner\'s Mail.Send grant" for a grant without Mail.Send; non-owners see counts, no address', async () => {
   const s = sb();
   const r = await teamEmailState(s, B, U.m1, { grantOf: async id => (id === U.owner ? { ...SENDS, scopes: READS } : null) });
   assert.equal(r.status, 200);
   assert.equal(r.body.ready, false);
   assert.equal(r.body.banner, RECONNECT_NOTE);
-  assert.equal(RECONNECT_NOTE, 'Reconnect to allow team emails');
+  assert.equal(RECONNECT_NOTE, 'Sending needs the owner\'s Mail.Send grant');
   assert.deepEqual(r.body.counts, { visitor: { count: 2, dropped: 1, capped: 0 }, client: { count: 2, dropped: 1, capped: 0 }, weekly: { count: 2, dropped: 1, capped: 0 } });
   assert.equal(r.body.recipients, undefined);
   assert.ok(!JSON.stringify(r.body).includes('@'));
