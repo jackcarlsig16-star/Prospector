@@ -1,0 +1,620 @@
+AUDIT: 2026-11-24-1410-AUDIT-scout-v4.txt · HEAD 4cbfb5e (remote matches)
+Run Nov 25, 2026 PT, read-only. No code change, no migration, no /act, no /undo. Apollo 0.
+Claude: 15 asks with a model call (15 scout_ask usage rows, checked in the DB) of the cap of 20. $0.2645 in all.
+Method: a local server over the real HomeLover rows, signed in as Jack (the platform owner), POST /api/scout/plan
+(without inline: no model call, nothing written) then POST /api/scout/ask, one question per call, no thread. Each
+ask's context pack was also rebuilt in process (buildContext, 0 Claude) so the answers could be judged against the
+lines the model was given. Names, titles and companies only in this file.
+
+THE SHORT VERSION
+ 1. Of 16 questions, 6 were RIGHT, 4 PARTIAL, 2 WRONG, 3 SHRUG, 1 OFF-TOPIC.
+ 2. The 4 questions Jack asked on prod before (each one got its own FIX) are now all RIGHT. Of the 12 new questions
+    from this audit, 2 are RIGHT. Every FIX repaired the phrase that was asked, not the kind of question.
+ 3. The bottleneck is one place: parseAsk -> intent.match -> one fixed read set (retrieve.js:77-175, :265). All 10
+    misses are decided in code before the model is called. The model misread a row once, inside one of them.
+ 4. The reads are not the problem. Every miss but two has the data in a read that exists today (A8).
+ 5. Five defects were found that are not about routing (F1-F5 below). F1 withholds a paid answer.
+ 6. A model-planned Scout costs about 1.3x to 1.8x today's ask by measured inputs (A6): about $0.023-0.027 an ask
+    against $0.0176 measured here ($0.0126 on prod's last 7 days).
+
+WHAT DIFFERS FROM THE GO
+ - 16 asks, not 20. The go said: A1's 12 plus the last 8 distinct asks from Jack's prod Scout history. That history
+   is not stored anywhere the server can read: business_anthropic_usage holds tokens and cost only (no question
+   column; api/businesses/shared.js:56-62), and the thread lives in the browser (prospector_scout_thread,
+   src/components/scout/scoutModel.js:8, :28-36). No planner list was in inbox/. The only prod asks of Jack's on
+   record are the 4 quoted word for word in the inbox FIX files, so those 4 were used (#13-#16). 5 asks are unspent.
+ - Ask #1 was sent twice. The first try failed with a 500 before any model call (no usage row; F2). It was sent
+   once more. Paid asks: 15.
+ - 2 requests to Anthropic's count_tokens endpoint (no generation, $0, no usage row, tool descriptions only) to
+   measure the tool list for A6.
+ - The planner's file says 27 intents. The code holds 19 (api/sales/scoutIntents.js:281-564); the hk module
+   registers none (api/hk/scoutEntities.js:27).
+
+======================================================================================================================
+A1 THE BATTERY
+======================================================================================================================
+Per ask: what the bar does first (plan) · intent · reads · context (lines / chars) · tokens in/out · cost · time ·
+verdict · first 60 words. Verdicts were judged by hand against the context lines.
+
+#1 "what should I do today"   (audit)
+    plan: not a command -> ask
+    intent: agenda · context 21 lines / 4159 chars · 3463 in / 499 out · $0.0179 · 18.2 s · first try: HTTP 500
+    after 133.5 s, no model call (F2)
+    reads: agenda 2026-11-25 to 2026-11-25 (mine) · goals/today · goals/top-targets · goals/weekly · no calendar
+    read
+    rows: agenda 1 · employers 4 · partners 6 · weekly 1 · call_notes 9
+    VERDICT: PARTIAL
+    answer: Here is how I'd order today, with the reasoning behind each push. Clear the call backlog first. You have
+    9 unreviewed calls, and one of them, Review call notes · Impromptu Zoom Meeting · 6 tasks · 5 companies · 5
+    facts · Nov 25, was recorded today and already has 6 tasks and 5 facts waiting to be accepted ...
+
+#2 "who should I email this afternoon and why"   (audit)
+    plan: not a command -> ask
+    intent: none · context 48 lines / 9453 chars · 5043 in / 525 out · $0.0230 · 24.3 s
+    reads: my to-dos due by 2026-12-01 (51) | this week's five (0) | pinned and P1 companies (11) | goals this and
+    next week (1) | calls to review (9) | replies owed (0) | notes since 2026-11-11 (5 · 4 unreviewed) | companies
+    touched since 2026-11-11 (10) | no calendar read
+    rows: agenda 1 · todos 20 · employers 7 · partners 5 · weekly 1 · call_notes 10 · targets 3
+    VERDICT: PARTIAL
+    answer: Here is my read of what to prioritize for outreach this afternoon, pulling from your top targets,
+    overdue to-dos, and recent activity. I'll work through the strongest cases. Highest-leverage email targets right
+    now: Flowserve Corporation is your top-scoring P1 company with 17 visits this week and no next step set. That
+    level of website activity is a strong signal someone ...
+
+#3 "which of my pinned companies went quiet"   (audit)
+    plan: not a command -> ask
+    intent: none · context 48 lines / 9453 chars · 5043 in / 378 out · $0.0208 · 16.4 s
+    reads: my to-dos due by 2026-12-01 (51) | this week's five (0) | pinned and P1 companies (11) | goals this and
+    next week (1) | calls to review (9) | replies owed (0) | notes since 2026-11-11 (5 · 4 unreviewed) | companies
+    touched since 2026-11-11 (10) | no calendar read
+    rows: agenda 1 · todos 20 · employers 7 · partners 5 · weekly 1 · call_notes 10 · targets 3
+    VERDICT: SHRUG (withheld)
+    answer: Answer withheld: it contained an address or phone number.
+
+#4 "summarize what happened with Hilton"   (audit)
+    plan: not a command -> ask
+    intent: brief · context 29 lines / 3219 chars · 2936 in / 441 out · $0.0154 · 15.0 s
+    reads: goals/brief/employer
+    rows: employers 29
+    VERDICT: RIGHT
+    answer: Hilton is at the contacted stage, owned by Cyrus Radjoo, and is one of the hotter accounts in the
+    pipeline with an intent score of 79 (P1). How it came in: Brad Cillian at Upside referred the account Hilton.
+    The journey shows a site visit on Oct 13, followed by the referral on Oct 15. No reply, meeting, or pilot ...
+
+#5 "find me 5 benefits brokers in Chicago we haven't touched"   (audit)
+    plan: not a command -> ask
+    intent: cant (no model call) · context none · no model call · $0 · 2.7 s
+    VERDICT: WRONG
+    answer: No record named Chicago in Prospector
+
+#6 "what did Seif and I agree on last call"   (audit)
+    plan: not a command -> ask
+    intent: calls · context 1 lines / 136 chars · 1965 in / 106 out · $0.0075 · 5.6 s
+    reads: goals/calls (mine) · 46 calls · 9 unreviewed · 30 without a company
+    rows: call_notes 1
+    VERDICT: SHRUG
+    answer: The only call in context that matches is Impromptu Zoom Meeting, a 27-minute Zoom recorded today, with
+    no external invitees and no company linked. Its notes are marked (unreviewed), meaning no member has accepted
+    the proposal yet, so nothing from it has been read into any record and I can't tell you what was agreed. Once
+    someone reviews and accepts ...
+
+#7 "write a follow-up to the Cloudflare person who clicked twice"   (audit)
+    plan: open Opened Write email for Cloudflare — nothing sent
+    intent: brief+people · context 32 lines / 3831 chars · 3121 in / 396 out · $0.0153 · 15.6 s
+    reads: goals/brief/employer | goals/people/activity?window=all (564 people)
+    rows: employers 31 · people 1
+    VERDICT: PARTIAL
+    answer: Danilea Mayer clicked twice on the email sent 2026-10-29. That's a meaningful signal worth acting on.
+    Here's a draft you can send directly: --- Subject: Re: HomeLover for Cloudflare's team Hi Danilea, I wanted to
+    follow up on the note I sent last month. Given everything Cloudflare has going on, I'll keep this short.
+    HomeLover helps employees navigate home buying ...
+
+#8 "compare Bass Pro and Hilton"   (audit)
+    plan: not a command -> ask
+    intent: brief · context 54 lines / 6643 chars · 3911 in / 680 out · $0.0219 · 22.5 s
+    reads: goals/brief/employer + goals/brief/employer
+    rows: employers 46 · outlook 8
+    VERDICT: RIGHT
+    answer: Here is a side-by-side read of the two accounts. Intent and score. Hilton scores 79 (P1 Hot), Bass Pro
+    Bass Pro Shops scores 60 (P1 Hot). Both are in the top band, but Hilton's score is meaningfully higher, driven
+    by active site visits, a Brad referral bonus, page-depth signals, and a contacted-stage lift. Bass Pro's score
+    rests mainly on fit, ...
+
+#9 "what's our best performing email angle"   (audit)
+    plan: not a command -> ask
+    intent: none · context 48 lines / 9453 chars · 5042 in / 181 out · $0.0178 · 12.4 s
+    reads: my to-dos due by 2026-12-01 (51) | this week's five (0) | pinned and P1 companies (11) | goals this and
+    next week (1) | calls to review (9) | replies owed (0) | notes since 2026-11-11 (5 · 4 unreviewed) | companies
+    touched since 2026-11-11 (10) | no calendar read
+    rows: agenda 1 · todos 20 · employers 7 · partners 5 · weekly 1 · call_notes 10 · targets 3
+    VERDICT: SHRUG
+    answer: The context I have covers to-dos, pinned companies, recent call notes, and a weekly scorecard. It does
+    not include any email campaign performance data, such as open rates, click rates, reply rates, or results broken
+    down by subject line, angle, or sequence. So I cannot answer which email angle is performing best. What was
+    read: the standing summary with 51 ...
+
+#10 "who visited this week that we've never emailed"   (audit)
+    plan: not a command -> ask
+    intent: visitors+member_emails · context 53 lines / 11677 chars / 6 cut by the cap · 6553 in / 678 out · $0.0298
+    · 20.2 s
+    reads: visitors 2026-11-23 to 2026-11-24 · 49 companies | goals/weekly?member=all · week of 2026-11-23 · day 3
+    of 7 · 2 member rows + the team
+    rows: partners 1 · employers 4 · targets 23 · visitor 12 · weekly 13
+    VERDICT: WRONG
+    answer: Here are the companies that visited this week and have never been emailed, sorted by intent score
+    (highest first): Flowserve Corporation, P1 score 68, employer, target stage, 17 visits, 107 visitors Cloudflare,
+    P1 score 67, employer, target stage, 1 visit, 8 visitors Jack Morton Worldwide, P2 score 55, target, researching
+    stage, 6 visits, 20 visitors Crane Worldwide Logistics, P2 score ...
+
+#11 "what's blocking the Upside deal"   (audit)
+    plan: not a command -> ask
+    intent: ranked · context 40 lines / 5601 chars · 4005 in / 506 out · $0.0196 · 17.4 s
+    reads: goals/scores {"segment":"all","band":"","source":"upside","owner":"","sort":"rank"} · 229 shown
+    rows: employers 32 · partners 8
+    VERDICT: OFF-TOPIC
+    answer: The context doesn't include a single record called "the Upside deal," so I'll interpret your question
+    as: what's slowing down or blocking progress across the Upside-sourced pipeline. Here's what I see: Ownership
+    gaps. A large share of Upside records are unassigned, including Airbnb, Alliant Insurance Services, Lidl US,
+    AutoNation, Nike, Inc., Target, Netskope, Hyatt, Marriott International, and most of the ...
+
+#12 "give me a Monday plan for Cyrus"   (audit)
+    plan: not a command -> ask
+    intent: agenda · context 9 lines / 2235 chars · 2784 in / 531 out · $0.0163 · 19.3 s
+    reads: agenda 2026-11-30 to 2026-11-30 (one member's) · goals/today · goals/top-targets · goals/weekly · no
+    calendar read
+    rows: agenda 1 · partners 1 · employers 6 · weekly 1
+    VERDICT: PARTIAL
+    answer: Here is a focused Monday plan for Cyrus (sorted by top-target rank, which reflects pinned status and
+    intent score). Monday Nov 30 Start with the two highest-urgency pinned accounts. City of Minneapolis has only 1
+    day left on its pin, so Cyrus needs to either act on it or decide whether to renew. Gallagher has an overdue
+    next step (Stacy ...
+
+#13 "who's our hottestperson visiting the website"   (Jack, prod)
+    plan: not a command -> ask
+    intent: people_visiting · context 25 lines / 5881 chars · 4096 in / 196 out · $0.0152 · 7.8 s
+    reads: people whose company visited (7 d) · 27 · by heat
+    rows: people 25 · number guard flagged: 40
+    VERDICT: RIGHT
+    answer: Sorted by heat (highest first), the top person with website activity is Sarah Pierce, at heat 26 warm.
+    She opened your last email on 2026-11-05 and her company logged 4 visits in the last 7 days, most recently
+    2026-11-24. Tied at heat 26 warm are Selena McCarthy, Chasity Brennan, and Angela Tillman-Turner. None of them
+    are hot (that would require ...
+
+#14 "pull me 5 most important prospects who are visiting and hot and show 5 most important tasks"   (Jack, prod)
+    plan: not a command -> ask
+    intent: people_visiting+todos · context 12 lines / 2018 chars · 2783 in / 88 out · $0.0097 · 7.3 s
+    reads: people whose company visited (7 d) · 5 · by heat · filled: 5 people · 0 hot · 5 warm to make 5 |
+    openTodos (365 open)
+    rows: people 5 · todos 5
+    VERDICT: RIGHT
+    answer: Part 1 has 5 warm (not hot) people with company site visits, and Part 2 has 5 open to-dos. People on the
+    site (5) - Sarah Pierce - Selena McCarthy - Chasity Brennan - Angela Tillman-Turner - Danilea Mayer Tasks (5) -
+    Reach out to Aon and WTW contacts starting Tuesday or Wednesday - After Upside call Thursday, ask Brad ...
+
+#15 "tell me about greyorange and who owns"   (Jack, prod)
+    plan: not a command -> ask
+    intent: brief · context 25 lines / 2975 chars · 2896 in / 482 out · $0.0159 · 14.1 s
+    reads: goals/brief/target
+    rows: targets 25
+    VERDICT: RIGHT
+    answer: GreyOrange is owned by Jack · assigned 2026-11-19. It sits at the target stage (employer pipeline) and
+    researching stage (partner pipeline), with an intent score of 48, which puts it in the P2 Warm band GreyOrange.
+    The score breaks down as: +15 fit (US 500+ employees), +10 visits, +10 research, +6 website, +5 pages, +2 people
+    GreyOrange. With 1,173 employees ...
+
+#16 "what's on the agenda for next week"   (Jack, prod)
+    plan: not a command -> ask
+    intent: agenda · context 22 lines / 4378 chars · 3553 in / 507 out · $0.0183 · 18.7 s
+    reads: agenda 2026-11-30 to 2026-12-06 (mine) · goals/today · goals/top-targets · goals/weekly · no calendar
+    read
+    rows: agenda 1 · todos 1 · employers 4 · partners 6 · weekly 1 · call_notes 9
+    VERDICT: RIGHT
+    answer: Meetings are not included in this context. Here is what the context shows for next week (Nov 30, Dec 6),
+    sorted by urgency and type: One to-do due in the window: Deliver investor report with employee counts and
+    platform visit metrics, due Wednesday Dec 2. Top pinned and P1 companies with open next steps to act on:
+    Cloudflare, next step ...
+
+Totals: 15 model calls · 57,194 tokens in · 6,194 out · $0.2645 · average $0.0176 an ask (3,813 in / 413 out).
+Time per ask: 5.6 s to 24.3 s, median 16.4 s (not streamed). The fixed part of every ask is about 1,930 input tokens
+(the SYSTEM prompt 2,836 chars + the glossary 4,057 chars + the filters line): ask #6 carried a 136-char pack and
+cost 1,965 tokens in.
+
+Verdict count: RIGHT 6 (#4 #8 #13 #14 #15 #16) · PARTIAL 4 (#1 #2 #7 #12) · WRONG 2 (#5 #10) · SHRUG 3 (#3 #6 #9) ·
+OFF-TOPIC 1 (#11).
+
+How each verdict was reached (the rows, by hand)
+ #1  PARTIAL. The window "today" held 0 to-dos due; the context said "51 overdue to-dos in all" as a count only
+     (the AGENDA head line) and listed none. The plan is built from 9 calls to review and 10 pinned / P1 next steps.
+     Sensible, but Jack's 51 overdue to-dos are not in it. (Ruling S-2 already covers this.)
+ #2  PARTIAL. No intent; the standing summary. It recommends 6 companies from pins and overdue to-dos, each traced to
+     a line. It never read a person: no heat, no reply, no last email. It says so in its last line. Prose is garbled
+     where a to-do's text stands in for a name (F4).
+ #3  SHRUG. The model answered (378 tokens out, $0.0208) and the answer was withheld: "Answer withheld: it contained
+     an address or phone number." There was no address or phone. See F1.
+ #4  RIGHT. Score 79 P1, stage contacted, owner Cyrus, referred by Brad (Upside) Oct 15, 5 page loads / 27 distinct
+     visitors in 7 d, last visit Nov 22, two named people with titles, 36 touches, last touch 4 days ago: each one is
+     on a context line.
+ #5  WRONG. No model call. "Chicago" has a capital, so it became the company named (retrieve.js:115-120), the brief
+     intent took the ask, no record carries that name, and Scout said "No record named Chicago in Prospector"
+     (retrieve.js:290-302).
+ #6  SHRUG. "last call" matched the calls LOG intent (scoutIntents.js:68, :509), which lists a call's title, date and
+     status but not its notes. The log's newest row is today's unreviewed recording with no company linked. The
+     intent that reads decisions (call_review, :519) needs the words "what did we agree" (:53); "what did Seif and I
+     agree" does not match. Seif was read as a member, correctly, and then not used.
+ #7  PARTIAL. Through /ask: RIGHT. It found Danilea Mayer (2 clicked on the line), wrote a draft, named two buyer
+     titles from the brief. In the real bar this question never reaches /ask: it starts with "write", so it goes to
+     /plan, the draft verb takes the company named and drops the person: "Opened Write email for Cloudflare", to
+     nobody (F5).
+ #8  RIGHT. 79 vs 60, 182,000 vs 9,918 employees, contacted vs target, Cyrus vs Jack, 36 vs 16 touches, 4 vs 26 days:
+     all on the two briefs' lines. One cited name is doubled ("Bass Pro Bass Pro Shops").
+ #9  SHRUG. No intent; the standing summary holds no email numbers. It said so and offered phrasings.
+ #10 WRONG. Two intents ran: visitors (correct) and member_emails (the word "emailed" matched WHO_SENT,
+     scoutIntents.js:182). Nothing read says who was emailed: 0 of the visitor lines carried a last touch. The answer
+     still lists 15 companies as "never been emailed" and names Cloudflare among them; the Cloudflare brief (ask #7)
+     shows an email sent Oct 29 that was clicked twice. It also says it "excluded companies in an active sequence",
+     which it had no way to know. 6 lines were cut by the size cap.
+ #11 OFF-TOPIC. "Upside" is a source word (scoutEntities.js:126), so the ask became "companies whose source is Upside"
+     (the ranked intent, 229 rows, 40 shown). A partner record named Upside exists (findCompany returns it); it was
+     never read. The model said it could not find "the Upside deal" and answered about the Upside-sourced pipeline
+     instead. In that answer one fact is misread: "Gallagher ... gone 15+ days since last touch"; the line says last
+     touch Nov 24, 0 d ago.
+ #12 PARTIAL. Monday Nov 30 for Cyrus: 7 pinned / P1 companies of his, in rank order, each with its real next step
+     or "no next step"; the goal line (100, pace 0) is right. His 5 overdue to-dos are a count in the head line and
+     are not listed, as in #1.
+ #13 RIGHT. Sarah Pierce heat 26 warm is the top row; the three tied at 26 are named; nobody is hot. The guard then
+     adds "Check: 40 is not in what Scout read" although 40 is the hot threshold from the glossary (F3).
+ #14 RIGHT. Two parts, 5 people (0 hot, 5 warm, said) and 5 to-dos by the rule. The to-dos are the team's 365, not
+     Jack's (no "my" in the ask).
+ #15 RIGHT. Owner Jack, assigned Nov 19, target, score 48 P2, 1,173 employees, never touched: on the lines. Every
+     fact is followed by the company's name again (F4).
+ #16 RIGHT. One to-do due Dec 2, the pins with their next steps, the goal of 100, 9 calls to review, meetings said to
+     be missing.
+
+Defects found on the way (not routing)
+ F1  The fallback answer is withheld by the phone guard when it does what the prompt asks. The standing read names
+     itself with a date and a count: "my to-dos due by 2026-12-01 (51)", "notes since 2026-11-11 (5 ..."
+     (scoutIntents.js:580). That text goes into the context (retrieve.js:315). The prompt says to end with what was
+     read (ask.js:32). The guard's phone shape, a digit then 7 or more digits / spaces / brackets / dashes then a
+     digit (scrubText.js:4), matches "2026-12-01 (51)": hasPii() of that string is true (tested). ask.js:247 then
+     withholds the whole answer. 1 of the 3 fallback asks was lost this way; the ask is still charged and counted.
+ F2  Ask #1, first try: HTTP 500 after 133.5 s, "Unterminated string in JSON at position 1223509". No model call, no
+     usage row. The same ask later in the hour: 200 in 18.2 s. Seen once; the cause is not established. What is
+     measured: the agenda read set pulls loadToday (2.29 MB of JSON per call) and, in the fallback, listScores
+     (1.39 MB); a body cut short in transit fails this way. The reads have no timeout of their own.
+ F3  The number guard (ask.js:168, :258) checks the answer against the context lines, the question and today's date,
+     but not the glossary that sits in the system prompt (ask.js:238). A threshold quoted from the glossary is
+     flagged as invented.
+ F4  A cited label becomes the record's title in the prose (ask.js:66-80). When the title is a sentence (a to-do, a
+     call note) or the model writes the name and the label, the prose breaks: "Steve Keough at Email Steve Keough
+     this week has been waiting", "referred the account Hilton", a call's whole title line said again and again in #1. The
+     two post-passes (onceEach :107, onceText :85) do not catch these.
+ F5  The bar sends anything that starts with a command word to /plan first (scoutActions.js:12; the list includes
+     write, draft, add, make, set, move, change, send, email). With inline: true (useScoutActions.js:77) the draft
+     verb calls composeEmail, a model call with its own cap and usage row (scoutVerbs.js:322-345). So "write a
+     follow-up to the Cloudflare person who clicked twice" is a paid draft to the company, not an ask, and the
+     person is dropped. This audit sent /plan without inline, so no draft was paid for.
+
+======================================================================================================================
+A2 WHERE IT BREAKS
+======================================================================================================================
+One primary class per ask (16 asks). Secondary classes in brackets.
+ (a) no intent matched -> fallback ............................ 3   #2 [e]  #3 [e, F1]  #9
+ (b) wrong intent, a word stole it ............................ 4   #5 "Chicago" · #6 "last call" · #7 "write" (at
+                                                                    the bar) · #11 "Upside"
+ (c) right intent, rows missing ............................... 2   #1  #12 (overdue to-dos are a count, not rows)
+ (d) right rows, the model misread ............................ 0   [1 secondary: #11 Gallagher]
+ (e) needs two reads joined ................................... 1   #10 (visitors ∩ never emailed) [b: "emailed"]
+ (f) needs judgement the prompt forbids ....................... 0   (the prompt allows judgement since 1a72ba6)
+ clean ........................................................ 6   #4 #8 #13 #14 #15 #16
+All 10 misses are (a), (b), (c) or (e): decided in code before the model call. (d) and (f) are not where it breaks.
+Not in the six classes: F1 (a guard false positive that hides an answer) and F4 (the label swap garbling prose).
+
+======================================================================================================================
+A3 THE RETRIEVAL DESIGN (file:line)
+======================================================================================================================
+Order of one ask: validateAsk (ask.js:180) -> daily cap (ask.js:226, 40 a day, :15) -> follow-up resolver
+(ask.js:198 -> followUp.js:25) -> buildContext (retrieve.js:223) -> one model call (ask.js:243) -> post-passes
+(ask.js:246-261).
+
+parseAsk's grammar (retrieve.js:77-175). All regex and word lists, no model:
+ - stop words (:12-16) and capital stop words (:17-21, each FIX added more: weekdays, "Next", "Goals", "Plan" ...)
+ - vocabulary stems with an ending rule (stemHits :43; stems at scoutEntities.js:125): hot, warm, cold, cool, visit,
+   person, people, website, site, web
+ - entity word (:99; the lists at scoutEntities.js:107-120: todos, call_notes, visitors, people, partners, clients,
+   employers, targets, insights, intel, accounts, emails)
+ - band word (:101; hot = P1, warm = P2, cool = P3, cold = P4) and its kind, heat or intent (:164)
+ - source word (:104-105; scoutEntities.js:126 plus the reps' first names from the glossary :142)
+ - time phrase (sinceOf :57-67: last n days, yesterday, today, this / last week, this / last month)
+ - sort (:108) · limit (:161) · pronoun (:162) · "my" = mine (:174)
+ - member first name (:111-117) · capitalised or quoted names as companies (:109, :114-120) · the name index lookup
+   of 1-3 word runs (:125-130; scoutNames.js:30, :71) · at most 3 companies (:157)
+ - 15 flags, each a regex (:136-151): visitors, site, ranked, attention, funnel, emails, opened, replied, clicked,
+   weekly, brief, owner, agenda, team, email_site
+ - a guessed name after "tell me about" / "who owns" (:74, :171-173)
+
+Intent match and order (retrieve.js:265, scoutIntents.js:280-565). Every intent whose match() is true runs (filter,
+not first match); the array order is the read order: top_targets :281 · brief :301 · todos :348 · visitors :371 ·
+ranked :381 · people_visiting :404 · people :418 · email_site :435 · weekly :450 · member_emails :461 · emails :480 ·
+funnel :489 · attention :497 · clients :504 · calls :509 · call_review :519 · call_ideas :533 · notes :544 ·
+agenda :556 (only when no other intent matches). 19 intents. The exclusions between them are hand-written inside
+each match (for example ranked :381, emails :480).
+`suggest` (the examples offered first): top_targets, visitors, people_visiting, notes, agenda. nearExamples picks 3
+by shared words (retrieve.js:181-186); the Try chips show when the intent is none or the answer is under 25 words
+(ask.js:261).
+Multi-part asks: splitAsk (retrieve.js:195-213), at most 5 parts (:192); the pack budget is split evenly (:241).
+No intent: the entity text search runs on the leftover words (retrieve.js:277-284; 25 a table, :11), then the
+standing context (:304).
+Standing context (salesStanding, scoutIntents.js:570-588): the agenda read set with tighter caps (:238) + 5 notes
+from 14 days + 10 companies touched in 14 days. Measured: 48 lines, 9,453 chars, 5,043 tokens in, 9.9 s to read.
+Size cap and truncation: PACK_MAX 12,000 chars (retrieve.js:10). A line is at most 700 chars (:320). A line that
+does not fit is dropped whole and counted (:327); nothing is cut mid-line; the order is intent rows, then search
+hits, then standing (:305). Each intent also caps its own rows (40 or 25). Measured: 1 of 15 asks hit the cap (#10,
+6 lines dropped).
+PII guard on the way in: every line through cleanText and hasPii; a line that trips is dropped and counted
+(retrieve.js:320-321). 0 dropped in the 15 asks.
+
+The SYSTEM prompt (ask.js:21-44, 15 rules) and where each came from (the origin is the code's own comment; "not
+marked" = the line carries none):
+  1 :22  who Scout is ................................................... not marked
+  2 :24  every fact from a CONTEXT line and cited; the reasoning is Scout's ... FIX scout-generative G2
+  3 :26  a recommendation starts "I'd" / "Suggestion:"; no number or date not on a line ... scout-generative G3
+  4 :27  "show me" = a short list, one line per record, cite the label ... not marked
+  5 :28  at most 15 records in prose, then "+ n more (in the table)" .... Jack, scout-v2 Stage 3 (ask.js:17)
+  6 :29  sort as asked and say which sort ............................... not marked
+  7 :30  never invent a record, number, date or contact detail ......... not marked
+  8 :31  if the context lacks it, say so and say what was read; never send the user to a screen ... not marked
+  9 :32  on "No specific read matched": answer anyway, end with what was read + 3 phrasings ... scout-generative G2
+ 10 :34  on an AGENDA line: a plan by day, a goals line, three pushes .. scout-generative G1
+ 11 :35  prose or bullets, no headings, no em or en dashes ............. not marked
+ 12 :37  name each record once, no "---", no Records list ............... scout-v3 S3
+ 13 :39  the label is shown as the name: write the label alone ......... scout-v3.1 C6
+ 14 :41  a to-do's label is its whole text: do not repeat it ........... app-shell-v2 W3
+ 15 :43  mark "(unreviewed)" ............................................ fathom-notes F-10
+ + today's date and the house glossary (ask.js:238; glossary() at scoutEntities.js:130-165, 12 lines, built from
+   settings and constants) + PARTS_RULE for a multi-part ask (ask.js:47-52).
+ Model: MODELS.STANDARD (claude-sonnet-4-6), max_tokens 1,200 (:16), thinking off, 60 s timeout, callType scout_ask.
+
+Answer post-passes, in order (ask.js): dashes replaced :244 · sectioned :132 (labels -> titles via resolveRefs :66;
+"@@ n" blocks :131; the "+ n more" line :65) · withhold on hasPii :247 · the follow-up line :250 · the owner lead
+:213, :253 · unsourcedNumbers :168, :258 · the weak-match Try chips :261 · the intent logged to the console only
+:264 (the usage row has no column for it).
+Follow-up resolver: followUp.js:25 (named, ordinal, first n, all, one; ambiguous = ask which) · followUpOf
+ask.js:198 · the rows of the last answer are sent by the client (ask.js:190, at most 200) · a "can't" answer costs
+no ask (ask.js:231, :236).
+Thread: the client keeps the day's last 6 turns in the browser (scoutModel.js:11, :28-36) and sends the last 3 as
+question + answer (:38); the server takes at most 6 messages of 2,000 chars (ask.js:19, :184-188).
+Window and page (app-shell W1 / W2): src/components/scout/ScoutWindow.js (the drawer and ScoutPage; mounted from
+App.js:7), the bar itself is src/components/ScoutCommandBar.js; src/components/PersistentScout.js is imported only
+by a test today (not acted on; a /cleanup candidate to check).
+Verbs: 18, in lead order (scoutVerbs.js:587); plan / act / undo / pack in api/scout/actions.js (:89, :153, :177,
+:195); what Scout refuses (:25-30); plans live in memory, 2 minutes to confirm, 15 s to undo (:16-17).
+
+What would survive a rebuild unchanged
+ - the reads (A4): every one is an existing server function reached through salesReads (scoutIntents.js:12-29)
+ - the registry and the module seam (registry.js:22-35), the entity searches and openers (scoutEntities.js:28-104)
+ - the glossary (scoutEntities.js:130) and the name index (scoutNames.js)
+ - the line format, labels, PII drop and size cap (retrieve.js:317-342)
+ - the verbs, plan / act / undo, the refusals (actions.js, scoutVerbs.js): they read rows, not the retrieval
+ - the follow-up resolver (followUp.js), the thread, the window, the daily cap, the usage row
+ - the post-passes (with F1, F3, F4 fixed)
+The keyword bottleneck
+ - parseAsk's flags and word lists as a GATE (retrieve.js:136-151), each intent's match() (scoutIntents.js), and
+   the rule that one matched intent means one fixed read set with fixed filters (retrieve.js:263-276). A question is
+   answered only if its words were foreseen: 4 FIX specs each added words for one phrase (:17-21, :74-76).
+ - no way to run a second read on the result of the first (class e), and no read takes "not" (never emailed, not
+   touched, went quiet).
+
+======================================================================================================================
+A4 THE READS AS TOOLS
+======================================================================================================================
+Timed once each on HomeLover's real rows (Nov 25, one call, a warm process). "Pure" = a function of (supabase,
+ids, options) that returns data and writes nothing; all of these are importable from their file. rows = what came
+back; chars = its JSON size before Scout trims it to lines.
+
+ read (file)                              inputs                                  returns                rows / chars / ms
+ topTargets (topTargets.js)               owner?, limit · now, meId               ranked rows + why,     50 / 40k / 602
+                                                                                  bars, pin, next step
+ companyBrief (companyBrief.js)           type, id                                company, score, lines  28 lines / 7k / 4,332
+ findCompany (scoutIntents.js:92)         name                                    1 record or null       1 / 0.1k / 166
+ findPerson (scoutIntents.js:115)         name                                    1 People row           1 / 0.7k / 778
+ personDetail (peopleActivityRoutes.js)   person key                              timeline, notes        15 / 3k / 694
+ peopleActivity (peopleActivityRoutes.js) window 7|30|90|all, snoozed             people + heat, emails, 564 / 421k / 860
+                                                                                  visits                 (window 7: 33 / 27k / 889)
+ openTodosFor (openTodos.js)              owner or null                           open to-dos, total     365 team / 364k / 851
+                                                                                                         (mine: 173 / 174k / 515)
+ loadToday (todayRoutes.js)               now, filter.owner, reviews              groups of rows, strip, 182 / 2,287k / 1,871
+                                                                                  counts
+ loadVisitorData (teamEmails/             window (days), members                  companies on the site  49 / 21k / 2,177
+   visitorEmail.js)
+ listScores (scoresRoutes.js)             segment, band, source, owner, sort      scored companies       565 / 1,389k / 745
+ loadWeekly (weeklyRoutes.js)             weeks, member?                          metrics x 12 weeks     20 metrics / 25k / 3,538
+                                                                                                         (member=all: 46k / 8,261)
+ loadFunnel (funnelRoutes.js)             windows                                 email -> site rates    1 / 12k / 587
+ loadPulse (pulseRoutes.js)               period week|month                       email metrics          1 / 2k / 1,257
+ sourcesFunnel (sourceRoutes.js)          query                                   totals, by rep,        1 / 338k / 1,949
+                                                                                  by partner
+ attention (attentionRoutes.js)           userId                                  sources + counts       7 / 2k / 1,575
+ listClients (clients.js)                 -                                       clients                1 / 1k / 488
+ listCalls (callLinks.js)                 who, unreviewed, since, until,          the calls log          46 / 19k / 293
+                                          record, q
+ recordCallIds (callLinks.js)             type, id                                note ids for a company 1 / 0.04k / 140
+ sales_call_notes (direct query,          term, since, until                      notes + extract        up to 3 / - / ~200
+   scoutIntents.js:522, :536, :546)
+ microsoft_messages (direct query, :340)  domain                                  8 subjects             8 / - / ~150
+ agendaRead (scoutIntents.js:241)         from, to, whose, caps, overdue          head + grouped items   20 items / 10k / 4,434
+                                          (= loadToday + topTargets + loadWeekly)
+ salesStanding (scoutIntents.js:570)      -                                       the fallback set       47 items / 23k / 9,922
+ entity search x 11 (scoutEntities.js:    q, limit                                title, subtitle, text  0-1 / <1k / 119-194 each
+   28-93)
+ nameIndex (scoutNames.js:71)             - (cached 5 min)                        find(text), near(text) 1 ms after the first build
+ glossary (scoutEntities.js:130)          -                                       12 lines               12 / 5k / 333
+ copyPack / dossier (targetsRoutes.js ->  records, full                           the dossier text       1 / 12k cap / 16,171
+   dossier.js)
+
+Notes for a tool list
+ - Three reads return megabytes that Scout then cuts to 40 lines: loadToday 2.29 MB, listScores 1.39 MB,
+   sourcesFunnel 0.34 MB. A tool wrapper has to filter and trim on the server; the model must never see the raw body.
+ - Slow ones: dossier 16.2 s, salesStanding 9.9 s, loadWeekly(member=all) 8.3 s, agendaRead 4.4 s, companyBrief
+   4.3 s, loadWeekly 3.5 s. Three reads in sequence can pass 20 s before the answer call starts.
+ - None of the reads takes a negative filter (never emailed, not touched since, no next step) or a pinned filter;
+   listScores rows do carry last_touch_at and topTargets rows carry the pin, so these are filters to add to a
+   wrapper, not new data.
+ - loadToday and attention are the same calls the pages make; nothing here was seen to write. That was read in the
+   intents' own use, not proven for every code path inside them.
+
+======================================================================================================================
+A5 V1 VS NOW
+======================================================================================================================
+From git (v1 = the tree at 13dfbad, the last commit before scout-v2 Stage 1 0f3bb32; v1 dates from c47d490, Aug 5)
+and audits/scout-v1-audit-findings.txt.
+
+How v1 chose its context: it did not choose. Every in-scope account went into the system prompt on every ask
+(ScoutCommandBar.js:195-196 @13dfbad: "Pipeline context (N deals)"), built in the browser by buildScoutContext
+(src/utils/buildScoutContext.js:69-86: name, stage, tier, ACV, close date, close %, AE, forecast, health, days since
+touch, compliance, path to close, last call summary, blockers, a note, email sentiment). No keyword filter, no
+size cap. The Oct 15 audit estimated 10-16k input tokens an ask for 66 accounts (never logged).
+v1's prompt (ScoutCommandBar.js:33-37 @13dfbad), whole: "You are a world-class sales analyst embedded in
+Prospector ... You have access to the AE's full pipeline. Be direct, specific, and opinionated. Use the deal data to
+answer precisely, no hedging, no generic advice. Format responses in clean markdown. Use tables for rankings. Use
+bullets for summaries. Never invent data that isn't in the context."
+MODELS.STANDARD, max_tokens 2,000, streamed, a 6-message thread, markdown with tables. No citations, no number check,
+no usage row, the prompt owned by the browser.
+Actions: the model proposed none. Buttons were guessed in the browser from the text (ScoutActionButtons.js @13dfbad);
+the Oct audit found the nav buttons opened the list, not the account.
+
+What v1 could do that today's cannot
+ - answer any phrasing: there was no gate between the question and the model
+ - reason across the whole book in one pass (rank, compare, find risk, write a forecast brief)
+ - speak as an analyst: told to be opinionated; today's prompt is 15 rules of constraint
+ - tables, headings, 2,000 tokens, streamed; today: no headings, 1,200 tokens, 5-24 s with nothing on screen
+What v1 could not do
+ - see anything outside the accounts table and two browser caches: no partners, employers, targets, people,
+   visitors, emails, to-dos, call notes, goals. It knew nothing of the sales module, where the work now is.
+ - act on a record, cite a record, open a record, log its cost, or hold up past a few hundred rows.
+
+What Jack most likely misses (a reading of the evidence, not a fact; the planner has not sent the two v1 answers
+the audit asks for): (1) it always answered; (2) the voice; (3) whole-picture reasoning; (4) streaming and tables.
+v1's quality came from 66 accounts fitting in the prompt whole. HomeLover today is 565 scored companies, 564
+people, 365 open to-dos: 1.39 MB for the scores alone. The dump cannot come back; the "no gate" can.
+Still in the tree from v1: src/components/ledger/ScoutModal.js (the same prompt and dump, unreachable: the ledger
+page is not in VISIBLE_PAGES, App.js:83), src/utils/buildScoutContext.js, src/utils/scoutLayers.js.
+
+======================================================================================================================
+A6 COST OF A MODEL-PLANNED SCOUT
+======================================================================================================================
+Measured, business_anthropic_usage, the 7 days to Nov 25 (before this audit's asks), real averages per call type.
+All on claude-sonnet-4-6:
+ call type             calls   avg in   avg out   avg $      total $
+ hk_research_sweep       70    15,528      464    0.0535     3.748
+ scout_ask               20     2,781      286    0.0126     0.253
+ intent_compose           9     1,209      330    0.0086     0.077
+ partner_research         8    31,306    1,129    0.1109     0.887
+ call_tasks               4     6,830    3,685    0.0758     0.303
+ hk_thread_read           3     1,518      106    0.0061     0.018
+ call_tasks_fathom        2     6,058    2,510    0.0558     0.112
+scout_ask over 14 days: 25 asks, input 1,188 min / 2,398 median / 4,184 max, $0.290 in all.
+This audit's 15 asks: 3,813 in / 413 out / $0.0176 on average; the dearest was $0.0298 (#10); a fallback ask is
+5,043 tokens in ($0.018-0.023). The audit file's "$0.01-0.015 per ask" is low for these questions.
+
+The 40-a-day cap, asks per LA day per member, last 14 days: Nov 13: Jack 5 · Nov 18: Jack 1 · Nov 19: Jack 6 ·
+Nov 20: Jack 2 · Nov 21: Jack 5 · Nov 23: Jack 3 · Nov 24: Jack 3. Nobody else has asked. The most in a day is 6
+of 40. Nov 25: 15, all this audit's.
+
+The tool list (A4 as 19 tools with input schemas, short descriptions): 6,523 chars = 2,616 tokens, measured with
+count_tokens on claude-sonnet-4-6.
+
+Estimate of a model-planned ask (the prices are src/config/models.js:17-21: Sonnet $3 / $15, Haiku $1 / $5 per
+million; the token inputs are the measured ones above; the output sizes are assumptions and are marked):
+ plan call, Haiku, tool choice only: 1,930 fixed + 2,616 tools + the question = about 4,600 in, about 150 out
+   (assumed: 1-3 tool calls)                                                      -> $0.0054
+   the same plan call on Sonnet                                                   -> $0.0160
+ reads: $0; 0.2 s to 8 s each as measured in A4
+ answer call, Sonnet, as today: typical 3,800 in / 410 out                        -> $0.0176
+   with three reads filling the 12,000-char pack: about 4,900 in / 450 out        -> $0.0215
+ total, Haiku plan + Sonnet answer: $0.023 typical, $0.027 with a full pack       = 1.3x to 1.5x this audit's ask,
+                                                                                    1.8x to 2.1x prod's 7-day average
+ total, Sonnet plan + Sonnet answer: $0.034 to $0.038
+ a full tool loop on Sonnet (the tools resent on each of up to 4 turns, no caching): up to about 24k in / 900 out
+                                                                                  -> about $0.087 at the worst
+ Time: one more model call before the reads. Today's median is 16.4 s; expect more unless the answer streams.
+At the cap (40 asks a member a day): today $0.70; Haiku plan + Sonnet answer $0.92-1.08; the Sonnet loop at its worst
+$3.50. At the real pace (25 asks in 14 days) the difference is cents a week.
+
+======================================================================================================================
+A7 WRITES AND SAFETY
+======================================================================================================================
+Every write Scout has goes: typed command or a row's button -> POST /plan (actions.js:89, no record write) -> the
+confirm card -> POST /act (actions.js:153) -> the module's existing writer -> POST /undo within 15 s (actions.js:177).
+The writers (the salesWrites map, scoutVerbs.js:35-55): applyPartnerSignal / undoPartnerSignal · editCompanyFields ·
+undoFlow · applyPerson / undoPersonEvent · updateProspectRoute · todoOn · applyTodo / undoCreate / undoTodoEvent ·
+createWeekGoalRoute / updateWeekGoalRoute · rejectTarget · deprioritize · composeEmail (a draft, never a send).
+The 18 verbs (scoutVerbs.js:587): assign_owner :490 · assign :128 · not_fit :235 · contacted :194 · task_finish
+:438 · task_done :418 · task_due :421 · task_drop :419 · work :427 (opens a panel) · draft :322 · bundle :349
+(clipboard) · snooze :272 · five_add :536 · five_remove :560 · reply_todos :471 · add_task :364 · link_named :512 ·
+copy :576 (Copy for Claude, no write).
+Refused by rule (actions.js:25-30): send / reply / forward, delete, a stage move or a client, any Apollo write.
+Viewers are refused at /plan (actions.js:95). A batch is at most 25 rows (:18).
+
+None of this reads the retrieval. /plan takes the rows of the answer on screen from the client (actions.js:103-104)
+and resolves the command against them (resolveTargets :56). If retrieval changed, the only contract to keep is the
+item shape Scout returns for a row: entity, id, title, company, row (retrieve.js:340) and the row's verb, which
+comes from Today's own read (scoutIntents.js:365), not from the model.
+
+Is the model's text parsed for actions anywhere? No write is. Checked by reading ask.js, actions.js, scoutVerbs.js and
+by grep of the client's action files for the answer text (useScoutActions.js, scoutActions.js: no use of answer_md or
+summary). The model's text is parsed in three places, all for display:
+ - [rN] labels -> which records become rows (ask.js:53, :66-80); an unknown label is dropped
+ - "@@ n" blocks -> which rows sit in which section (ask.js:131, :144-157)
+ - the "+ n more (in the table):" line (ask.js:65, :104)
+So the model picks which rows are SHOWN, and each shown row carries verb buttons a person may click. It cannot
+cite a record the server did not read. The "assign it?" offer is built by the server from the owner field
+(ask.js:213-218), not from the text.
+Two things to hold on to in a rebuild:
+ - /plan is "no write" for records, but the draft verb with inline: true makes a model call with composeEmail's own
+   cap and usage row (scoutVerbs.js:322-345; the bar always sends inline, useScoutActions.js:77). It is outside the
+   40-ask cap and is reached by any line that starts with "write" or "draft" (F5).
+ - the commands are matched on what the user typed (scoutActions.js:12, actions.js:63), never on what the model
+   wrote. A model that plans reads must stay on the read side of that line.
+
+======================================================================================================================
+A8 OPEN QUESTIONS FOR THE PLANNER
+======================================================================================================================
+Which of the misses are the routing (the data and a read exist) and which are the data.
+Routing only: the read exists today
+ #1, #12  the overdue to-dos are in loadToday; the agenda passes a count. (Ruled: S-2.)
+ #2   people with heat, replies and last email are in peopleActivity; no intent was chosen.
+ #3   pins are on topTargets rows, last touch on listScores rows; nothing joins them. (And F1.)
+ #6   call_review reads decisions and "waiting on"; the calls log was chosen instead.
+ #7   /ask does it; the bar sends it to the draft verb.
+ #11  the partner record "Upside" exists; the source word hides it.
+Routing plus one filter that no read has yet
+ #10  "never emailed": peopleActivity has sent counts per person and the brief has touches per company, but the
+      visitors read returned no last touch on any of its lines this week, including for companies that have been
+      emailed. Q1: is last_touch on loadVisitorData broken, or only filled for some rows?
+Not answerable from the data as it stands
+ #5   "benefits brokers in Chicago": category exists (sales_goals.category, sales_targets.suggested_category) and
+      "not touched" exists (last_touch_at). There is no city or location column on sales_goals, sales_targets or
+      sales_opportunities; only us_footprint and the apollo_firmographics json, whose contents were not opened.
+      Q2: does apollo_firmographics hold a city, and for how many records?
+ #9   "best performing email angle": no read splits results by angle, subject, sequence or step. loadPulse returns
+      workspace totals (sent, delivered rate, human open rate ...). sales_goals has angle and sequence_to_use
+      columns. Q3: are per-sequence or per-step results stored anywhere, or only in Apollo?
+Other questions
+ Q4  The 4 unspent history asks: Jack's real history is in his browser only. Does the planner want him to paste his
+     own 4-8 questions for a second, smaller run (5 asks remain under the cap)?
+ Q5  Should asks be stored? The usage row has no question, no intent, no verdict; the intent goes to the server
+     console only (ask.js:264). Every Scout audit so far has had to re-ask to measure. This is a schema question.
+ Q6  F1 lost 1 of the 3 fallback answers here, each paid for. Fix now as a FIX, or leave it for the rebuild?
+ Q7  F2 was seen once and not explained. Does Render's log show the same error on prod?
+ Q8  Is a visible wait of 16 s (median) acceptable for the rebuild, or is streaming part of it?
+ Q9  The two v1 answers Jack liked (A5) have not been sent.
+
+Not proven by this audit
+ - Render was not touched: every ask ran on localhost against the live DB, on HEAD 4cbfb5e.
+ - Verdicts are one reader's, against the context lines, not against every underlying table row.
+ - Each ask was asked once, with no thread. Follow-ups, commands and /act were not exercised.
+ - F2's cause. The read timings are single samples.
+
+restored: yes. No record written. Kept by rule: 15 business_anthropic_usage rows (the asks' own cost rows). The
+owner session was signed out after each run and last_seen_at restored; sign-in rows added: 0.
+Asks used: 15 of 20 (Jack's daily cap: 15 of 40 on Nov 25). Apollo 0. /act never called.
